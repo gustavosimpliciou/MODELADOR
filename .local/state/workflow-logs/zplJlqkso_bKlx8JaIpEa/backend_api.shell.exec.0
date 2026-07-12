@@ -1,0 +1,57 @@
+[32mINFO[0m:     Will watch for changes in these directories: ['/home/runner/workspace/backend']
+[32mINFO[0m:     Uvicorn running on [1mhttp://0.0.0.0:8000[0m (Press CTRL+C to quit)
+[32mINFO[0m:     Started reloader process [[36m[1m1320[0m] using [36m[1mStatReload[0m
+2026-07-12 04:09:26,792 - server - INFO - Supabase client initialized ✓
+[32mINFO[0m:     Started server process [[36m1331[0m]
+[32mINFO[0m:     Waiting for application startup.
+[32mINFO[0m:     Application startup complete.
+2026-07-12 04:09:30,492 - httpx - INFO - HTTP Request: POST https://blqvsglspdayrznnbzzf.supabase.co/auth/v1/admin/users "HTTP/2 200 OK"
+2026-07-12 04:09:31,001 - httpx - INFO - HTTP Request: GET https://blqvsglspdayrznnbzzf.supabase.co/rest/v1/users?select=%2A&id=eq.04c9e077-9d5e-4f91-b9d1-88bf908c8b15 "HTTP/2 200 OK"
+2026-07-12 04:09:31,109 - httpx - INFO - HTTP Request: POST https://blqvsglspdayrznnbzzf.supabase.co/rest/v1/users "HTTP/2 201 Created"
+[32mINFO[0m:     127.0.0.1:40528 - "[1mPOST /api/auth/register HTTP/1.1[0m" [32m200 OK[0m
+2026-07-12 04:10:27,320 - httpx - INFO - HTTP Request: POST https://blqvsglspdayrznnbzzf.supabase.co/auth/v1/token?grant_type=password "HTTP/2 200 OK"
+2026-07-12 04:10:27,491 - httpx - INFO - HTTP Request: GET https://blqvsglspdayrznnbzzf.supabase.co/rest/v1/users?select=%2A&id=eq.c5f625dd-e8a3-47da-9efc-715b1411860a "HTTP/2 200 OK"
+2026-07-12 04:10:27,565 - httpx - INFO - HTTP Request: POST https://blqvsglspdayrznnbzzf.supabase.co/rest/v1/users "HTTP/2 403 Forbidden"
+2026-07-12 04:10:27,566 - server - WARNING - Could not insert profile for c5f625dd-e8a3-47da-9efc-715b1411860a: {'message': 'new row violates row-level security policy for table "users"', 'code': '42501', 'hint': None, 'details': None}
+[32mINFO[0m:     10.48.2.60:0 - "[1mPOST /api/auth/login HTTP/1.1[0m" [32m200 OK[0m
+[33mWARNING[0m:  StatReload detected changes in 'server.py'. Reloading...
+[32mINFO[0m:     Shutting down
+[32mINFO[0m:     Waiting for application shutdown.
+[32mINFO[0m:     Application shutdown complete.
+[32mINFO[0m:     Finished server process [[36m1331[0m]
+2026-07-12 04:49:08,071 - server - INFO - Supabase client initialized ✓
+[32mINFO[0m:     Started server process [[36m1773[0m]
+[32mINFO[0m:     Waiting for application startup.
+[32mINFO[0m:     Application startup complete.
+[33mWARNING[0m:  StatReload detected changes in 'server.py'. Reloading...
+[32mINFO[0m:     Shutting down
+[32mINFO[0m:     Waiting for application shutdown.
+[32mINFO[0m:     Application shutdown complete.
+[32mINFO[0m:     Finished server process [[36m1773[0m]
+2026-07-12 04:49:13,686 - server - INFO - Supabase client initialized ✓
+[32mINFO[0m:     Started server process [[36m1777[0m]
+[32mINFO[0m:     Waiting for application startup.
+[32mINFO[0m:     Application startup complete.
+[33mWARNING[0m:  StatReload detected changes in 'server.py'. Reloading...
+[32mINFO[0m:     Shutting down
+[32mINFO[0m:     Waiting for application shutdown.
+[32mINFO[0m:     Application shutdown complete.
+[32mINFO[0m:     Finished server process [[36m1777[0m]
+2026-07-12 04:49:25,980 - server - INFO - Supabase client initialized ✓
+[32mINFO[0m:     Started server process [[36m1781[0m]
+[32mINFO[0m:     Waiting for application startup.
+[32mINFO[0m:     Application startup complete.
+[33mWARNING[0m:  StatReload detected changes in 'server.py'. Reloading...
+[32mINFO[0m:     Shutting down
+[32mINFO[0m:     Waiting for application shutdown.
+[32mINFO[0m:     Application shutdown complete.
+[32mINFO[0m:     Finished server process [[36m1781[0m]
+2026-07-12 04:49:43,340 - server - INFO - Supabase client initialized ✓
+[32mINFO[0m:     Started server process [[36m1786[0m]
+[32mINFO[0m:     Waiting for application startup.
+[32mINFO[0m:     Application startup complete.
+[32mINFO[0m:     Shutting down
+[32mINFO[0m:     Waiting for application shutdown.
+[32mINFO[0m:     Application shutdown complete.
+[32mINFO[0m:     Finished server process [[36m1786[0m]
+[32mINFO[0m:     Stopping reloader process [[36m[1m1320[0m]

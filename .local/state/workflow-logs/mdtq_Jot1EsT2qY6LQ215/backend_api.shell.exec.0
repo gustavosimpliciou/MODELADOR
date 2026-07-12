@@ -1,0 +1,70 @@
+[32mINFO[0m:     Will watch for changes in these directories: ['/home/runner/workspace/backend']
+[32mINFO[0m:     Uvicorn running on [1mhttp://0.0.0.0:8000[0m (Press CTRL+C to quit)
+[32mINFO[0m:     Started reloader process [[36m[1m2559[0m] using [36m[1mStatReload[0m
+2026-07-12 05:14:58,863 - server - INFO - Supabase client initialized ✓
+[32mINFO[0m:     Started server process [[36m2573[0m]
+[32mINFO[0m:     Waiting for application startup.
+[32mINFO[0m:     Application startup complete.
+2026-07-12 05:15:09,767 - httpx - INFO - HTTP Request: POST https://blqvsglspdayrznnbzzf.supabase.co/auth/v1/admin/users "HTTP/2 200 OK"
+2026-07-12 05:15:10,241 - httpx - INFO - HTTP Request: GET https://blqvsglspdayrznnbzzf.supabase.co/rest/v1/users?select=%2A&id=eq.e3330dc3-a46a-4865-a675-075fed5afccc "HTTP/2 200 OK"
+2026-07-12 05:15:10,316 - httpx - INFO - HTTP Request: POST https://blqvsglspdayrznnbzzf.supabase.co/rest/v1/users "HTTP/2 201 Created"
+[32mINFO[0m:     127.0.0.1:39800 - "[1mPOST /api/auth/register HTTP/1.1[0m" [32m200 OK[0m
+2026-07-12 05:15:10,521 - httpx - INFO - HTTP Request: POST https://blqvsglspdayrznnbzzf.supabase.co/auth/v1/token?grant_type=password "HTTP/2 200 OK"
+2026-07-12 05:15:10,624 - httpx - INFO - HTTP Request: GET https://blqvsglspdayrznnbzzf.supabase.co/rest/v1/users?select=%2A&id=eq.e3330dc3-a46a-4865-a675-075fed5afccc "HTTP/2 200 OK"
+[32mINFO[0m:     127.0.0.1:39814 - "[1mPOST /api/auth/login HTTP/1.1[0m" [32m200 OK[0m
+2026-07-12 05:15:10,690 - httpx - INFO - HTTP Request: GET https://blqvsglspdayrznnbzzf.supabase.co/rest/v1/users?select=%2A&id=eq.e3330dc3-a46a-4865-a675-075fed5afccc "HTTP/2 200 OK"
+[32mINFO[0m:     127.0.0.1:39820 - "[1mGET /api/auth/me HTTP/1.1[0m" [32m200 OK[0m
+2026-07-12 05:15:10,754 - httpx - INFO - HTTP Request: GET https://blqvsglspdayrznnbzzf.supabase.co/rest/v1/payments?select=id&kiwify_transaction_id=eq.test-order-e2e-fix-1 "HTTP/2 200 OK"
+2026-07-12 05:15:10,806 - httpx - INFO - HTTP Request: GET https://blqvsglspdayrznnbzzf.supabase.co/rest/v1/users?select=%2A&email=eq.teste-webhook-e2e-2%40example.com "HTTP/2 200 OK"
+2026-07-12 05:15:10,860 - httpx - INFO - HTTP Request: PATCH https://blqvsglspdayrznnbzzf.supabase.co/rest/v1/users?id=eq.e3330dc3-a46a-4865-a675-075fed5afccc "HTTP/2 200 OK"
+2026-07-12 05:15:10,914 - httpx - INFO - HTTP Request: POST https://blqvsglspdayrznnbzzf.supabase.co/rest/v1/payments "HTTP/2 201 Created"
+2026-07-12 05:15:10,970 - httpx - INFO - HTTP Request: POST https://blqvsglspdayrznnbzzf.supabase.co/rest/v1/credit_history "HTTP/2 201 Created"
+2026-07-12 05:15:10,971 - server - INFO - Kiwify: +200 créditos / plano easy para teste-webhook-e2e-2@example.com (order test-order-e2e-fix-1)
+[32mINFO[0m:     127.0.0.1:39832 - "[1mPOST /api/webhook/kiwify HTTP/1.1[0m" [32m200 OK[0m
+2026-07-12 05:15:11,030 - httpx - INFO - HTTP Request: GET https://blqvsglspdayrznnbzzf.supabase.co/rest/v1/users?select=%2A&id=eq.e3330dc3-a46a-4865-a675-075fed5afccc "HTTP/2 200 OK"
+[32mINFO[0m:     127.0.0.1:39848 - "[1mGET /api/auth/me HTTP/1.1[0m" [32m200 OK[0m
+2026-07-12 05:15:11,088 - httpx - INFO - HTTP Request: GET https://blqvsglspdayrznnbzzf.supabase.co/rest/v1/payments?select=id&kiwify_transaction_id=eq.test-order-e2e-fix-1 "HTTP/2 200 OK"
+[32mINFO[0m:     127.0.0.1:39856 - "[1mPOST /api/webhook/kiwify HTTP/1.1[0m" [32m200 OK[0m
+2026-07-12 05:15:11,143 - httpx - INFO - HTTP Request: GET https://blqvsglspdayrznnbzzf.supabase.co/rest/v1/users?select=%2A&id=eq.e3330dc3-a46a-4865-a675-075fed5afccc "HTTP/2 200 OK"
+[32mINFO[0m:     127.0.0.1:39872 - "[1mGET /api/auth/me HTTP/1.1[0m" [32m200 OK[0m
+2026-07-12 05:15:11,199 - httpx - INFO - HTTP Request: GET https://blqvsglspdayrznnbzzf.supabase.co/rest/v1/users?select=%2A&id=eq.e3330dc3-a46a-4865-a675-075fed5afccc "HTTP/2 200 OK"
+2026-07-12 05:15:11,254 - httpx - INFO - HTTP Request: PATCH https://blqvsglspdayrznnbzzf.supabase.co/rest/v1/users?id=eq.e3330dc3-a46a-4865-a675-075fed5afccc "HTTP/2 200 OK"
+2026-07-12 05:15:11,303 - httpx - INFO - HTTP Request: POST https://blqvsglspdayrznnbzzf.supabase.co/rest/v1/credit_history "HTTP/2 201 Created"
+[32mINFO[0m:     127.0.0.1:39884 - "[1mPOST /api/auth/consume-export HTTP/1.1[0m" [32m200 OK[0m
+2026-07-12 05:15:11,369 - httpx - INFO - HTTP Request: GET https://blqvsglspdayrznnbzzf.supabase.co/rest/v1/users?select=%2A&id=eq.e3330dc3-a46a-4865-a675-075fed5afccc "HTTP/2 200 OK"
+2026-07-12 05:15:11,425 - httpx - INFO - HTTP Request: PATCH https://blqvsglspdayrznnbzzf.supabase.co/rest/v1/users?id=eq.e3330dc3-a46a-4865-a675-075fed5afccc "HTTP/2 200 OK"
+2026-07-12 05:15:11,476 - httpx - INFO - HTTP Request: POST https://blqvsglspdayrznnbzzf.supabase.co/rest/v1/credit_history "HTTP/2 201 Created"
+[32mINFO[0m:     127.0.0.1:39888 - "[1mPOST /api/auth/consume-export HTTP/1.1[0m" [32m200 OK[0m
+2026-07-12 05:17:53,230 - httpx - INFO - HTTP Request: POST https://blqvsglspdayrznnbzzf.supabase.co/auth/v1/admin/users "HTTP/2 403 Forbidden"
+[32mINFO[0m:     127.0.0.1:47296 - "[1mPOST /api/auth/register HTTP/1.1[0m" [31m400 Bad Request[0m
+2026-07-12 05:17:53,292 - httpx - INFO - HTTP Request: POST https://blqvsglspdayrznnbzzf.supabase.co/auth/v1/token?grant_type=password "HTTP/2 400 Bad Request"
+[32mINFO[0m:     127.0.0.1:47306 - "[1mPOST /api/auth/login HTTP/1.1[0m" [31m401 Unauthorized[0m
+2026-07-12 05:18:00,317 - httpx - INFO - HTTP Request: POST https://blqvsglspdayrznnbzzf.supabase.co/auth/v1/admin/users "HTTP/2 403 Forbidden"
+[32mINFO[0m:     127.0.0.1:47312 - "[1mPOST /api/auth/register HTTP/1.1[0m" [31m400 Bad Request[0m
+2026-07-12 05:18:00,375 - httpx - INFO - HTTP Request: POST https://blqvsglspdayrznnbzzf.supabase.co/auth/v1/token?grant_type=password "HTTP/2 400 Bad Request"
+[32mINFO[0m:     127.0.0.1:47314 - "[1mPOST /api/auth/login HTTP/1.1[0m" [31m401 Unauthorized[0m
+2026-07-12 05:18:09,782 - httpx - INFO - HTTP Request: POST https://blqvsglspdayrznnbzzf.supabase.co/auth/v1/admin/users "HTTP/2 403 Forbidden"
+[32mINFO[0m:     127.0.0.1:47330 - "[1mPOST /api/auth/register HTTP/1.1[0m" [31m400 Bad Request[0m
+[33mWARNING[0m:  StatReload detected changes in 'server.py'. Reloading...
+[32mINFO[0m:     Shutting down
+[32mINFO[0m:     Waiting for application shutdown.
+[32mINFO[0m:     Application shutdown complete.
+[32mINFO[0m:     Finished server process [[36m2573[0m]
+2026-07-12 05:18:58,979 - server - INFO - Supabase client initialized ✓
+[32mINFO[0m:     Started server process [[36m2894[0m]
+[32mINFO[0m:     Waiting for application startup.
+[32mINFO[0m:     Application startup complete.
+[33mWARNING[0m:  StatReload detected changes in 'server.py'. Reloading...
+[32mINFO[0m:     Shutting down
+[32mINFO[0m:     Waiting for application shutdown.
+[32mINFO[0m:     Application shutdown complete.
+[32mINFO[0m:     Finished server process [[36m2894[0m]
+2026-07-12 05:19:03,456 - server - INFO - Supabase client initialized ✓
+[32mINFO[0m:     Started server process [[36m2904[0m]
+[32mINFO[0m:     Waiting for application startup.
+[32mINFO[0m:     Application startup complete.
+[32mINFO[0m:     Shutting down
+[32mINFO[0m:     Waiting for application shutdown.
+[32mINFO[0m:     Application shutdown complete.
+[32mINFO[0m:     Finished server process [[36m2904[0m]
+[32mINFO[0m:     Stopping reloader process [[36m[1m2559[0m]
