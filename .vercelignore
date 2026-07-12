@@ -1,0 +1,24 @@
+# ---------------------------------------------------------------------------
+# Backend Python legado (Replit) — NÃO usado no deploy da Vercel.
+# O frontend (Vite) fala direto com o Supabase e o webhook em /api é Node.js.
+# Estes arquivos disparavam a detecção equivocada de FastAPI na Vercel.
+# ---------------------------------------------------------------------------
+main.py
+pyproject.toml
+uv.lock
+backend/
+
+# Ferramentas de teste / dev não necessárias para o deploy
+tests/
+test_reports/
+test_result.md
+
+# Arquivos de ambiente Replit / assistentes
+.replit
+replit.nix
+replit.md
+.emergent/
+.agents/
+.local/
+attached_assets/
+memory/
