@@ -1,0 +1,2 @@
+- [Kiwify webhook integration](kiwify-webhook-integration.md) — payload shape, shared-secret token auth (no signature scheme), curl gotcha with tokens in query strings.
+- [supabase-py shared client mutates session](supabase-py-client-session-mutation.md) — never call `.auth.*` on the client you also use for service-role table queries.

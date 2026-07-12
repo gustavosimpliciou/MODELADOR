@@ -1,0 +1,286 @@
+Implantação do Sistema de Planos, Créditos e Integração com Kiwify
+Objetivo
+
+Implementar um sistema de créditos integrado aos planos da plataforma, onde o usuário utiliza créditos para realizar exportações (downloads) e a compra dos planos é realizada pela Kiwify.
+
+Regras Gerais
+Plano Free
+
+Ao criar uma conta:
+
+O usuário recebe direito a 1 download gratuito.
+Após utilizar esse download:
+Continua podendo criar projetos.
+Continua podendo editar projetos.
+Continua podendo salvar projetos.
+Não poderá exportar novamente sem possuir créditos.
+
+Cada exportação deve consumir:
+
+40 créditos.
+Planos
+Easy
+
+Preço promocional (primeira compra): R$ 6,00
+
+Preço normal: R$ 12,00
+
+Benefícios:
+
+200 créditos
+Acesso aos modelos Easy
+Médio
+
+Preço promocional (primeira compra): R$ 25,00
+
+Preço normal: R$ 35,00
+
+Benefícios:
+
+565 créditos
+Acesso aos modelos Premium
+Premium
+
+Preço promocional (primeira compra): R$ 69,00
+
+Preço normal: R$ 99,00
+
+Benefícios:
+
+1500 créditos
+Acesso a todos os modelos
+Primeira Compra
+
+Todo usuário possui um campo:
+
+first_purchase = false
+
+Enquanto este campo for false:
+
+Mostrar os preços promocionais.
+
+Após qualquer pagamento aprovado:
+
+first_purchase = true
+
+A partir desse momento:
+
+Mostrar apenas os preços normais.
+
+Controle de Créditos
+
+Criar um campo chamado:
+
+credits
+
+Sempre que ocorrer uma exportação:
+
+Verificar:
+
+credits >= 40
+
+Se verdadeiro:
+
+Permitir exportação.
+Subtrair 40 créditos.
+
+Se falso:
+
+Bloquear exportação.
+Abrir tela de Upgrade.
+Controle do Plano
+
+Criar campo:
+
+plan
+
+Valores possíveis:
+
+FREE
+
+EASY
+
+MEDIUM
+
+PREMIUM
+
+Este campo define quais modelos o usuário pode acessar.
+
+Estrutura sugerida do banco
+
+Tabela users
+
+id
+email
+name
+plan
+credits
+first_purchase
+free_download_used
+created_at
+
+Tabela payments
+
+id
+user_id
+kiwify_transaction_id
+product
+value
+status
+created_at
+
+Tabela credit_history
+
+id
+user_id
+type
+credits
+description
+created_at
+Integração com Kiwify
+
+Criar endpoint:
+
+POST
+
+/api/webhook/kiwify
+
+Esse endpoint deverá:
+
+Receber o webhook.
+Validar a requisição.
+Confirmar que o pagamento foi aprovado.
+Identificar o usuário.
+Identificar qual produto foi comprado.
+Adicionar créditos.
+Atualizar o plano.
+Marcar:
+
+first_purchase = true
+
+Registrar a compra.
+Registrar o histórico de créditos.
+Retornar HTTP 200.
+Produtos
+
+easy_promo
+
+Plano: EASY
+
+Créditos: 200
+
+easy
+
+Plano: EASY
+
+Créditos: 200
+
+medium_promo
+
+Plano: MEDIUM
+
+Créditos: 565
+
+medium
+
+Plano: MEDIUM
+
+Créditos: 565
+
+premium_promo
+
+Plano: PREMIUM
+
+Créditos: 1500
+
+premium
+
+Plano: PREMIUM
+
+Créditos: 1500
+
+Tela de Upgrade
+
+Se:
+
+first_purchase == false
+
+Mostrar:
+
+Easy
+
+R$ 6
+
+Médio
+
+R$ 25
+
+Premium
+
+R$ 69
+
+Caso contrário:
+
+Easy
+
+R$ 12
+
+Médio
+
+R$ 35
+
+Premium
+
+R$ 99
+
+Fluxo Final
+
+Cadastro
+
+↓
+
+Plano Free
+
+↓
+
+Primeiro download gratuito
+
+↓
+
+Usuário continua usando normalmente
+
+↓
+
+Nova exportação
+
+↓
+
+Sem créditos
+
+↓
+
+Tela de Upgrade
+
+↓
+
+Checkout Kiwify
+
+↓
+
+Pagamento aprovado
+
+↓
+
+Webhook recebido
+
+↓
+
+Créditos adicionados
+
+↓
+
+Plano atualizado
+
+↓
+
+Exportações liberadas

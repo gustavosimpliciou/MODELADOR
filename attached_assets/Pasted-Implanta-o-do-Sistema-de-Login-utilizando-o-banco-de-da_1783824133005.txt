@@ -1,0 +1,143 @@
+Implantação do Sistema de Login utilizando o banco de dados existente
+Objetivo
+
+Implementar um sistema de autenticação utilizando o mesmo banco de dados já utilizado pela ferramenta de Modelos.
+
+Não criar um novo banco de dados.
+
+Toda a autenticação deverá utilizar a conexão já configurada através das variáveis de ambiente da aplicação.
+
+O usuário deverá possuir apenas uma conta para acessar todas as funcionalidades da plataforma.
+
+Fluxo de acesso
+
+Ao acessar a plataforma:
+
+Verificar se existe uma sessão ativa.
+Se existir:
+Redirecionar automaticamente para a tela de Loading.
+Se não existir:
+Exibir a tela de Login.
+Tela de Login
+
+Criar uma tela moderna e responsiva contendo:
+
+Logo da plataforma
+Campo de e-mail
+Campo de senha
+Botão Entrar
+Link Esqueci minha senha
+Link Criar conta
+
+Caso o login seja realizado com sucesso:
+
+Criar a sessão do usuário.
+Carregar seus dados.
+Redirecionar para a tela de Loading.
+
+Caso ocorra erro:
+
+Exibir mensagem amigável informando o motivo.
+Cadastro
+
+Caso o usuário escolha Criar Conta:
+
+Cadastrar o usuário utilizando o mesmo banco de dados já existente.
+
+Após concluir o cadastro:
+
+Criar a sessão automaticamente.
+Redirecionar para a tela de Loading.
+Recuperação de senha
+
+Implementar recuperação de senha utilizando o mecanismo padrão do sistema de autenticação já existente.
+
+Sessão
+
+A sessão deverá permanecer ativa entre acessos.
+
+Ao abrir novamente a aplicação:
+
+Verificar se existe um usuário autenticado.
+Caso exista, não solicitar novo login.
+Redirecionar diretamente para a tela de Loading.
+Logout
+
+Criar função de logout.
+
+Ao sair:
+
+Encerrar a sessão.
+Limpar os dados locais.
+Retornar para a tela de Login.
+Tela de Loading
+
+Após autenticação:
+
+Exibir a tela de Loading já existente na ferramenta.
+
+Durante o Loading:
+
+Carregar os dados do usuário.
+Carregar plano.
+Carregar créditos.
+Carregar projetos.
+Carregar permissões.
+Inicializar a aplicação.
+
+Após concluir:
+
+Redirecionar para a tela principal da ferramenta.
+
+Estrutura esperada
+
+Fluxo completo:
+
+Acessar plataforma
+
+↓
+
+Verificar sessão
+
+↓
+
+Existe sessão?
+
+SIM
+
+↓
+
+Tela de Loading
+
+↓
+
+Ferramenta
+
+NÃO
+
+↓
+
+Tela de Login
+
+↓
+
+Entrar ou Criar Conta
+
+↓
+
+Login realizado
+
+↓
+
+Tela de Loading
+
+↓
+
+Ferramenta
+
+Requisitos
+Utilizar exclusivamente o banco de dados existente.
+Não criar um novo banco de dados.
+Não alterar a estrutura existente sem necessidade.
+Reutilizar a autenticação já utilizada na plataforma principal.
+Preparar a autenticação para futuras integrações com o sistema de planos, créditos e pagamentos.
