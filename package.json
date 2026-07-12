@@ -6,6 +6,13 @@
   "repository": "https://github.com/gustavosimpliciou/modelador-cupolas",
   "author": "Gustavo Jesus De França Simplicio <51323090-simpliciou1@users.noreply.replit.com>",
   "license": "MIT",
+  "scripts": {
+    "postinstall": "cd frontend && yarn install",
+    "dev": "cd frontend && yarn dev",
+    "build": "cd frontend && yarn build",
+    "start": "cd frontend && yarn start",
+    "preview": "cd frontend && yarn preview"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.2"
   }
