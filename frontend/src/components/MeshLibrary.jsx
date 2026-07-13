@@ -1,7 +1,7 @@
 import { useMemo, useState, useRef, useEffect } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { useStore } from '../store/useStore'
+import { useStore, meshDefaultParams } from '../store/useStore'
 import { MESHES, MESH_CATEGORIES, getPattern } from '../data/meshes'
 import { buildLampshadeGeometry } from '../lib/lampshadeGeometry'
 
@@ -369,6 +369,8 @@ function getDiffColor(diff) {
 export default function MeshLibrary() {
   const activeMesh = useStore((s) => s.activeMesh)
   const setActiveMesh = useStore((s) => s.setActiveMesh)
+  const meshParams = useStore((s) => s.meshParams)
+  const setMeshParams = useStore((s) => s.setMeshParams)
   const meshSearchQuery = useStore((s) => s.meshSearchQuery)
   const setMeshSearchQuery = useStore((s) => s.setMeshSearchQuery)
   const meshCategoryFilter = useStore((s) => s.meshCategoryFilter)
@@ -390,6 +392,36 @@ export default function MeshLibrary() {
   // that's where dozens of models pile up and the visual hierarchy
   // benefits most from a "card deck" metaphor.
   const isStackMode = meshCategoryFilter === 'ALL' && !meshSearchQuery && !showFavoritesOnly
+
+  // Switching to a different model always brings back that model's own
+  // original editor values. If the user has actually touched a slider
+  // for the CURRENT model, warn them first — since those edits would be
+  // lost. If nothing was touched, switch straight away with no prompt.
+  // Uses a custom in-app modal (not window.confirm) since native dialogs
+  // are blocked inside the sandboxed preview iframe.
+  const [pendingMesh, setPendingMesh] = useState(null)
+
+  const handleSelectMesh = (mesh) => {
+    if (!activeMesh || activeMesh.id === mesh.id) {
+      setActiveMesh(mesh)
+      return
+    }
+    const defaults = meshDefaultParams(activeMesh)
+    const isDirty = Object.keys(defaults).some((k) => meshParams[k] !== defaults[k])
+    if (isDirty) {
+      setPendingMesh(mesh)
+      return
+    }
+    setActiveMesh(mesh)
+    setMeshParams(meshDefaultParams(mesh))
+  }
+
+  const confirmSwitch = () => {
+    if (!pendingMesh) return
+    setActiveMesh(pendingMesh)
+    setMeshParams(meshDefaultParams(pendingMesh))
+    setPendingMesh(null)
+  }
 
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -477,7 +509,7 @@ export default function MeshLibrary() {
             key={mesh.id}
             mesh={mesh}
             active={activeMesh?.id === mesh.id}
-            onSelect={setActiveMesh}
+            onSelect={handleSelectMesh}
             onHover={(m, rect) => setHoverInfo({ mesh: m, rect })}
             onHoverEnd={() => setHoverInfo(null)}
             onFavorite={toggleFavorite}
@@ -502,6 +534,90 @@ export default function MeshLibrary() {
       {hoverInfo && (
         <HoverPreview mesh={hoverInfo.mesh} cardRect={hoverInfo.rect} />
       )}
+
+      {/* Confirm mesh switch (custom modal — window.confirm is blocked in the preview iframe) */}
+      {pendingMesh && (
+        <ConfirmSwitchModal
+          onConfirm={confirmSwitch}
+          onCancel={() => setPendingMesh(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Confirm mesh switch modal ──────────────────────────────────────
+
+function ConfirmSwitchModal({ onConfirm, onCancel }) {
+  return (
+    <div
+      onClick={onCancel}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9999,
+        background: 'rgba(0,0,0,0.82)',
+        backdropFilter: 'blur(6px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: '#0d0d0d',
+          border: '1px solid #2a2a2a',
+          borderRadius: 10,
+          maxWidth: 380, width: '100%',
+          padding: '22px 22px 18px',
+          boxShadow: '0 30px 80px rgba(0,0,0,0.85)',
+          animation: 'fadeIn 0.15s ease both',
+        }}
+      >
+        <div style={{
+          fontFamily: 'var(--font-condensed)', fontSize: 15, fontWeight: 800,
+          letterSpacing: '0.04em', textTransform: 'uppercase',
+          color: '#fff', marginBottom: 10,
+        }}>
+          Selecionar outro modelo?
+        </div>
+        <p style={{
+          fontFamily: 'var(--font-body)', fontSize: 12.5, lineHeight: 1.5,
+          color: '#aaa', margin: '0 0 18px',
+        }}>
+          Os parâmetros que você editou neste modelo serão redefinidos para os valores originais.
+        </p>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button
+            onClick={onCancel}
+            style={{
+              padding: '9px 16px',
+              background: 'transparent',
+              border: '1px solid #444',
+              borderRadius: 4,
+              color: '#ccc',
+              fontFamily: 'var(--font-condensed)', fontSize: 11, fontWeight: 700,
+              letterSpacing: '0.06em', textTransform: 'uppercase',
+              cursor: 'pointer', transition: 'all 0.15s',
+            }}
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={onConfirm}
+            style={{
+              padding: '9px 16px',
+              background: 'var(--accent)',
+              border: '1px solid var(--accent)',
+              borderRadius: 4,
+              color: '#000',
+              fontFamily: 'var(--font-condensed)', fontSize: 11, fontWeight: 800,
+              letterSpacing: '0.06em', textTransform: 'uppercase',
+              cursor: 'pointer', transition: 'all 0.15s',
+            }}
+          >
+            Selecionar
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

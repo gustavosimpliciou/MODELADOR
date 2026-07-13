@@ -143,7 +143,7 @@ export function buildLampshadeGeometry(lampshade, meshParams, activeMesh, active
   // Boost angular resolution when a surface texture is active so that
   // high-frequency patterns (linho, linhas finas, favo, mosaico) are
   // faithfully represented instead of aliased into invisibility.
-  const baseSegs = Math.max(32, Math.min(160, segments))
+  const baseSegs = Math.max(32, Math.min(300, segments))
   const segs = activeTexture ? Math.max(160, baseSegs) : baseSegs
   const wall = Math.max(0.004, wallThickness / 100)
   const flareRad = (flareAngle * Math.PI) / 180
@@ -185,16 +185,48 @@ export function buildLampshadeGeometry(lampshade, meshParams, activeMesh, active
     const patternFn = getPattern(activeMesh.pattern)
     if (patternFn) {
       const pos = geo.attributes.position
-      const { density, rotation, lineThickness, amplitude, frequency, noise, scale } = meshParams
+      const {
+        density, rotation, lineThickness, amplitude, frequency, noise, scale,
+        openingWidth, depth, tilt, randomization, symmetry, gradient, curvature,
+      } = meshParams
       const rot = (rotation * Math.PI) / 180
       const amp = amplitude
+
+      // "Abertura" (opening width, mm) — wider opening thins the relief
+      // bars/lines (more void area), narrower opening thickens them.
+      // Normalised against the slider's default (5mm) so meshes render
+      // exactly as before until this slider is actually moved.
+      const openingFactor = 5 / Math.max(0.5, openingWidth ?? 5)
+
+      // "Profundidade" (depth, mm) — overall relief-depth multiplier.
+      const depthFactor = depth ?? 1
+
+      // "Inclinação" (tilt, °) — shears the pattern's angular phase across
+      // the shade's height, producing a helical/diagonal twist.
+      const tiltRad = ((tilt ?? 0) * Math.PI) / 180
+
+      // "Randomização" — per-region phase jitter for organic irregularity.
+      const randomizationAmt = randomization ?? 0
+
+      // "Simetria" — folds the angle into N repeating wedges (kaleidoscope).
+      // 1 = untouched (full 360° pattern); higher = stronger radial repeat.
+      const symCount = Math.max(1, Math.round(symmetry ?? 1))
+      const symSector = (Math.PI * 2) / symCount
+
+      // "Gradiente" — fades relief intensity from top (heightNorm=1)
+      // toward the bottom (heightNorm=0).
+      const gradientAmt = gradient ?? 0
+
+      // "Curvatura" — emphasises (positive) or de-emphasises (negative)
+      // the mid-height band relative to the top/bottom edges.
+      const curvatureAmt = curvature ?? 0
 
       for (let i = 0; i < pos.count; i++) {
         const x = pos.getX(i)
         const y = pos.getY(i)
         const z = pos.getZ(i)
 
-        const angle = Math.atan2(z, x) + rot
+        let angle = Math.atan2(z, x) + rot
         const radius = Math.sqrt(x * x + z * z)
         const heightNorm = (y + h / 2) / h
 
@@ -203,16 +235,39 @@ export function buildLampshadeGeometry(lampshade, meshParams, activeMesh, active
         const midR = baseR - wall / 2
         if (radius < midR - 0.005) continue
 
+        // Tilt: linear angular shear with height → helical/diagonal twist.
+        angle += tiltRad * (heightNorm - 0.5) * 2
+
+        // Randomization: jitter the phase per-region for organic irregularity.
+        if (randomizationAmt > 0) {
+          angle += smoothMeshNoise(angle * 1.7 + 3.1, heightNorm * 2.3 - 1.1) * randomizationAmt * 0.18
+        }
+
+        // Symmetry: fold into a repeating angular wedge (kaleidoscope).
+        if (symCount > 1) {
+          angle = ((angle % symSector) + symSector) % symSector
+        }
+
         let displacement = patternFn(angle, heightNorm, {
           density: density * frequency,
           rotation: rot,
-          lineThickness: lineThickness * amp,
+          lineThickness: lineThickness * amp * openingFactor,
         })
 
         if (noise > 0) {
           displacement += smoothMeshNoise(angle, y) * noise * 0.012
         }
         displacement *= scale
+        displacement *= depthFactor
+
+        if (gradientAmt !== 0) {
+          displacement *= 1 - gradientAmt * (1 - heightNorm)
+        }
+
+        if (curvatureAmt !== 0) {
+          const bulge = 4 * heightNorm * (1 - heightNorm) // 0 at edges, 1 at mid-height
+          displacement *= 1 + curvatureAmt * (bulge - 0.5)
+        }
 
         // Cap total outward/inward displacement to a proportion of the
         // shade's own local radius (baseR, before pattern deformation) so

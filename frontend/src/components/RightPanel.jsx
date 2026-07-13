@@ -192,6 +192,38 @@ function MeshesPanel() {
                       value={meshParams[p.key] ?? 0}
                       onChange={(e) => setMeshParams({ [p.key]: parseFloat(e.target.value) })}
                     />
+                    {p.key === 'rotation' && (
+                      <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+                        {[
+                          { deg: 0, label: '0°' },
+                          { deg: 45, label: '45° Diagonal' },
+                          { deg: 90, label: '90°' },
+                          { deg: 135, label: '135°' },
+                        ].map((preset) => {
+                          const active = Math.round(meshParams.rotation ?? 0) === preset.deg
+                          return (
+                            <button
+                              key={preset.deg}
+                              data-testid={`rotation-preset-${preset.deg}`}
+                              onClick={() => setMeshParams({ rotation: preset.deg })}
+                              title="Aplica uma rotação fixa ao padrão da malha"
+                              style={{
+                                flex: 1, padding: '5px 2px',
+                                background: active ? 'var(--accent-dim)' : 'var(--card)',
+                                border: `1px solid ${active ? 'var(--accent)' : 'var(--line)'}`,
+                                borderRadius: 2,
+                                fontFamily: 'var(--font-condensed)', fontSize: 9, fontWeight: 700,
+                                letterSpacing: '0.04em', textTransform: 'uppercase',
+                                color: active ? 'var(--accent)' : 'var(--text-secondary)',
+                                cursor: 'pointer', transition: 'all 0.15s',
+                              }}
+                            >
+                              {preset.label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
                 ))}
 

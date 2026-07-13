@@ -1,6 +1,20 @@
 import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
 
+// Single source of truth for the mesh-editor sliders' baseline values.
+// Used both to seed/reset `meshParams` and to detect whether the user has
+// touched the editor for the currently active mesh (see MeshLibrary.jsx).
+export const DEFAULT_MESH_PARAMS = {
+  density: 1.0, rotation: 0, lineThickness: 1.2, amplitude: 1.5,
+  frequency: 1.0, noise: 0, scale: 1.0, openingWidth: 5.0,
+  depth: 1.0, tilt: 0, randomization: 0, symmetry: 1, gradient: 0, curvature: 0,
+}
+
+// A mesh's own `params` (e.g. a tuned `density`) override the global
+// defaults — this is what the editor should show as the "original"
+// state right after picking that mesh from the library.
+export const meshDefaultParams = (mesh) => ({ ...DEFAULT_MESH_PARAMS, ...(mesh?.params || {}) })
+
 const LANG_KEY          = 'nativos.language'
 const CREDITS_KEY       = 'nativos.credits'
 const FREE_USED_KEY     = 'nativos.freeDownloadUsed'
@@ -196,9 +210,9 @@ export const useStore = create((set, get) => ({
     bottomDiameter: 200,
     wallThickness: 1.2,
     bellCurve: 0.5,
-    segments: 64,
+    segments: 180,
     smoothing: 1,
-    flareAngle: 15,
+    flareAngle: 0,
     fitterType: 'E27',
   },
 
@@ -290,34 +304,13 @@ export const useStore = create((set, get) => ({
     })),
 
   // ─── Mesh params ──────────────────────────────────────────────────
-  meshParams: {
-    density: 1.0,
-    rotation: 0,
-    lineThickness: 1.2,
-    amplitude: 1.5,
-    frequency: 1.0,
-    noise: 0,
-    scale: 1.0,
-    openingWidth: 5.0,
-    depth: 1.0,
-    tilt: 0,
-    randomization: 0,
-    symmetry: 1,
-    gradient: 0,
-    curvature: 0,
-  },
+  meshParams: { ...DEFAULT_MESH_PARAMS },
 
   setMeshParams: (patch) =>
     set((s) => ({ meshParams: { ...s.meshParams, ...patch } })),
 
   resetMeshParams: () =>
-    set({
-      meshParams: {
-        density: 1.0, rotation: 0, lineThickness: 1.2, amplitude: 1.5,
-        frequency: 1.0, noise: 0, scale: 1.0, openingWidth: 5.0,
-        depth: 1.0, tilt: 0, randomization: 0, symmetry: 1, gradient: 0, curvature: 0,
-      },
-    }),
+    set((s) => ({ meshParams: meshDefaultParams(s.activeMesh) })),
 
   // ─── Viewport ─────────────────────────────────────────────────────
   viewMode: 'solid',
@@ -397,8 +390,8 @@ export const useStore = create((set, get) => ({
   resetProject: () => set({
     lampshade: {
       profile: 'cone', height: 250, topDiameter: 200, middleDiameter: 200,
-      bottomDiameter: 200, wallThickness: 1.2, bellCurve: 0.5, segments: 64,
-      smoothing: 1, flareAngle: 15, fitterType: 'E27',
+      bottomDiameter: 200, wallThickness: 1.2, bellCurve: 0.5, segments: 180,
+      smoothing: 1, flareAngle: 0, fitterType: 'E27',
     },
     bottomCap: {
       enabled: false, model: 'triangles', socketType: 'E27', holeDiameter: 29,
@@ -412,11 +405,7 @@ export const useStore = create((set, get) => ({
       intensity: 0.8, scale: 1.0, rotation: 0, direction: 'vertical',
       repetition: 20, smooth: 0.5, offset: 0,
     },
-    meshParams: {
-      density: 1.0, rotation: 0, lineThickness: 1.2, amplitude: 1.5,
-      frequency: 1.0, noise: 0, scale: 1.0, openingWidth: 5.0,
-      depth: 1.0, tilt: 0, randomization: 0, symmetry: 1, gradient: 0, curvature: 0,
-    },
+    meshParams: { ...DEFAULT_MESH_PARAMS },
     material: { id: 'pla', name: 'PLA', color: '#e8e0d8', roughness: 0.4, metalness: 0 },
     modifiers: {
       baseThickness: 2.0, topRing: true, bottomRing: false,
