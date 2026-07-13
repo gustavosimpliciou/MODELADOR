@@ -55,6 +55,25 @@ function fbm(x, y, oct = 4) {
 const sat = (v) => Math.max(0, Math.min(1, v))
 // Onda triangular suavizável
 const tri = (t) => 1 - Math.abs(((t % 1) + 1) % 1 * 2 - 1)
+// Transição suave cúbica entre dois limites
+const smoothstep = (e0, e1, x) => {
+  const t = sat((x - e0) / (e1 - e0))
+  return t * t * (3 - 2 * t)
+}
+
+// Hash determinístico e distância hexagonal verdadeira (para favo de mel)
+const hash11tex = (n) => { const s = Math.sin(n * 12.9898) * 43758.5453; return s - Math.floor(s) }
+const hash22tex = (x, y) => hash11tex(x * 127.1 + y * 311.7)
+const hexCell = (x, y) => {
+  const s = 1.7320508
+  const q = x * 2 / 3, r = (-x / 3 + y / s)
+  const rq = Math.round(q), rr = Math.round(r), rs = Math.round(-q - r)
+  let dq = Math.abs(rq - q), dr = Math.abs(rr - r), ds = Math.abs(rs + q + r)
+  let cq = rq, cr = rr
+  if (dq > dr && dq > ds) cq = -rr - rs
+  else if (dr > ds) cr = -rq - rs
+  return Math.hypot(x - cq * 3 / 2, y - (cq / 2 + cr) * s)
+}
 
 // ─── Definições das 10 texturas ────────────────────────────────────
 
@@ -112,18 +131,15 @@ const textures = {
     return sat(Math.pow(Math.abs(w), k)) * 0.85
   },
 
-  // 06 — FAVO DE MEL: hexágonos em baixo relevo (sem perfurações)
+  // 06 — FAVO DE MEL: células hexagonais regulares verdadeiras, paredes finas
   favoDeMel: (a, h, p) => {
     const rep = (p.repetition || 10) * p.scale
     const ang = a + p.rotationRad + p.offsetRad
-    // Grade hexagonal via 3 direções a 60°
-    const s = Math.sin
-    const g = Math.abs(s(ang * rep) + s((ang + Math.PI * 2 / 3) * rep + h * rep * 2))
-            + Math.abs(s((ang - Math.PI * 2 / 3) * rep + h * rep * 2))
+    const d = hexCell(ang * rep * 1.6, h * rep * 2.4)
     const soft = p.smooth ?? 0.5
-    // Suaviza para hex arredondado
-    const v = 1 - Math.min(1, g * (0.3 + soft * 0.4))
-    return sat(v)
+    const wallWidth = 0.1 + (1 - soft) * 0.08
+    // Parede fina próxima ao limite da célula, interior da célula rebaixado
+    return sat(smoothstep(0.62, 0.62 + wallWidth, d))
   },
 
   // 07 — ORIGAMI: dobras geométricas, facetas triangulares
@@ -137,19 +153,19 @@ const textures = {
     return sat(1 - Math.min(t1, t2))
   },
 
-  // 08 — MOSAICO: quadrados pequenos organizados
+  // 08 — MOSAICO: blocos quadrados uniformes com canal fino entre módulos
   mosaico: (a, h, p) => {
     const { u, v } = dirCoord(a, h, p.direction || 'vertical')
     const rep = (p.repetition || 24) * p.scale
     const ang = u + p.rotationRad + p.offsetRad
-    // Grade regular: |cos| ganha crista nas bordas
-    const gx = Math.abs(Math.cos(ang * rep * 0.5))
-    const gy = Math.abs(Math.cos(v * rep * Math.PI * 0.4))
-    // Rebaixa apenas as bordas → efeito de azulejo em relevo
-    const edge = Math.min(gx, gy)
+    const lx = ((ang * rep) % 1 + 1) % 1
+    const ly = ((v * rep) % 1 + 1) % 1
     const soft = p.smooth ?? 0.4
-    const k = 1 + (1 - soft) * 3
-    return sat(1 - Math.pow(edge, k))
+    const channel = 0.06 + (1 - soft) * 0.05 // largura constante do canal
+    // Bloco plano elevado, canal fino rebaixado nas bordas de cada módulo
+    const blockX = smoothstep(0, channel, lx) * smoothstep(0, channel, 1 - lx)
+    const blockY = smoothstep(0, channel, ly) * smoothstep(0, channel, 1 - ly)
+    return sat(blockX * blockY)
   },
 
   // 09 — MADEIRA: veios orgânicos procedurais
@@ -165,13 +181,19 @@ const textures = {
     return sat(0.15 + Math.pow(Math.abs(rings), k) * 0.85)
   },
 
-  // 10 — CONCRETO: micro irregularidades suaves (fbm de baixa amplitude)
+  // 10 — CONCRETO: superfície lisa com poros circulares esparsos e estocásticos
   concreto: (a, h, p) => {
     const rep = (p.repetition || 4) * p.scale
     const ang = a + p.rotationRad + p.offsetRad
-    const n = fbm(ang * rep * 3, h * rep * 6, 3)
-    // Sem excesso de ruído: comprime para 0..1 suave centrado em ~0.5
-    return sat(0.35 + (n - 0.5) * 0.9)
+    const scale = rep * 4
+    const gx = Math.floor(ang * scale), gy = Math.floor(h * scale * 2.4)
+    const px = gx + hash22tex(gx, gy), py = gy + hash22tex(gy + 3, gx + 9)
+    const d = Math.hypot(ang * scale - px, h * scale * 2.4 - py)
+    const poreChance = hash22tex(gx * 7.1, gy * 13.3)
+    const poreRadius = 0.14 + hash22tex(gx * 3.7, gy * 5.9) * 0.22
+    const pore = poreChance > 0.74 ? sat(1 - smoothstep(poreRadius * 0.55, poreRadius, d)) : 0
+    const microNoise = fbm(ang * scale * 1.5, h * scale * 3.6, 2) * 0.05
+    return sat(0.92 - pore * 0.7 - microNoise)
   },
 }
 

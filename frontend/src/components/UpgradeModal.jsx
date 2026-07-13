@@ -62,7 +62,6 @@ const PLANS = [
       'Biblioteca premium completa',
       'Todos os modelos 3D',
       'Texturas premium ilimitadas',
-      'IA para geração de modelos',
       'Recursos beta e exclusivos',
       'Suporte prioritário',
       'Atualizações antecipadas',
@@ -101,6 +100,10 @@ export default function UpgradeModal() {
   const setShowUpgradeModal = useStore((s) => s.setShowUpgradeModal)
   const goToCheckout        = useStore((s) => s.goToCheckout)
   const firstUpgradePurchased = useStore((s) => s.firstUpgradePurchased)
+  const user                = useStore((s) => s.user)
+
+  // Admin tem acesso total — nunca exibe o modal de upgrade
+  if (user?.email === 'nativos3d.adm@gmail.com') return null
 
   if (!showUpgradeModal) return null
 

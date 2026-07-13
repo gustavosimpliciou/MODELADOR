@@ -1,44 +1,49 @@
-# Nativos Studio Pro
+# Nativos Studio Pro — 3D Mesh Designer
 
-A browser-based 3D lampshade / mesh designer built with React 18, Vite, Three.js (react-three-fiber + drei), and Zustand. Multilingual: PT / EN / ES. Mobile devices get a locked screen — the app requires a desktop/tablet viewport (≥ 900 px wide).
+A browser-based parametric 3D lampshade designer with a React/Three.js frontend and a FastAPI backend.
 
 ## Stack
 
-| Layer    | Tech                                          |
-|----------|-----------------------------------------------|
-| Frontend | React 18, Vite 5, Three.js, @react-three/fiber, @react-three/drei, Zustand |
-| Backend  | FastAPI, Uvicorn, Supabase (auth + Postgres)   |
-| Database | Supabase Postgres (optional — server starts without it, auth disabled) |
+- **Frontend**: React 18 + Vite, Three.js / React Three Fiber, Zustand, Supabase JS client
+- **Backend**: FastAPI (Python), Supabase (auth + database)
+- **Auth & DB**: Supabase (users, projects tables)
 
-Note: the backend code (`backend/server.py`) actually uses **Supabase**, not MongoDB — `pymongo`/`motor` are present in `requirements.txt` but unused. `backend/.env` still has leftover `MONGO_URL`/`DB_NAME` vars from an earlier template; they have no effect.
+## Running the project
 
-## Running
+Two workflows must both be running:
 
-Two workflows are configured:
+| Workflow | Command | Port |
+|---|---|---|
+| Start application | `cd frontend && yarn dev` | 5000 |
+| Backend API | `cd backend && uvicorn server:app --host 0.0.0.0 --port 8000 --reload` | 8000 |
 
-- **Start application** — `cd frontend && yarn dev` → serves on port 5000 (webview)
-- **Backend API** — `cd backend && uvicorn server:app --host 0.0.0.0 --port 8000 --reload` → console on port 8000
+The Vite dev server proxies `/api/*` requests to the backend on port 8000, so the frontend never needs to know the backend's URL directly.
 
-Dependencies (frontend `yarn install`, backend Python packages incl. `supabase`) are installed via `.pythonlibs`/`node_modules`.
+## Environment variables / secrets
 
-The frontend is fully self-contained and renders/works without the backend. The backend exposes `/api/` endpoints for auth and data; without `SUPABASE_URL`/`SUPABASE_KEY` set, it starts fine but logs "auth disabled" and any DB-backed route (e.g. login) returns a 503.
+| Key | Where | Notes |
+|---|---|---|
+| `SUPABASE_URL` | Replit env var (shared) | Set to `https://blqvsglspdayrznnbzzf.supabase.co` |
+| `SUPABASE_KEY` | Replit Secret | Service role key — backend only |
+| `SESSION_SECRET` | Replit Secret | JWT signing key |
 
-## Secrets / env vars
+The frontend anon key is currently hardcoded in `frontend/src/lib/supabase.js`. See Task #3 to move it to an env var.
 
-| Key             | Where  | Notes                                              |
-|-----------------|--------|----------------------------------------------------|
-| `SUPABASE_URL`  | Secret | Set. Points to the linked Supabase project.        |
-| `SUPABASE_KEY`  | Secret | Set. Must be the **Secret key** (`sb_secret_...`) — the Publishable key is not enough since the backend uses admin auth operations. |
-| `SESSION_SECRET`| Secret | JWT signing key for session tokens. Already set.   |
+## Project structure
 
-## Key files
-
-- `frontend/src/App.jsx` — root component (splash → studio)
-- `frontend/src/i18n/` — PT/EN/ES translation dictionaries + `useT()` hook
-- `frontend/src/store/useStore.js` — Zustand store (language persisted to localStorage)
-- `frontend/src/components/MobileBlock.jsx` — locked screen for < 900 px
-- `backend/server.py` — FastAPI app with optional Supabase (auth + Postgres)
+```
+frontend/   React/Vite app
+  src/
+    api/        Supabase-direct API calls (auth, projects)
+    components/ UI + 3D editor components
+    lib/        supabase.js client
+backend/    FastAPI app
+  server.py   Main API + auth endpoints
+api/
+  webhook/    Kiwify webhook handler (Node.js)
+docs/       Texture & mesh system specification
+```
 
 ## User preferences
 
-<!-- Add any preferences the user asks you to remember here -->
+- Keep existing project structure and stack — do not restructure or migrate.

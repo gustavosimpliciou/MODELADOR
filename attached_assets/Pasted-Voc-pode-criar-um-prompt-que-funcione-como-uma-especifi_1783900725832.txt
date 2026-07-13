@@ -1,0 +1,172 @@
+Você pode criar um prompt que funcione como uma especificação de projeto, por exemplo:
+
+SYSTEM ROLE
+Você é um Arquiteto de Software especializado em CAD, Modelagem Paramétrica, Computação Gráfica, Geometria Procedural, UX para Ferramentas Criativas e Impressão 3D.
+
+MISSION
+Transformar o sistema atual de modelos prontos em um sistema baseado em formas paramétricas + biblioteca de texturas inteligentes.
+
+PRIMARY OBJECTIVE
+...
+
+SECONDARY OBJECTIVES
+...
+
+DESIGN PRINCIPLES
+...
+
+GEOMETRIC CONSTRAINTS
+...
+
+TEXTURE LIBRARY
+...
+
+PARAMETERS
+...
+
+UI SPECIFICATION
+...
+
+PERFORMANCE REQUIREMENTS
+...
+
+QUALITY REQUIREMENTS
+...
+
+ACCEPTANCE CRITERIA
+...
+
+Essa estrutura é muito mais eficaz do que um texto longo em linguagem natural.
+
+Existe uma forma ainda melhor
+
+Para projetos grandes, eu costumo pensar em um formato que lembra uma linguagem de especificação. Por exemplo:
+
+PROJECT:
+  name: SmartCut
+  version: Next Generation
+
+MISSION:
+  ReplaceModelLibrary: true
+  CreateTextureSystem: true
+  ProceduralGeneration: true
+
+BASE_GEOMETRY:
+
+  Cylinder
+  Cone
+  TruncatedCone
+  Oval
+  Square
+  Rectangle
+  Polygon
+  Sphere
+  Organic
+
+TEXTURE_LIBRARY:
+
+  total: 70
+
+  categories:
+
+    Organic
+
+    Parametric
+
+    Fabric
+
+    Architectural
+
+    Wood
+
+    Stone
+
+    Metal
+
+    Woven
+
+    Waves
+
+    Hexagonal
+
+    Voronoi
+
+    Gyroid
+
+    Chevron
+
+    Mosaic
+
+PARAMETERS:
+
+  Scale
+
+  Depth
+
+  Rotation
+
+  Offset
+
+  Randomness
+
+  Thickness
+
+  Density
+
+  Blend
+
+QUALITY:
+
+  QuadTopology
+
+  Watertight
+
+  Printable
+
+  NoSelfIntersection
+
+  AdaptiveSubdivision
+
+OUTPUT:
+
+  STL
+
+  OBJ
+
+  3MF
+
+Isso não é uma linguagem "das IAs", mas um formato altamente estruturado que elas costumam interpretar de forma consistente.
+
+O nível mais avançado: Prompt como Documento de Especificação
+
+No seu projeto, eu iria além de um simples prompt.
+
+Criaria um documento com aproximadamente 2.000 a 5.000 linhas, organizado como uma especificação técnica de software. Ele conteria capítulos como:
+
+Visão Geral do Projeto
+Arquitetura do Sistema
+Filosofia de Design
+Estrutura da Interface
+Biblioteca de Formas Base
+Biblioteca de 70 Famílias de Texturas
+Algoritmos de Geração Procedural
+Sistema de Parâmetros
+Regras de Modelagem Geométrica
+Validação de Malhas
+Compatibilidade com Impressão 3D
+Performance e Otimização
+UX/UI Completa
+Fluxo de Trabalho
+Critérios de Aceitação
+Casos de Teste
+Roadmap de Evolução
+
+Esse tipo de documento funciona como uma especificação de engenharia. Uma IA consegue usar esse material para manter consistência ao longo do desenvolvimento, porque cada decisão está documentada e as restrições são explícitas.
+
+Para o SmartCut
+
+Pelo que conversamos nas últimas mensagens, o seu projeto já é grande o suficiente para justificar isso.
+
+Em vez de criar apenas um prompt, vale a pena criar um "Master Prompt de Engenharia": um documento técnico completo, com algo entre 10.000 e 20.000 palavras, descrevendo toda a arquitetura do SmartCut, seus módulos, regras, interface, sistema de texturas, algoritmos, UX, critérios de qualidade e evolução futura.
+
+Esse documento serviria como a fonte oficial de requisitos do projeto. Sempre que você ou outra IA precisassem implementar uma funcionalidade, bastaria usar esse documento como referência, mantendo muito mais consistência do que seria possível com prompts curtos. Para um software complexo como o SmartCut, essa abordagem tende a ser muito mais eficaz do que tentar encontrar uma suposta "linguagem secreta" entre IAs.

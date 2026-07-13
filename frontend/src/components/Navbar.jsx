@@ -209,6 +209,7 @@ export default function Navbar() {
       setShowSaveDialog(false)
       setSaveOk(true)
       setTimeout(() => setSaveOk(false), 2000)
+      setShowProjectsModal(true)
     } catch (e) {
       console.error('Save failed:', e)
     } finally {
@@ -357,26 +358,85 @@ export default function Navbar() {
 
         <div style={{ flex: 1 }} />
 
-        {/* Credits badge */}
+        {/* Credits badge — oculto para admin */}
+        {user?.email === 'nativos3d.adm@gmail.com' ? (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '4px 10px', marginRight: 6,
+            background: 'linear-gradient(135deg, rgba(255,106,0,0.15) 0%, rgba(255,60,0,0.08) 100%)',
+            border: '1px solid rgba(255,106,0,0.4)',
+            borderRadius: 4,
+          }}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L3 7l9 5 9-5-9-5zM3 17l9 5 9-5M3 12l9 5 9-5" stroke="#ff6a00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            <span style={{
+              fontFamily: 'var(--font-condensed)', fontSize: 10, fontWeight: 900,
+              color: '#ff6a00', letterSpacing: '0.14em', textTransform: 'uppercase',
+            }}>ADM</span>
+          </div>
+        ) : (
         <button
           onClick={() => setShowUpgradeModal(true)}
           title="Seus créditos — clique para ver planos"
           style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '4px 10px', marginRight: 6,
-            background: 'var(--card)',
-            border: `1px solid ${freeDownloadUsed && credits < 40 ? '#e05050' : 'var(--line)'}`,
-            borderRadius: 3, cursor: 'pointer', transition: 'border-color 0.15s',
+            display: 'flex', alignItems: 'center', gap: 7,
+            padding: '4px 11px', marginRight: 6,
+            background: !freeDownloadUsed
+              ? 'linear-gradient(135deg, rgba(255,106,0,0.18) 0%, rgba(255,180,0,0.10) 100%)'
+              : 'var(--card)',
+            border: `1px solid ${
+              !freeDownloadUsed ? 'rgba(255,106,0,0.55)'
+              : freeDownloadUsed && credits < 40 ? '#e05050'
+              : 'var(--line)'
+            }`,
+            borderRadius: 4, cursor: 'pointer',
+            transition: 'all 0.15s',
+            boxShadow: !freeDownloadUsed ? '0 0 8px rgba(255,106,0,0.18)' : 'none',
           }}
         >
-          <span style={{ fontSize: 12 }}>🪙</span>
-          <span style={{
-            fontFamily: 'var(--font-mono)', fontSize: 10.5, fontWeight: 700,
-            color: creditsColor, letterSpacing: '0.04em',
-          }}>
-            {!freeDownloadUsed ? 'FREE' : `${credits} créditos`}
-          </span>
+          {!freeDownloadUsed ? (
+            /* Gift icon for the free download */
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+              <rect x="3" y="10" width="18" height="12" rx="1.5" fill="rgba(255,106,0,0.9)"/>
+              <rect x="2" y="7" width="20" height="4" rx="1" fill="#ff6a00"/>
+              <rect x="11" y="7" width="2" height="15" fill="rgba(0,0,0,0.25)"/>
+              <path d="M12 7c0 0-3-1-3-3.5A2.5 2.5 0 0 1 12 1a2.5 2.5 0 0 1 3 2.5C15 6 12 7 12 7z" fill="#ff6a00"/>
+              <rect x="11" y="7" width="2" height="2" fill="rgba(0,0,0,0.25)"/>
+            </svg>
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+              <circle cx="12" cy="12" r="10" fill="none" stroke={creditsColor} strokeWidth="2"/>
+              <text x="12" y="16" textAnchor="middle" fontSize="11" fontWeight="800" fill={creditsColor} fontFamily="monospace">₵</text>
+            </svg>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1 }}>
+            {!freeDownloadUsed ? (
+              <>
+                <span style={{
+                  fontFamily: 'var(--font-condensed)', fontSize: 11, fontWeight: 900,
+                  color: '#ff6a00', letterSpacing: '0.1em', textTransform: 'uppercase',
+                }}>
+                  GRÁTIS
+                </span>
+                <span style={{
+                  fontFamily: 'var(--font-body)', fontSize: 9,
+                  color: 'rgba(255,106,0,0.7)', letterSpacing: '0.02em', marginTop: 1,
+                }}>
+                  1 download
+                </span>
+              </>
+            ) : (
+              <span style={{
+                fontFamily: 'var(--font-mono)', fontSize: 10.5, fontWeight: 700,
+                color: creditsColor, letterSpacing: '0.04em',
+              }}>
+                {`${credits} créditos`}
+              </span>
+            )}
+          </div>
         </button>
+        )}
 
         {/* Language selector */}
         <div style={{

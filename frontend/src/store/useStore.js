@@ -41,16 +41,19 @@ export const useStore = create((set, get) => ({
 
   // Called after successful login or register
   loginUser: (token, userData) => {
+    const isAdmin = userData?.email === 'nativos3d.adm@gmail.com'
+    const credits = isAdmin ? 99999 : userData.credits
+    const freeUsed = isAdmin ? false : userData.freeDownloadUsed
     lsSet(TOKEN_KEY, token)
-    lsSet(CREDITS_KEY, String(userData.credits))
-    lsSet(FREE_USED_KEY, String(userData.freeDownloadUsed))
+    lsSet(CREDITS_KEY, String(credits))
+    lsSet(FREE_USED_KEY, String(freeUsed))
     lsSet(FIRST_UPGRADE_KEY, String(userData.firstUpgradePurchased))
     set({
       token,
       user: userData,
       authChecked: true,
-      credits: userData.credits,
-      freeDownloadUsed: userData.freeDownloadUsed,
+      credits,
+      freeDownloadUsed: freeUsed,
       firstUpgradePurchased: userData.firstUpgradePurchased,
     })
   },
@@ -103,12 +106,13 @@ export const useStore = create((set, get) => ({
       const { data: row } = await supabase
         .from('users').select('*').eq('id', user.id).single()
       if (!row) return
+      const isAdmin = row.email === 'nativos3d.adm@gmail.com'
       const userData = {
         id:                    row.id,
         name:                  row.name,
         email:                 row.email,
-        credits:               row.credits ?? 0,
-        freeDownloadUsed:      row.free_download_used ?? false,
+        credits:               isAdmin ? 99999 : (row.credits ?? 0),
+        freeDownloadUsed:      isAdmin ? false  : (row.free_download_used ?? false),
         firstUpgradePurchased: row.first_upgrade_purchased ?? false,
         plan:                  row.plan ?? 'free',
       }
@@ -128,6 +132,11 @@ export const useStore = create((set, get) => ({
   tryExport: async () => {
     const s = get()
     const EXPORT_COST = 40
+
+    // Admin bypass — acesso ilimitado sem consumir créditos
+    if (s.user?.email === 'nativos3d.adm@gmail.com') {
+      return 'ok'
+    }
 
     if (!s.user) {
       if (!s.freeDownloadUsed) {

@@ -20,6 +20,7 @@ export const MESH_CATEGORIES = [
   'Diamond', 'Hexagonal', 'Voronoi', 'Spiral',
   'Vertical', 'Organic', 'Luxury', 'Minimal', 'Geometric',
   'Nature', 'Weave', 'Architectural',
+  'Têxteis', 'Cordas', 'Onduladas', 'Premium',
 ]
 
 const baseParams = (overrides = {}) => ({
@@ -91,12 +92,18 @@ const patterns = {
 
   // ══════════════════ DIAMOND — gem-quality faceted cuts ══════════════════
 
-  // True diamond lattice: product of two diagonal families, power-sharpened
+  // True diamond lattice: two families of constant-width diagonal bars
+  // crossing at fixed angles, ~50% open area, rounded fillets at joints
   diamondClassic: (a, h, p) => {
-    const f = p.density * 6
-    const s1 = Math.sin(a * f + h * f * Math.PI * 0.5)
-    const s2 = Math.sin(a * f - h * f * Math.PI * 0.5)
-    return sat(punch(s1 * s2, 0.5)) * 0.055 * p.lineThickness
+    const f = p.density * 5
+    const barW = 0.14 // ~50% open once both diagonal families combine
+    const u1 = a * f + h * f
+    const u2 = a * f - h * f
+    const lu1 = ((u1 % 1) + 1) % 1, du1 = Math.min(lu1, 1 - lu1)
+    const lu2 = ((u2 % 1) + 1) % 1, du2 = Math.min(lu2, 1 - lu2)
+    const bar1 = smoothstep(barW, barW * 0.4, du1)
+    const bar2 = smoothstep(barW, barW * 0.4, du2)
+    return sat(Math.max(bar1, bar2)) * 0.055 * p.lineThickness
   },
 
   // Deep X ridges — symmetrical crisscross with clean valleys
@@ -145,11 +152,15 @@ const patterns = {
 
   // ══════════════════ HEXAGONAL — true tessellation ══════════════════
 
-  // Flat-topped hexagonal cells with crisp raised walls
+  // True honeycomb: thin raised walls at cell boundaries, wide open holes
+  // at cell centers for maximum light passage, softly rounded inner corners.
+  // Angle is normalized to [0,1) before entering the isotropic hex lattice
+  // so cells stay true regular hexagons instead of stretched ellipses.
   hexHoneycomb: (a, h, p) => {
-    const f = p.density * 3
-    const d = hexCell(a * f * 1.6, h * f * 2.4)
-    return (1 - smoothstep(0.22, 0.38, d)) * 0.055 * p.lineThickness
+    const u = a / (Math.PI * 2)
+    const f = p.density * 8
+    const d = hexCell(u * f * 1.5, h * f * 0.85)
+    return smoothstep(0.62, 0.82, d) * 0.055 * p.lineThickness
   },
 
   // Six-point stars overlaid on hex grid with raised center domes
@@ -302,11 +313,14 @@ const patterns = {
     return (w * 0.5 + 0.5) * 0.05 * p.lineThickness
   },
 
-  // Organic cell field via 2-octave vnoise — controlled, not chaotic
+  // Orgânica — irregular coral/foam-like cells via Worley F2-F1: near-
+  // constant wall width around wildly varying pore shapes, single
+  // interconnected network, no two openings repeat exactly
   organicBlobs: (a, h, p) => {
-    const n = vnoise(a * p.density * 2.2, h * p.density * 3.3) * 0.65
-             + vnoise(a * p.density * 5,   h * p.density * 7)   * 0.35
-    return smoothstep(0.38, 0.72, n) * 0.055 * p.lineThickness
+    const f = p.density * 2.4
+    const [f1, f2] = worley(a, h * 0.9, f)
+    const wallW = 0.09
+    return sat(1 - smoothstep(0, wallW, f2 - f1)) * 0.055 * p.lineThickness
   },
 
   // Branching ridges — directional vnoise bias gives tree-like structure
@@ -452,11 +466,17 @@ const patterns = {
     return punch(Math.sin(t) * 0.5 + 0.5, 0.5) * 0.05 * p.lineThickness
   },
 
-  // Triangular tile facets — smooth ramp within each tile
+  // True equilateral triangle tessellation: tri-directional line lattice
+  // (0°/60°/120°) with constant bar width and large open triangular voids.
+  // Angle normalized to [0,1) so triangles stay equilateral, not stretched.
   geoTriangles: (a, h, p) => {
-    const f = p.density * 4
-    const u = tri(a * f + h * 0.5)
-    return smoothstep(0.25, 0.75, u) * 0.048 * p.lineThickness
+    const u = a / (Math.PI * 2)
+    const f = p.density * 10, s = 1.7320508
+    const l1 = tri(h * f * s)
+    const l2 = tri(u * f + h * f * s * 0.5)
+    const l3 = tri(u * f - h * f * s * 0.5)
+    const lattice = Math.min(l1, l2, l3)
+    return sat(1 - smoothstep(0.08, 0.22, lattice)) * 0.048 * p.lineThickness
   },
 
   // Sawtooth zigzag — crisp diagonal bands
@@ -606,15 +626,16 @@ const patterns = {
     return sat(wave * 0.5 + 0.5) * 0.048 * p.lineThickness
   },
 
-  // Isometric cubes — three-direction grid creates 3D cube illusion
+  // Cubos — classic isometric-cube illusion: a triangular lattice whose
+  // three rhombus-face families each sit at one of three flat depth
+  // levels (light top / mid / dark side), so the 3D volume reads purely
+  // from geometric organization rather than heavy physical relief
   isoCubes: (a, h, p) => {
-    const f  = p.density * 5, s = 1.7320508
-    const l1 = Math.abs(Math.sin(h * f * 2))
-    const l2 = Math.abs(Math.sin((a * s + h) * f))
-    const l3 = Math.abs(Math.sin((a * s - h) * f))
-    const base = Math.min(l1, l2, l3)
-    const grid = smoothstep(0.65, 0.92, base)
-    return grid * 0.055 * p.lineThickness
+    const f = p.density * 3.2, s = 1.7320508
+    const x = a * f, y = h * f * s * 1.2
+    const c1 = x, c2 = x * 0.5 + y * 0.866, c3 = -x * 0.5 + y * 0.866
+    const face = ((Math.floor(c1) + Math.floor(c2) + Math.floor(c3)) % 3 + 3) % 3
+    return (face / 2) * 0.05 * p.lineThickness
   },
 
   // Topographic — contour lines over gentle vnoise terrain
@@ -624,6 +645,278 @@ const patterns = {
     const levels  = 5
     const contour = ((n * levels) % 1 + 1) % 1
     return smoothstep(0.82, 0.97, contour) * 0.038 * p.lineThickness
+  },
+
+  // ══════════════════ NATURAL WEAVE — artisan materials ══════════════════
+
+  // Palha Cana da Índia / Palha Tramada — orthogonal over/under basket weave,
+  // ~50% open area, rounded square voids, no crossing artifacts
+  strawWeave: (a, h, p) => {
+    const f = p.density * 8
+    const u = a * f, v = h * f * 1.15
+    const cu = Math.floor(u), cv = Math.floor(v)
+    const lu = u - cu, lv = v - cv
+    const over = (cu + cv) % 2 === 0
+    const ribbon = 0.62 // ~50% open once both directions are combined
+    const bandU = smoothstep(0, 0.12, lu) - smoothstep(ribbon - 0.12, ribbon, lu)
+    const bandV = smoothstep(0, 0.12, lv) - smoothstep(ribbon - 0.12, ribbon, lv)
+    const top = over ? bandU : bandV
+    const under = (over ? bandV : bandU) * 0.42
+    return sat(Math.max(top, under)) * 0.05 * p.lineThickness
+  },
+
+  // Varetas de Bambu — smooth parallel rods, guaranteed gap (never touch),
+  // no visible nodes, softly rounded ends
+  bambooRods: (a, h, p) => {
+    const f = p.density * 14
+    const t = tri(a * f)
+    const rod = smoothstep(0.42, 0.62, t) // narrow plateau → wide gap between rods
+    const endFade = smoothstep(0, 0.05, h) * smoothstep(0, 0.05, 1 - h)
+    return rod * endFade * 0.05 * p.lineThickness
+  },
+
+  // Corda Trançada — deep helical braid with visible multi-fiber torsion
+  braidedRope: (a, h, p) => {
+    const f = p.density * 5
+    const twist = h * f * Math.PI * 2
+    const s1 = sat(Math.sin(a * f * 2 + twist))
+    const s2 = sat(Math.sin(a * f * 2 - twist + Math.PI))
+    const fiberTwist = 1 + 0.12 * Math.sin(a * f * 10 + twist * 3)
+    return punch(Math.max(s1, s2), 0.55) * fiberTwist * 0.06 * p.lineThickness
+  },
+
+  // Macramê Vazado — organic knotted net, ~60% open, irregular cell jitter
+  // to avoid excessive symmetry, fully rounded contours
+  macrameNet: (a, h, p) => {
+    const f = p.density * 6.5
+    const cellId = Math.floor(a * f) * 3.7 + Math.floor(h * f) * 11.3
+    const jitter = (hash11(cellId) - 0.5) * 0.14
+    const u = a * f + h * f + jitter, v = a * f - h * f - jitter
+    const line = Math.max(sat(1 - Math.abs(tri(u) - 0.5) * 5), sat(1 - Math.abs(tri(v) - 0.5) * 5))
+    const knot = sat(1 - (Math.abs(tri(u) - 0.5) + Math.abs(tri(v) - 0.5)) * 2.6)
+    return sat(line * 0.55 + knot * 0.55) * 0.048 * p.lineThickness
+  },
+
+  // Fibra de Algas — tight continuous horizontal wraps, near-zero gap,
+  // single unbroken line, no crossings
+  seaweedFiber: (a, h, p) => {
+    const f = p.density * 20
+    const n = fbm3(a * 0.6, h * f * 0.15) * 0.18
+    const wrap = tri(h * f + n)
+    const solid = smoothstep(0.05, 0.24, wrap)
+    return solid * (0.032 + n * 0.02) * p.lineThickness
+  },
+
+  // Trama Geométrica — tri-directional diagonal lattice at 0°/60°/-60°,
+  // balanced open/closed mosaic with soft fillets
+  geometricWeave: (a, h, p) => {
+    const f = p.density * 5
+    const t1 = Math.abs(Math.sin(a * f))
+    const t2 = Math.abs(Math.sin(a * f * 0.5 + h * f * 0.866))
+    const t3 = Math.abs(Math.sin(a * f * 0.5 - h * f * 0.866))
+    const lattice = Math.max(t1, t2, t3)
+    return punch(smoothstep(0.35, 0.85, lattice), 0.6) * 0.05 * p.lineThickness
+  },
+
+  // Malha de Linho — very fine over/under micro-weave, minimal relief
+  linenMesh: (a, h, p) => {
+    const f = p.density * 22
+    const u = a * f, v = h * f * 1.3
+    const cu = Math.floor(u), cv = Math.floor(v)
+    const lu = u - cu, lv = v - cv
+    const over = (cu + cv) % 2 === 0
+    const bandU = smoothstep(0, 0.35, lu) - smoothstep(0.65, 1, lu)
+    const bandV = smoothstep(0, 0.35, lv) - smoothstep(0.65, 1, lv)
+    const top = over ? bandU : bandV
+    const under = (over ? bandV : bandU) * 0.6
+    return sat(Math.max(top, under)) * 0.018 * p.lineThickness
+  },
+
+  // Rattan Vazado — thin connecting struts around rounded cells,
+  // ~65% open area, robust bridge structure
+  rattanCane: (a, h, p) => {
+    const f = p.density * 8
+    const [f1, f2] = worley(a, h * 1.1, f)
+    const strut = smoothstep(0.02, 0.17, f2 - f1)
+    return sat(strut) * 0.05 * p.lineThickness
+  },
+
+  // Papercord — evident helical torsion on parallel vertical cordage
+  papercordVertical: (a, h, p) => {
+    const f = p.density * 12
+    const cordPhase = Math.sin(h * 22) * 0.22
+    const cord = tri(a * f + cordPhase)
+    const torsion = 1 + 0.1 * Math.sin(h * 40 + a * f * 3)
+    return sat(smoothstep(0.25, 0.55, cord)) * torsion * 0.045 * p.lineThickness
+  },
+
+  // Fitas de Algodão — wide flat over/under weave, minimal gaps
+  cottonRibbon: (a, h, p) => {
+    const f = p.density * 4
+    const u = a * f, v = h * f * 0.9
+    const cu = Math.floor(u), cv = Math.floor(v)
+    const lu = u - cu, lv = v - cv
+    const over = (cu + cv) % 2 === 0
+    const ribbon = 0.86 // predominantly closed surface, minimal voids
+    const bandU = smoothstep(0, 0.08, lu) - smoothstep(ribbon - 0.08, ribbon, lu)
+    const bandV = smoothstep(0, 0.08, lv) - smoothstep(ribbon - 0.08, ribbon, lv)
+    const top = over ? bandU : bandV
+    const under = (over ? bandV : bandU) * 0.55
+    return sat(Math.max(top, under)) * 0.045 * p.lineThickness
+  },
+
+  // Tela Microperfurada — true hexagonal-matrix micro holes, flat panel,
+  // ~35-55% open area, rounded hole edges
+  microPerforated: (a, h, p) => {
+    const f = p.density * 22
+    const d = hexCell(a * f * 1.6, h * f * 2.3)
+    return sat(smoothstep(0.2, 0.34, d)) * 0.02 * p.lineThickness
+  },
+
+  // Corda Náutica — multi-filament helical grooves, deep parallel nervures
+  nauticalCord: (a, h, p) => {
+    const f = p.density * 6
+    const twist = Math.sin(h * 26) * 0.14
+    const strand = tri(a * f + twist)
+    const groove = 1 + 0.18 * Math.sin(a * f * 3 + h * 14)
+    return sat(smoothstep(0.12, 0.48, strand)) * groove * 0.055 * p.lineThickness
+  },
+
+  // Arame Geométrico — three-direction thin wire lattice forming irregular
+  // triangles/quads/pentagons, sparse and open
+  wireGeometric: (a, h, p) => {
+    const f = p.density * 3
+    const u = a * f + h * f * 0.6, v = a * f - h * f * 1.3, w = h * f * 2.1
+    const l1 = sat(1 - Math.abs(tri(u) - 0.5) * 12)
+    const l2 = sat(1 - Math.abs(tri(v) - 0.5) * 12)
+    const l3 = sat(1 - Math.abs(tri(w) - 0.5) * 12)
+    return punch(Math.max(l1, l2, l3), 0.45) * 0.032 * p.lineThickness
+  },
+
+  // Madeira Vazada — vertical slats with gap ≈ slat width, subtle grain
+  woodSlats: (a, h, p) => {
+    const f = p.density * 6
+    const t = tri(a * f)
+    const plateau = smoothstep(0.25, 0.34, t) - smoothstep(0.66, 0.75, t)
+    const grain = vnoise(a * f * 3, h * 6) * 0.06
+    return sat(plateau + grain * plateau) * 0.05 * p.lineThickness
+  },
+
+  // Corte a Laser — domain-warped organic branch/root openwork,
+  // single interconnected structure, ~55% open
+  laserOrganic: (a, h, p) => {
+    const warp = fbm3(a * p.density * 1.2, h * p.density * 2) * 1.4
+    const [f1] = worley(a * p.density * 2.6 + warp, h * p.density * 4 + warp, 1)
+    return sat(1 - smoothstep(0.22, 0.5, f1)) * 0.05 * p.lineThickness
+  },
+
+  // Orbital — elongated capsule perforations with subtle per-cell size
+  // variance, balanced spacing, smooth walls
+  ovalOrbital: (a, h, p) => {
+    const f = p.density * 6
+    const cellA = Math.floor(a * f), cellH = Math.floor(h * f * 0.6)
+    const sizeJitter = 0.85 + hash22(cellA, cellH) * 0.3
+    const cellX = ((a * f) % 1 + 1) % 1 - 0.5
+    const cellY = ((h * f * 0.6) % 1 + 1) % 1 - 0.5
+    const r = Math.hypot(cellX * 1.8, cellY * 0.55) / sizeJitter
+    return sat(smoothstep(0.2, 0.4, r)) * 0.055 * p.lineThickness
+  },
+
+  // Espinha — converging herringbone V-chevrons, crisp directional relief
+  herringboneSpine: (a, h, p) => {
+    const f = p.density * 10
+    const col = Math.floor(a * f)
+    const dir = (col % 2 === 0) ? 1 : -1
+    const local = ((a * f) % 1 + 1) % 1
+    const diag = tri(local + h * f * 0.5 * dir)
+    return sat(smoothstep(0.32, 0.5, diag)) * 0.045 * p.lineThickness
+  },
+
+  // Flama — ascending flickering flame curves, no straight lines,
+  // rounded top/bottom, constant spacing
+  flameFlow: (a, h, p) => {
+    const f = p.density * 6
+    const flicker = fbm3(a * f * 0.5, h * 3)
+    const flame = tri(a * f + Math.sin(h * 4 + flicker * 3) * 0.4)
+    const envelope = smoothstep(0, 0.15, h)
+    return sat(smoothstep(0.3, 0.55, flame)) * envelope * 0.05 * p.lineThickness
+  },
+
+  // Trama — bold overlapping straps crossing at three distinct angles,
+  // spontaneous but balanced distribution, single continuous structure.
+  // Wide bands (not thin lines) so the weave reads as an architectural
+  // lattice rather than fine noise.
+  trellisTrama: (a, h, p) => {
+    const u = a / (Math.PI * 2)
+    const f = p.density * 5
+    const u1 = u * f + h * f * 1.4
+    const u2 = u * f - h * f * 0.5
+    const u3 = u * f * 1.7
+    const bandW = 0.34
+    const d1 = ((u1 % 1) + 1) % 1, du1 = Math.min(d1, 1 - d1)
+    const d2 = ((u2 % 1) + 1) % 1, du2 = Math.min(d2, 1 - d2)
+    const d3 = ((u3 % 1) + 1) % 1, du3 = Math.min(d3, 1 - d3)
+    const b1 = sat(1 - smoothstep(bandW * 0.5, bandW, du1))
+    const b2 = sat(1 - smoothstep(bandW * 0.5, bandW, du2))
+    const b3 = sat(1 - smoothstep(bandW * 0.4, bandW * 0.75, du3))
+    return Math.max(b1, b2, b3) * 0.05 * p.lineThickness
+  },
+
+  // Ondas — continuous vertical ribs of uniform width and fully rounded
+  // edges, following a shared sinuous drift from bottom to top; drift
+  // amplitude is capped below half the rib spacing so ribs never cross
+  // and gaps stay constant along the whole run
+  waveCurtain: (a, h, p) => {
+    const f = p.density * 3.2
+    const spacing = 1 / f
+    const drift = Math.sin(h * Math.PI * 2.6) * spacing * 0.28
+    const u = a - drift
+    const local = ((u * f) % 1 + 1) % 1
+    const d = Math.min(local, 1 - local) // distance to nearest rib centerline
+    const ribW = 0.3 // rib half-width as fraction of spacing (~55% open)
+    return sat(1 - smoothstep(ribW * 0.55, ribW, d)) * 0.05 * p.lineThickness
+  },
+
+  // Metal Vazado — triangular tri-directional lattice, ~60% open,
+  // constant wall thickness with soft fillets
+  metalCutout: (a, h, p) => {
+    const f = p.density * 4.5
+    const t1 = Math.abs(Math.sin(a * f))
+    const t2 = Math.abs(Math.sin(a * f * 0.5 + h * f * 0.866))
+    const t3 = Math.abs(Math.sin(a * f * 0.5 - h * f * 0.866))
+    const lattice = Math.min(t1, t2, t3)
+    return sat(1 - smoothstep(0.05, 0.22, lattice)) * 0.05 * p.lineThickness
+  },
+
+  // Voil Translúcido — near-flat isotropic surface, no dominant direction
+  voile: (a, h, p) => {
+    const n = fbm3(a * p.density * 0.4, h * p.density * 0.5)
+    return sat(n) * 0.007 * p.lineThickness
+  },
+
+  // Sisal — coarse natural sisal-fiber weave
+  sisalFiber: (a, h, p) => {
+    const f = p.density * 9
+    const n = fbm3(a * f * 0.4, h * 5)
+    const strand = tri(a * f + n * 1.5)
+    return sat(smoothstep(0.28, 0.58, strand)) * (0.035 + n * 0.015) * p.lineThickness
+  },
+
+  // Juta — coarse burlap-style crosshatch weave
+  juteWeave: (a, h, p) => {
+    const f = p.density * 7
+    const coarse = Math.min(tri(a * f), tri(h * f * 1.1))
+    return sat(smoothstep(0.2, 0.5, coarse)) * 0.05 * p.lineThickness
+  },
+
+  // Vime — willow wicker basket weave, offset bowed strips
+  wickerWillow: (a, h, p) => {
+    const f = p.density * 6
+    const row = Math.floor(h * f)
+    const off = (row % 2) * 0.5
+    const bow = Math.sin(h * f * Math.PI) * 0.1
+    const strip = tri(a * f + off)
+    return sat(smoothstep(0.25 + bow, 0.55 + bow, strip)) * 0.05 * p.lineThickness
   },
 }
 
@@ -893,6 +1186,110 @@ export const MESHES = [
   { id: 'arch-topographic',   name: 'Topographic',        category: 'Architectural', pattern: 'topographic',
     params: baseParams({ density: 0.9 }), printDiff: 'Medium', printTime: '4h 10m', lightTransp: 62, filament: '14g',
     vaseModeCompat: true,  stdPrintCompat: true,  description: 'Curvas de nível sobre terreno vnoise — mapa topográfico.' },
+
+  // ── NATURAL WEAVE (artesanato) ──────────────────────────────────
+  { id: 'weave-straw',        name: 'Palha Cana da Índia', category: 'Weave', pattern: 'strawWeave',
+    params: baseParams({ density: 1.0 }), printDiff: 'Medium', printTime: '4h 45m', lightTransp: 58, filament: '15g',
+    vaseModeCompat: true,  stdPrintCompat: true,  description: 'Trama clássica e atemporal que valoriza a luz e traz leveza natural.' },
+
+  { id: 'nature-bamboo-rods', name: 'Varetas de Bambu',   category: 'Nature', pattern: 'bambooRods',
+    params: baseParams({ density: 1.0 }), printDiff: 'Easy',   printTime: '3h 25m', lightTransp: 66, filament: '12g',
+    vaseModeCompat: true,  stdPrintCompat: true,  description: 'Design linear e sofisticado que cria jogos de luz e sombra com toque orgânico.' },
+
+  { id: 'weave-braided',      name: 'Corda Trançada',     category: 'Weave', pattern: 'braidedRope',
+    params: baseParams({ density: 1.0 }), printDiff: 'Medium', printTime: '5h 00m', lightTransp: 54, filament: '16g',
+    vaseModeCompat: true,  stdPrintCompat: true,  description: 'Trama artesanal feita à mão que transmite aconchego e autenticidade.' },
+
+  { id: 'weave-macrame',      name: 'Macramé Vazado',     category: 'Weave', pattern: 'macrameNet',
+    params: baseParams({ density: 0.9 }), printDiff: 'Hard',   printTime: '5h 50m', lightTransp: 50, filament: '18g',
+    vaseModeCompat: false, stdPrintCompat: true,  description: 'Nó a nó, uma trama leve e delicada que adiciona arte e textura ao espaço.' },
+
+  { id: 'nature-seaweed',     name: 'Fibra de Algas',     category: 'Nature', pattern: 'seaweedFiber',
+    params: baseParams({ density: 1.0 }), printDiff: 'Medium', printTime: '4h 35m', lightTransp: 56, filament: '15g',
+    vaseModeCompat: true,  stdPrintCompat: true,  description: 'Trama rústica e resistente que traz a essência natural e um ar praiano sofisticado.' },
+
+  { id: 'weave-geometric',    name: 'Trama Geométrica',   category: 'Weave', pattern: 'geometricWeave',
+    params: baseParams({ density: 1.0 }), printDiff: 'Hard',   printTime: '5h 30m', lightTransp: 52, filament: '17g',
+    vaseModeCompat: false, stdPrintCompat: true,  description: 'Design marcante que combina formas e texturas para um visual contemporâneo.' },
+
+  { id: 'minimal-linen',      name: 'Malha de Linho',     category: 'Minimal', pattern: 'linenMesh',
+    params: baseParams({ density: 1.0 }), printDiff: 'Very Easy', printTime: '2h 50m', lightTransp: 72, filament: '10g',
+    vaseModeCompat: true,  stdPrintCompat: true,  description: 'Textura leve e elegante que proporciona uma luz suave e acolhedora.' },
+
+  { id: 'weave-rattan',       name: 'Rattan Vazado',      category: 'Weave', pattern: 'rattanCane',
+    params: baseParams({ density: 1.0 }), printDiff: 'Medium', printTime: '4h 20m', lightTransp: 60, filament: '14g',
+    vaseModeCompat: true,  stdPrintCompat: true,  description: 'Tradição e sofisticação em uma trama que nunca sai de tendência.' },
+
+  { id: 'weave-papercord',    name: 'Papercord',          category: 'Weave', pattern: 'papercordVertical',
+    params: baseParams({ density: 1.0 }), printDiff: 'Easy',   printTime: '3h 45m', lightTransp: 64, filament: '13g',
+    vaseModeCompat: true,  stdPrintCompat: true,  description: 'Sustentável e versátil, oferece textura moderna com um toque artesanal único.' },
+
+  { id: 'weave-cotton',       name: 'Fitas de Algodão',   category: 'Weave', pattern: 'cottonRibbon',
+    params: baseParams({ density: 1.0 }), printDiff: 'Medium', printTime: '4h 10m', lightTransp: 60, filament: '14g',
+    vaseModeCompat: true,  stdPrintCompat: true,  description: 'Trama encorpada e elegante que combina suavidade e estilo artesanal.' },
+
+  // ── MICROPERFORADOS / MODERNO ────────────────────────────────────
+  { id: 'minimal-microperf',  name: 'Tela Microperfurada', category: 'Minimal', pattern: 'microPerforated',
+    params: baseParams({ density: 1.0 }), printDiff: 'Very Easy', printTime: '2h 35m', lightTransp: 76, filament: '9g',
+    vaseModeCompat: true,  stdPrintCompat: true,  description: 'Minimalista e contemporânea, proporciona uma luz suave e uniforme.' },
+
+  { id: 'weave-nautical',     name: 'Corda Náutica',      category: 'Weave', pattern: 'nauticalCord',
+    params: baseParams({ density: 1.0 }), printDiff: 'Medium', printTime: '4h 40m', lightTransp: 58, filament: '15g',
+    vaseModeCompat: true,  stdPrintCompat: true,  description: 'Moderna e versátil, ideal para ambientes sofisticados com um toque natural.' },
+
+  { id: 'geo-wire',           name: 'Arame Geométrico',   category: 'Geometric', pattern: 'wireGeometric',
+    params: baseParams({ density: 0.9 }), printDiff: 'Easy',   printTime: '3h 15m', lightTransp: 70, filament: '11g',
+    vaseModeCompat: true,  stdPrintCompat: true,  description: 'Estrutura leve e escultural que adiciona modernidade e personalidade.' },
+
+  { id: 'vertical-woodslats', name: 'Madeira Vazada',     category: 'Vertical', pattern: 'woodSlats',
+    params: baseParams({ density: 1.0 }), printDiff: 'Easy',   printTime: '3h 30m', lightTransp: 62, filament: '13g',
+    vaseModeCompat: true,  stdPrintCompat: true,  description: 'O vazado em madeira cria jogos de luz e sombra com elegância natural.' },
+
+  { id: 'organic-laser',      name: 'Corte a Laser',      category: 'Organic', pattern: 'laserOrganic',
+    params: baseParams({ density: 1.0 }), printDiff: 'Hard',   printTime: '5h 40m', lightTransp: 52, filament: '17g',
+    vaseModeCompat: false, stdPrintCompat: true,  description: 'Padrões exclusivos que unem arte, tecnologia e iluminação de forma harmônica.' },
+
+  { id: 'minimal-voile',      name: 'Voil Translúcido',   category: 'Minimal', pattern: 'voile',
+    params: baseParams({ density: 1.0 }), printDiff: 'Very Easy', printTime: '2h 20m', lightTransp: 82, filament: '8g',
+    vaseModeCompat: true,  stdPrintCompat: true,  description: 'Leveza e delicadeza que criam uma iluminação difusa e acolhedora.' },
+
+  { id: 'geo-metalcut',       name: 'Metal Vazado',       category: 'Geometric', pattern: 'metalCutout',
+    params: baseParams({ density: 1.0 }), printDiff: 'Hard',   printTime: '5h 25m', lightTransp: 54, filament: '16g',
+    vaseModeCompat: false, stdPrintCompat: true,  description: 'Design gráfico que cria efeitos de luz únicos e transforma qualquer espaço.' },
+
+  // ── MODELOS DE MALHAS (formas/silhuetas) ────────────────────────
+  { id: 'geo-orbital',        name: 'Orbital',            category: 'Geometric', pattern: 'ovalOrbital',
+    params: baseParams({ density: 1.0 }), printDiff: 'Medium', printTime: '4h 25m', lightTransp: 58, filament: '15g',
+    vaseModeCompat: true,  stdPrintCompat: true,  description: 'Aberturas alongadas com visual futurista.' },
+
+  { id: 'geo-herringbone',    name: 'Espinha',            category: 'Geometric', pattern: 'herringboneSpine',
+    params: baseParams({ density: 1.0 }), printDiff: 'Medium', printTime: '4h 15m', lightTransp: 60, filament: '14g',
+    vaseModeCompat: true,  stdPrintCompat: true,  description: 'Linhas verticais entrelaçadas que transmitem elegância.' },
+
+  { id: 'organic-flame',      name: 'Flama',              category: 'Organic', pattern: 'flameFlow',
+    params: baseParams({ density: 1.0 }), printDiff: 'Medium', printTime: '4h 30m', lightTransp: 58, filament: '15g',
+    vaseModeCompat: true,  stdPrintCompat: true,  description: 'Curvas fluidas que trazem leveza e movimento.' },
+
+  { id: 'weave-trellis',      name: 'Trama',              category: 'Weave', pattern: 'trellisTrama',
+    params: baseParams({ density: 1.0 }), printDiff: 'Medium', printTime: '4h 45m', lightTransp: 56, filament: '15g',
+    vaseModeCompat: true,  stdPrintCompat: true,  description: 'Linhas entrelaçadas que criam um efeito único.' },
+
+  { id: 'organic-ondas',      name: 'Ondas',              category: 'Organic', pattern: 'waveCurtain',
+    params: baseParams({ density: 1.0 }), printDiff: 'Easy',   printTime: '3h 50m', lightTransp: 64, filament: '13g',
+    vaseModeCompat: true,  stdPrintCompat: true,  description: 'Movimento suave e design fluido.' },
+
+  // ── MAIS IDEIAS NATURAIS ─────────────────────────────────────────
+  { id: 'nature-sisal',       name: 'Sisal',              category: 'Nature', pattern: 'sisalFiber',
+    params: baseParams({ density: 1.0 }), printDiff: 'Medium', printTime: '4h 30m', lightTransp: 58, filament: '15g',
+    vaseModeCompat: true,  stdPrintCompat: true,  description: 'Fibra natural resistente com textura irregular e orgânica.' },
+
+  { id: 'weave-jute',         name: 'Juta',               category: 'Weave', pattern: 'juteWeave',
+    params: baseParams({ density: 1.0 }), printDiff: 'Easy',   printTime: '3h 55m', lightTransp: 62, filament: '13g',
+    vaseModeCompat: true,  stdPrintCompat: true,  description: 'Trama grossa estilo juta — rústica e aconchegante.' },
+
+  { id: 'weave-wicker',       name: 'Vime',               category: 'Weave', pattern: 'wickerWillow',
+    params: baseParams({ density: 1.0 }), printDiff: 'Medium', printTime: '4h 40m', lightTransp: 57, filament: '15g',
+    vaseModeCompat: true,  stdPrintCompat: true,  description: 'Cestaria de vime com tiras arqueadas artesanais.' },
 ]
 
 export function getPattern(name) {

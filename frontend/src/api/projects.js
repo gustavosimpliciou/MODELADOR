@@ -11,7 +11,7 @@ export const projectsApi = {
     const userId = await currentUserId()
     const { data, error } = await supabase
       .from('projects')
-      .select('id, name, updated_at')
+      .select('id, name, updated_at, data')
       .eq('user_id', userId)
       .order('updated_at', { ascending: false })
     if (error) throw new Error(error.message)

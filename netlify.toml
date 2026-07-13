@@ -1,0 +1,16 @@
+[build]
+  command   = "cd frontend && yarn install && yarn build"
+  publish   = "frontend/dist"
+  functions = "netlify/functions"
+
+# Kiwify webhook → Netlify Function
+[[redirects]]
+  from   = "/api/webhook/kiwify"
+  to     = "/.netlify/functions/kiwify"
+  status = 200
+
+# SPA fallback — must be last
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200

@@ -12,9 +12,9 @@ const MESH_PARAMS_CONFIG = [
   { key: 'density', label: 'Densidade', min: 0.2, max: 4, step: 0.05, unit: 'x' },
   { key: 'rotation', label: 'Rotação', min: 0, max: 360, step: 1, unit: '°' },
   { key: 'tilt', label: 'Inclinação', min: -45, max: 45, step: 1, unit: '°' },
-  { key: 'amplitude', label: 'Amplitude', min: 0, max: 3, step: 0.05, unit: 'x' },
-  { key: 'frequency', label: 'Frequência', min: 0.5, max: 10, step: 0.1, unit: 'x' },
-  { key: 'scale', label: 'Escala', min: 0.1, max: 3, step: 0.05, unit: 'x' },
+  { key: 'amplitude', label: 'Amplitude', min: 0, max: 2, step: 0.05, unit: 'x' },
+  { key: 'frequency', label: 'Frequência', min: 0.5, max: 6, step: 0.1, unit: 'x' },
+  { key: 'scale', label: 'Escala', min: 0.1, max: 2, step: 0.05, unit: 'x' },
   { key: 'noise', label: 'Ruído', min: 0, max: 1, step: 0.01, unit: '' },
   { key: 'randomization', label: 'Randomização', min: 0, max: 1, step: 0.01, unit: '' },
   { key: 'symmetry', label: 'Simetria', min: 1, max: 16, step: 1, unit: '' },
@@ -60,11 +60,10 @@ export default function RightPanel() {
     { key: 'materials', label: t('tab.materials') },
     { key: 'export', label: t('tab.export') },
     { key: 'analysis', label: t('tab.analysis') },
-    { key: 'ai', label: t('tab.ai') },
   ]
 
-  // If user was on the removed Modifiers tab, redirect to meshes
-  if (rightPanel === 'modifiers') {
+  // Redirect removed tabs to meshes
+  if (rightPanel === 'modifiers' || rightPanel === 'ai') {
     setRightPanel('meshes')
   }
 
@@ -88,10 +87,11 @@ export default function RightPanel() {
               fontSize: 10, fontWeight: 700,
               letterSpacing: '0.08em', textTransform: 'uppercase',
               color: rightPanel === tab.key ? 'var(--accent)' : 'var(--text-secondary)',
+              borderTop: 'none', borderLeft: 'none', borderRight: 'none',
               borderBottom: rightPanel === tab.key ? '2px solid var(--accent)' : '2px solid transparent',
               marginBottom: -1,
               transition: 'color 0.2s',
-              background: 'none', cursor: 'pointer', border: 'none',
+              background: 'none', cursor: 'pointer',
               whiteSpace: 'nowrap',
             }}
           >
@@ -106,7 +106,6 @@ export default function RightPanel() {
         {rightPanel === 'materials' && <MaterialsPanel />}
         {rightPanel === 'export' && <ExportPanel />}
         {rightPanel === 'analysis' && <AnalysisPanel />}
-        {rightPanel === 'ai' && <AIPanel />}
       </div>
     </div>
   )
@@ -136,8 +135,9 @@ function MeshesPanel() {
               fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase',
               color: view === v ? 'var(--text)' : 'var(--text-secondary)',
               background: view === v ? 'rgba(255,255,255,0.04)' : 'none',
+              borderTop: 'none', borderLeft: 'none', borderRight: 'none',
               borderBottom: view === v ? '1px solid var(--line)' : '1px solid transparent',
-              cursor: 'pointer', border: 'none', transition: 'all 0.15s',
+              cursor: 'pointer', transition: 'all 0.15s',
             }}
           >
             {v === 'library' ? t('lib.library') : t('lib.editor')}
@@ -585,113 +585,3 @@ function CompatRow({ label, compat }) {
   )
 }
 
-// ─── AI Panel ──────────────────────────────────────────────────────
-
-function AIPanel() {
-  const lampshade = useStore((s) => s.lampshade)
-  const activeMesh = useStore((s) => s.activeMesh)
-  const [prompt, setPrompt] = useState('')
-  const [suggestions, setSuggestions] = useState([])
-  const [loading, setLoading] = useState(false)
-
-  const generate = () => {
-    if (!prompt.trim()) return
-    setLoading(true)
-    setSuggestions([])
-    setTimeout(() => {
-      const ideas = [
-        { title: 'Variação A', desc: `${prompt} — versão otimizada para impressão vase mode com 0.4mm de parede.`, tag: 'Vase' },
-        { title: 'Variação B', desc: `${prompt} — adaptado para FDM padrão com suportes mínimos.`, tag: 'FDM' },
-        { title: 'Variação C', desc: `${prompt} — versão decorativa com mais detalhe e filamento silk.`, tag: 'Luxo' },
-      ]
-      setSuggestions(ideas)
-      setLoading(false)
-    }, 1500)
-  }
-
-  return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '12px' }} className="fade-in">
-      <h3 className="label-upper" style={{ marginBottom: 10 }}>Gerador de Malha IA</h3>
-      <p style={{ fontSize: 11, color: 'var(--text-secondary)', fontFamily: 'var(--font-body)', lineHeight: 1.5, marginBottom: 12 }}>
-        Descreva o estilo desejado e a IA sugerirá variações de malha personalizadas.
-      </p>
-
-      <textarea
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-        placeholder="Ex: padrão floral orgânico com alta transparência..."
-        style={{
-          width: '100%', minHeight: 70,
-          background: 'var(--card)', border: '1px solid var(--line)',
-          borderRadius: 3, padding: '10px',
-          color: 'var(--text)', fontSize: 12,
-          fontFamily: 'var(--font-body)', resize: 'vertical',
-          outline: 'none',
-        }}
-      />
-
-      <button
-        onClick={generate}
-        disabled={loading || !prompt.trim()}
-        style={{
-          width: '100%', marginTop: 8, padding: '10px',
-          background: loading || !prompt.trim() ? 'var(--card)' : 'var(--accent)',
-          border: 'none', borderRadius: 3,
-          color: loading || !prompt.trim() ? 'var(--text-secondary)' : '#000',
-          fontFamily: 'var(--font-condensed)', fontSize: 12, fontWeight: 800,
-          letterSpacing: '0.12em', textTransform: 'uppercase',
-          cursor: loading || !prompt.trim() ? 'not-allowed' : 'pointer',
-          transition: 'all 0.15s',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-        }}
-      >
-        {loading ? (
-          <>
-            <span style={{ width: 12, height: 12, border: '2px solid var(--text-secondary)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-            Gerando...
-          </>
-        ) : 'Gerar Sugestões'}
-      </button>
-
-      {/* Suggestions */}
-      {suggestions.map((s, i) => (
-        <div key={i} style={{
-          marginTop: 8, padding: '10px',
-          background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 3,
-          animation: 'fadeIn 0.3s ease both',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontFamily: 'var(--font-condensed)', fontSize: 12, fontWeight: 700, color: 'var(--accent)' }}>
-              {s.title}
-            </span>
-            <span style={{
-              fontFamily: 'var(--font-condensed)', fontSize: 8, fontWeight: 700,
-              letterSpacing: '0.08em', textTransform: 'uppercase',
-              color: 'var(--info)', background: 'rgba(116,185,255,0.1)',
-              padding: '2px 5px', borderRadius: 1,
-            }}>
-              {s.tag}
-            </span>
-          </div>
-          <p style={{ marginTop: 4, fontSize: 11, color: 'var(--text-secondary)', fontFamily: 'var(--font-body)', lineHeight: 1.4 }}>
-            {s.desc}
-          </p>
-        </div>
-      ))}
-
-      {/* Current design info */}
-      <div style={{
-        marginTop: 16, padding: '10px',
-        background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 3,
-      }}>
-        <div style={{ fontSize: 9, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', marginBottom: 6 }}>
-          DESIGN ATUAL
-        </div>
-        <Row label="Perfil" value={lampshade.profile} />
-        <Row label="Malha" value={activeMesh?.name || 'Nenhuma'} />
-        <Row label="Altura" value={`${lampshade.height}mm`} />
-        <Row label="Diâmetro" value={`${lampshade.bottomDiameter}mm`} />
-      </div>
-    </div>
-  )
-}

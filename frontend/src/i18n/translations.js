@@ -123,6 +123,7 @@ export const translations = {
     'footer.vol': 'VOL',
     'footer.profile': 'PERFIL',
     'footer.mesh': 'MALHA',
+    'footer.marquee': 'O SUCESSO DA SUA IMPRESSÃO DEPENDE DE SUA MODELAGEM, SEJA CRIATIVO.',
 
     // Right panel: library / editor
     'lib.library': 'BIBLIOTECA',
@@ -234,6 +235,7 @@ export const translations = {
     'footer.vol': 'VOL',
     'footer.profile': 'PROFILE',
     'footer.mesh': 'MESH',
+    'footer.marquee': 'YOUR PRINT SUCCESS DEPENDS ON YOUR MODELING — BE CREATIVE.',
 
     'lib.library': 'LIBRARY',
     'lib.editor': 'EDITOR',
@@ -344,6 +346,7 @@ export const translations = {
     'footer.vol': 'VOL',
     'footer.profile': 'PERFIL',
     'footer.mesh': 'MALLA',
+    'footer.marquee': 'EL ÉXITO DE TU IMPRESIÓN DEPENDE DE TU MODELADO — SÉ CREATIVO.',
 
     'lib.library': 'BIBLIOTECA',
     'lib.editor': 'EDITOR',

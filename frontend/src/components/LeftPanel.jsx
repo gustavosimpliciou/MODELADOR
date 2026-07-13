@@ -84,7 +84,7 @@ const DIMENSION_CONFIG = [
   { key: 'middleDiameter', tk: 'dim.middleDiameter', min: 20, max: 400, step: 5, unit: 'mm' },
   { key: 'bottomDiameter', tk: 'dim.bottomDiameter', min: 40, max: 350, step: 5, unit: 'mm' },
   { key: 'wallThickness', tk: 'dim.wallThickness', min: 0.8, max: 10, step: 0.1, unit: 'mm' },
-  { key: 'bellCurve', tk: 'dim.bellCurve', min: 0, max: 8, step: 0.05, unit: '' },
+  { key: 'bellCurve', tk: 'dim.bellCurve', min: 0, max: 2.5, step: 0.05, unit: '' },
   { key: 'segments', tk: 'dim.segments', min: 32, max: 200, step: 4, unit: '' },
   { key: 'smoothing', tk: 'dim.smoothing', min: 0, max: 4, step: 0.1, unit: '' },
   { key: 'flareAngle', tk: 'dim.flareAngle', min: 0, max: 45, step: 1, unit: '°' },

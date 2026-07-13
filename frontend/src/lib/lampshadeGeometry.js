@@ -68,6 +68,67 @@ export function profileRadius(profile, t, rTop, rBot, bellCurve, rMid = null) {
   }
 }
 
+// Smooth saturating clamp: keeps `v` within ±maxAbs but with a soft
+// (tanh) shoulder instead of a hard cutoff, so pattern peaks never get
+// a flat "melted" plateau even when sliders are pushed to their max —
+// they just ease into the limit. Also guards against runaway/self-
+// intersecting geometry when amplitude × scale × lineThickness stack up.
+function softClamp(v, maxAbs) {
+  if (maxAbs <= 0) return 0
+  return maxAbs * Math.tanh(v / maxAbs)
+}
+
+// Smoother, layered replacement for a single high-frequency sine
+// product. Two octaves at moderate (not extreme) frequencies read as
+// an organic micro-texture rather than jittery aliasing.
+function smoothMeshNoise(angle, y) {
+  const n1 = Math.sin(angle * 9 + y * 7) * Math.cos(angle * 5 - y * 6)
+  const n2 = Math.sin(angle * 17 + y * 13) * Math.cos(angle * 11 - y * 15)
+  return n1 * 0.7 + n2 * 0.3
+}
+
+// ─── Seam repair ─────────────────────────────────────────────────
+// LatheGeometry duplicates vertices at the wrap-around seam
+// (angle 0° = angle 360°). computeVertexNormals() treats these as
+// independent, so each side computes its own outward normal and the
+// renderer draws a hard edge — the visible vertical line.
+//
+// Fix: after every computeVertexNormals() call, average the normals
+// (and snap positions to be identical) for the first and last angular
+// column. The vertex layout LatheGeometry uses is:
+//   flat_index = angularRing * numProfilePts + profilePoint
+// so ring 0 (indices 0..N-1) and ring `segs` (indices segs*N..segs*N+N-1)
+// are the seam pair.
+function repairLatheSeam(geo, segs, numProfilePts) {
+  const pos  = geo.attributes.position
+  const norm = geo.attributes.normal
+
+  for (let j = 0; j < numProfilePts; j++) {
+    const a = j                          // first column
+    const b = segs * numProfilePts + j   // last column (same world position)
+
+    // Snap positions — they should already be identical but floating-point
+    // arithmetic in sin(2π) leaves z ≈ −2.45e-16 on the last ring.
+    const px = (pos.getX(a) + pos.getX(b)) * 0.5
+    const py =  pos.getY(a)                       // Y is always equal
+    const pz = (pos.getZ(a) + pos.getZ(b)) * 0.5
+    pos.setXYZ(a, px, py, pz)
+    pos.setXYZ(b, px, py, pz)
+
+    // Average the normals from both sides and renormalise.
+    const nx = norm.getX(a) + norm.getX(b)
+    const ny = norm.getY(a) + norm.getY(b)
+    const nz = norm.getZ(a) + norm.getZ(b)
+    const len = Math.sqrt(nx * nx + ny * ny + nz * nz)
+    if (len < 1e-6) continue
+    norm.setXYZ(a, nx / len, ny / len, nz / len)
+    norm.setXYZ(b, nx / len, ny / len, nz / len)
+  }
+
+  pos.needsUpdate  = true
+  norm.needsUpdate = true
+}
+
 // ─── Geometry builder — SHELL (real wall thickness) ───────────────
 export function buildLampshadeGeometry(lampshade, meshParams, activeMesh, activeTexture = null, textureParams = null) {
   const {
@@ -149,17 +210,29 @@ export function buildLampshadeGeometry(lampshade, meshParams, activeMesh, active
         })
 
         if (noise > 0) {
-          displacement += (Math.sin(angle * 47 + y * 31) * Math.cos(angle * 13 - y * 29)) * noise * 0.015
+          displacement += smoothMeshNoise(angle, y) * noise * 0.012
         }
         displacement *= scale
 
-        const newR = Math.max(0.01, radius + displacement)
+        // Cap total outward/inward displacement to a proportion of the
+        // shade's own local radius (baseR, before pattern deformation) so
+        // extreme slider combos (amplitude × scale × lineThickness) can
+        // never blow the silhouette out into a spiky, self-intersecting
+        // mess — the pattern still reads strongly, it just can't exceed
+        // a sane fraction of the model's own size.
+        displacement = softClamp(displacement, baseR * 0.35)
+
+        // Never let the outer wall collapse past the inner shell wall —
+        // that would puncture/self-intersect the mesh and look "broken".
+        const minR = midR + wall * 0.3
+        const newR = Math.max(minR, radius + displacement)
         pos.setXYZ(i, (x / radius) * newR, y, (z / radius) * newR)
       }
     }
   }
 
   geo.computeVertexNormals()
+  repairLatheSeam(geo, segs, profilePts.length)
   geo.userData.smoothing = smoothing
 
   // ─── Surface texture (emboss/displacement em baixo relevo) ──────
@@ -204,6 +277,7 @@ export function buildLampshadeGeometry(lampshade, meshParams, activeMesh, active
           pos.setXYZ(i, (x / radius) * newR, y, (z / radius) * newR)
         }
         geo.computeVertexNormals()
+        repairLatheSeam(geo, segs, profilePts.length)
       }
     }
   }

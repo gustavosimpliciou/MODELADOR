@@ -1,0 +1,272 @@
+Refinamento Profissional das Malhas Paramétricas para Cúpulas de Abajur
+Objetivo
+
+Realize uma atualização completa do sistema de geração de malhas da ferramenta de criação de cúpulas para impressão 3D. O objetivo não é apenas adicionar novos modelos, mas principalmente elevar significativamente a qualidade dos modelos existentes, tornando-os visualmente mais sofisticados, tecnicamente refinados e comercialmente profissionais.
+
+Cada malha deve transmitir qualidade premium, acabamento industrial e design contemporâneo, eliminando qualquer aparência de superfície simples, repetitiva ou gerada automaticamente.
+
+Prioridade Máxima: Refinamento das Malhas Existentes
+
+Antes de criar novos modelos, todos os modelos atualmente disponíveis devem passar por um processo completo de refinamento geométrico.
+
+Cada malha existente deverá ser reconstruída utilizando algoritmos mais avançados de geração procedural.
+
+Melhorias obrigatórias:
+
+suavizar completamente todas as curvas
+remover irregularidades geométricas
+eliminar superfícies planas excessivas
+melhorar continuidade entre faces
+aumentar a fluidez visual
+melhorar a distribuição dos polígonos
+evitar repetições perceptíveis
+melhorar o fluxo das linhas da malha
+deixar todas as transições mais naturais
+criar padrões mais orgânicos
+gerar superfícies elegantes
+aumentar a riqueza visual dos detalhes
+tornar cada modelo mais sofisticado
+aumentar a sensação de profundidade
+criar sombras naturais quando iluminadas
+melhorar a leitura visual da textura
+gerar padrões mais harmoniosos
+evitar cruzamentos incorretos da malha
+remover pequenas imperfeições geométricas
+
+Cada modelo deverá parecer desenvolvido por um designer industrial especializado em iluminação decorativa.
+
+O resultado deve transmitir imediatamente sensação de produto premium.
+
+Refinamento Matemático das Superfícies
+
+Aplicar técnicas avançadas como:
+
+Catmull-Clark Subdivision
+Loop Subdivision
+Surface Relaxation
+Laplacian Smoothing
+Taubin Smoothing
+Adaptive Tessellation
+Curvature Optimization
+Vertex Normal Recalculation
+Edge Flow Optimization
+Mesh Fairing
+Adaptive Surface Sampling
+
+As superfícies devem apresentar:
+
+curvaturas contínuas
+bordas limpas
+linhas elegantes
+transições suaves
+excelente distribuição da malha
+Melhorias na Qualidade Visual
+
+Todas as malhas devem possuir aparência semelhante a produtos de grandes marcas de iluminação decorativa.
+
+Objetivos:
+
+sensação de luxo
+acabamento premium
+linhas elegantes
+geometria limpa
+aspecto moderno
+design minimalista
+design contemporâneo
+alto valor percebido
+
+Cada modelo precisa parecer digno de venda em marketplaces internacionais.
+
+Melhorar Profundidade das Texturas
+
+As texturas não devem parecer apenas desenhos aplicados.
+
+Cada padrão deve possuir:
+
+relevo visual
+profundidade
+ritmo geométrico
+equilíbrio entre áreas abertas e fechadas
+excelente passagem de luz
+
+As sombras projetadas pela luminária devem criar efeitos decorativos sofisticados.
+
+Melhorar Compatibilidade com Impressão 3D
+
+Todas as malhas devem ser automaticamente validadas para impressão FDM.
+
+Garantir:
+
+espessura mínima configurável
+nenhuma parede extremamente fina
+nenhuma face invertida
+malha manifold
+ausência de auto interseções
+geometria fechada
+STL limpo
+exportação sem erros
+Melhorar o Comportamento Paramétrico
+
+Todas as malhas devem continuar totalmente paramétricas.
+
+Ao alterar:
+
+altura
+diâmetro
+espessura
+densidade
+quantidade de detalhes
+
+a textura deve ser recalculada matematicamente mantendo sua estética.
+
+Nunca distorcer o padrão.
+
+Nunca quebrar a malha.
+
+Criar Mais 10 Novas Malhas Premium
+
+Adicionar uma nova coleção de padrões exclusivos.
+
+1 — Trama de Corda
+
+Inspirada em cordas entrelaçadas.
+
+Características:
+
+torções suaves
+aspecto artesanal
+curvas naturais
+entrelaçamento elegante
+2 — Tecido Linho
+
+Inspirado em fibras têxteis.
+
+Características:
+
+pequenos entrelaçamentos
+textura delicada
+aspecto natural
+alta sofisticação
+3 — Tecido Trançado
+
+Semelhante a tecidos premium.
+
+Com micro padrões.
+
+Visual elegante.
+
+4 — Ondas Orgânicas
+
+Linhas contínuas inspiradas em água.
+
+Movimentos suaves.
+
+Curvas fluidas.
+
+5 — Ondas Concêntricas
+
+Anéis fluidos.
+
+Excelente efeito luminoso.
+
+6 — Colmeia Orgânica
+
+Versão refinada da clássica colmeia.
+
+Hexágonos com pequenas variações naturais.
+
+Sem repetição evidente.
+
+7 — Voronoi Premium
+
+Estrutura celular inspirada na natureza.
+
+Células com tamanhos variados.
+
+Distribuição orgânica.
+
+8 — Folhas Vazadas
+
+Inspirada em folhas tropicais.
+
+Veias naturais.
+
+Excelente passagem de luz.
+
+9 — Escamas Elegantes
+
+Inspiradas em peixes e répteis.
+
+Escamas sobrepostas.
+
+Visual sofisticado.
+
+10 — Geometria Paramétrica Premium
+
+Mistura de:
+
+curvas
+hexágonos
+losangos
+triângulos
+elementos orgânicos
+
+Com aparência futurista.
+
+Melhorar o Algoritmo de Distribuição das Malhas
+
+Os padrões devem se adaptar automaticamente ao formato da cúpula.
+
+Evitar:
+
+esticamentos
+compressões
+deformações
+
+A distribuição deve permanecer uniforme em toda a superfície.
+
+Sistema de Pré-visualização
+
+Melhorar o render em tempo real.
+
+Adicionar:
+
+iluminação física
+sombras suaves
+Ambient Occlusion
+HDRI
+materiais foscos
+materiais translúcidos
+visualização interna e externa
+
+A prévia deve representar fielmente o resultado após a impressão.
+
+Organização das Malhas
+
+Criar categorias:
+
+Clássicas
+Modernas
+Minimalistas
+Orgânicas
+Geométricas
+Vazadas
+Têxteis
+Cordas
+Onduladas
+Premium Collection
+Performance
+
+Mesmo com modelos mais detalhados:
+
+manter renderização fluida
+geração procedural otimizada
+uso eficiente da GPU
+cache inteligente
+atualização apenas das regiões alteradas
+geração assíncrona
+Resultado Esperado
+
+O usuário deve perceber imediatamente que as malhas evoluíram para um novo nível de qualidade.
+
+Cada textura deve apresentar acabamento refinado, curvas suaves, excelente distribuição geométrica e aparência premium. As superfícies devem transmitir sofisticação, credibilidade e valor agregado, produzindo cúpulas elegantes tanto visualmente quanto tecnicamente, com excelente comportamento durante a impressão 3D e efeitos luminosos diferenciados quando iluminadas.
