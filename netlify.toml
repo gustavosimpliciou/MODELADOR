@@ -3,13 +3,16 @@
   publish   = "frontend/dist"
   functions = "netlify/functions"
 
+[build.environment]
+  NODE_VERSION = "18"
+
 # Kiwify webhook → Netlify Function
 [[redirects]]
   from   = "/api/webhook/kiwify"
   to     = "/.netlify/functions/kiwify"
   status = 200
 
-# SPA fallback — must be last
+# SPA fallback — deve ser o último
 [[redirects]]
   from   = "/*"
   to     = "/index.html"

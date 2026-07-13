@@ -1,6 +1,5 @@
-// Netlify Function — Kiwify payment webhook
-// Equivalent to api/webhook/kiwify.js (Vercel), adapted for Netlify event format.
-const { createClient } = require('@supabase/supabase-js')
+// Netlify Function — Kiwify payment webhook (ESM)
+import { createClient } from '@supabase/supabase-js'
 
 const SUPABASE_URL         = process.env.SUPABASE_URL         || 'https://blqvsglspdayrznnbzzf.supabase.co'
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'sb_secret_Io0zkS3DyT3EDLwWPw673g_0C6o-JDu'
@@ -18,17 +17,21 @@ function normalize(text) {
 
 function detectPlan(productName, productId) {
   const hay = normalize(`${productName} ${productId}`)
-  if (hay.includes('premium'))                           return 'premium'
-  if (/\bmedium\b|\bmedio\b|\bpro\b/.test(hay))         return 'medium'
-  if (hay.includes('easy'))                              return 'easy'
+  if (hay.includes('premium'))                         return 'premium'
+  if (/\bmedium\b|\bmedio\b|\bpro\b/.test(hay))       return 'medium'
+  if (hay.includes('easy'))                            return 'easy'
   return null
 }
 
 function json(statusCode, body) {
-  return { statusCode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+  return {
+    statusCode,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }
 }
 
-exports.handler = async (event) => {
+export const handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return json(405, { error: 'Method not allowed' })
   }
@@ -42,18 +45,18 @@ exports.handler = async (event) => {
   const query   = event.queryStringParameters || {}
   const headers = event.headers || {}
 
-  // ─── Validar token ──────────────────────────────────────────────
+  // ─── Validar token ─────────────────────────────────────────────
   const incomingToken =
-    query.token ||
+    query.token               ||
     headers['x-webhook-token'] ||
-    body.token ||
+    body.token                ||
     ''
 
   if (incomingToken !== KIWIFY_TOKEN) {
     return json(401, { error: 'Token inválido' })
   }
 
-  // ─── Filtrar apenas vendas aprovadas ────────────────────────────
+  // ─── Filtrar apenas vendas aprovadas ───────────────────────────
   const orderStatus = (body.order_status || '').toLowerCase()
   const eventType   = (body.webhook_event_type || '').toLowerCase()
   const orderId     = body.order_id || body.order_ref || ''
@@ -62,19 +65,19 @@ exports.handler = async (event) => {
     return json(200, { ok: true, ignored: true, order_status: orderStatus })
   }
 
-  // ─── Dados do cliente ───────────────────────────────────────────
+  // ─── Dados do cliente ──────────────────────────────────────────
   const customer = body.Customer || {}
   const email    = (customer.email || '').trim().toLowerCase()
   if (!email) return json(200, { ok: true, ignored: true, reason: 'sem e-mail' })
 
-  // ─── Identificar plano ──────────────────────────────────────────
+  // ─── Identificar plano ─────────────────────────────────────────
   const product     = body.Product || {}
   const productName = product.product_name || ''
   const productId   = product.product_id   || ''
   const tier        = detectPlan(productName, productId)
 
-  const sb          = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-  const now         = new Date().toISOString()
+  const sb  = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+  const now = new Date().toISOString()
   const commissions = body.Commissions || {}
   const value       = commissions.charge_amount || commissions.product_base_price || ''
 
@@ -89,12 +92,12 @@ exports.handler = async (event) => {
     return json(200, { ok: true, ignored: true, reason: 'produto não reconhecido' })
   }
 
-  // ─── Idempotência ───────────────────────────────────────────────
+  // ─── Idempotência ──────────────────────────────────────────────
   const { data: existing } = await sb
     .from('payments').select('id').eq('kiwify_transaction_id', orderId)
   if (existing?.length) return json(200, { ok: true, duplicate: true })
 
-  // ─── Buscar usuário ─────────────────────────────────────────────
+  // ─── Buscar usuário ────────────────────────────────────────────
   const { data: users } = await sb.from('users').select('*').eq('email', email)
   if (!users?.length) {
     await sb.from('payments').insert({
@@ -111,14 +114,14 @@ exports.handler = async (event) => {
   const creditsToAdd = PLAN_CREDITS[tier]
   const newCredits   = (user.credits || 0) + creditsToAdd
 
-  // ─── Atualizar créditos ─────────────────────────────────────────
+  // ─── Atualizar créditos ────────────────────────────────────────
   await sb.from('users').update({
     credits:                 newCredits,
     plan:                    tier,
     first_upgrade_purchased: true,
   }).eq('id', user.id)
 
-  // ─── Registrar pagamento ────────────────────────────────────────
+  // ─── Registrar pagamento ───────────────────────────────────────
   await sb.from('payments').insert({
     id: crypto.randomUUID(), user_id: user.id,
     kiwify_transaction_id: orderId,
