@@ -13,7 +13,7 @@ const PLANS = [
     promoPrice: 'R$ 6,00',
     normalPrice: 'R$ 12,00',
     checkoutPromo:  'https://pay.kiwify.com.br/mP9JdtG',
-    checkoutNormal: 'https://kiwify.app/Nv8Bedg',
+    checkoutNormal: 'https://pay.kiwify.com.br/pEUqkzU',
     features: [
       'Ferramenta completa de criação 3D',
       'Exportação STL e OBJ',
@@ -54,8 +54,8 @@ const PLANS = [
     highlight: false,
     promoPrice: 'R$ 69,00',
     normalPrice: 'R$ 99,00',
-    checkoutPromo:  'https://kiwify.app/EZMdFYq',
-    checkoutNormal: 'https://kiwify.app/PDbkqeH',
+    checkoutPromo:  'https://pay.kiwify.com.br/RFJZS5v',
+    checkoutNormal: 'https://pay.kiwify.com.br/YchVPRb',
     features: [
       'Ferramenta completa de criação 3D',
       'Exportação STL e OBJ',
