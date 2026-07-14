@@ -25,7 +25,10 @@ function Lampshade({
   )
 
   const bottomCapGeo = useMemo(() => {
-    if (!bottomCap.enabled) return null
+    // "Modo Base" already produces a fully solid, sealed piece — a
+    // separate fundo cap would be redundant (and could z-fight with the
+    // already-closed bottom), so it never applies while solidFill is on.
+    if (!bottomCap.enabled || lampshade.solidFill) return null
 
     // ── MESH-CONFORMING FUNDO ─────────────────────────────────────
     // The fundo is a GEOMETRIC MOLD of the shade's actual deformed

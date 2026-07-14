@@ -64,6 +64,11 @@ export const translations = {
     'left.bottomCap.flipV': 'Flip V',
     'left.bottomCap.hint': 'Ajuste fino manual do fundo. Rotation Y soma-se ao auto-alinhamento; X e Z aplicam inclinação. Use quando a orientação automática não estiver perfeita.',
 
+    // Modo Base (total fill — solid, closed piece)
+    'left.solidFill': 'Modo Base',
+    'left.solidFill.enable': 'Ativar preenchimento total',
+    'left.solidFill.hint': 'Transforma a peça em um sólido totalmente preenchido e fechado (inclusive no topo) — sem parede oca. Espessura da parede e fundo estrutural não se aplicam neste modo.',
+
     // Dimensions labels
     'dim.height': 'Altura',
     'dim.topDiameter': 'Diâm. Superior',
@@ -181,6 +186,11 @@ export const translations = {
     'left.bottomCap.flipV': 'Flip V',
     'left.bottomCap.hint': 'Fine-tune the cap manually. Rotation Y adds to auto-align; X and Z apply tilt. Use when auto orientation is not perfect.',
 
+    // Modo Base (total fill — solid, closed piece)
+    'left.solidFill': 'Base Mode',
+    'left.solidFill.enable': 'Enable total fill',
+    'left.solidFill.hint': 'Turns the piece into a fully filled, sealed solid (closed even at the top) — no hollow wall. Wall thickness and the structural bottom cap do not apply in this mode.',
+
     'dim.height': 'Height',
     'dim.topDiameter': 'Top Diameter',
     'dim.middleDiameter': 'Middle Diameter',
@@ -291,6 +301,11 @@ export const translations = {
     'left.bottomCap.flipH': 'Flip H',
     'left.bottomCap.flipV': 'Flip V',
     'left.bottomCap.hint': 'Ajuste fino manual del fondo. Rotación Y se suma al auto-alineado; X y Z aplican inclinación. Úselo cuando la orientación automática no sea perfecta.',
+
+    // Modo Base (relleno total — pieza sólida y cerrada)
+    'left.solidFill': 'Modo Base',
+    'left.solidFill.enable': 'Activar relleno total',
+    'left.solidFill.hint': 'Convierte la pieza en un sólido totalmente relleno y cerrado (incluso en la parte superior) — sin pared hueca. El espesor de pared y el fondo estructural no se aplican en este modo.',
 
     'dim.height': 'Altura',
     'dim.topDiameter': 'Diám. Superior',

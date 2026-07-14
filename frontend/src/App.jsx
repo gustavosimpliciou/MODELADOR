@@ -68,9 +68,6 @@ export default function App() {
     }).catch(() => setAuthChecked(true))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Mobile gate ─────────────────────────────────────────────────
-  if (isMobile) return <MobileBlock />
-
   // ── Validating stored token ──────────────────────────────────────
   if (!authChecked) {
     return (
@@ -88,8 +85,13 @@ export default function App() {
     )
   }
 
-  // ── Not logged in ────────────────────────────────────────────────
+  // ── Not logged in ───────────────────────────────────────────────
+  // (mobile gate does not apply here — login/signup must work on mobile)
   if (!user) return <LoginScreen />
+
+  // ── Mobile gate ───────────────────────────────────────────────────
+  // Only enforced once the user is authenticated and about to enter the tool.
+  if (isMobile) return <MobileBlock />
 
   // ── Loading screen ───────────────────────────────────────────────
   if (!loaded) {

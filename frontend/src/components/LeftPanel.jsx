@@ -175,42 +175,76 @@ export default function LeftPanel() {
 
         {/* Dimensions */}
         <Section title={t('left.dimensions')}>
-          {DIMENSION_CONFIG.map((d) => (
-            <div key={d.key} style={{ marginBottom: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-                <span className="label-upper">{t(d.tk)}</span>
-                <span style={{
-                  fontFamily: 'var(--font-mono)', fontSize: 11,
-                  color: 'var(--accent)', fontWeight: 500,
-                }}>
-                  {lampshade[d.key]}{d.unit}
-                </span>
+          {DIMENSION_CONFIG.map((d) => {
+            const disabled = lampshade.solidFill && d.key === 'wallThickness'
+            return (
+              <div key={d.key} style={{ marginBottom: 12, opacity: disabled ? 0.4 : 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                  <span className="label-upper">{t(d.tk)}</span>
+                  <span style={{
+                    fontFamily: 'var(--font-mono)', fontSize: 11,
+                    color: 'var(--accent)', fontWeight: 500,
+                  }}>
+                    {lampshade[d.key]}{d.unit}
+                  </span>
+                </div>
+                <input
+                  data-testid={`dim-${d.key}`}
+                  type="range"
+                  min={d.min}
+                  max={d.max}
+                  step={d.step}
+                  value={lampshade[d.key]}
+                  disabled={disabled}
+                  onChange={(e) => setLampshade({ [d.key]: parseFloat(e.target.value) })}
+                />
               </div>
-              <input
-                data-testid={`dim-${d.key}`}
-                type="range"
-                min={d.min}
-                max={d.max}
-                step={d.step}
-                value={lampshade[d.key]}
-                onChange={(e) => setLampshade({ [d.key]: parseFloat(e.target.value) })}
-              />
-            </div>
-          ))}
+            )
+          })}
         </Section>
 
         {/* Fitter type removed per user request — using bottom cap socket instead */}
 
-        {/* Fundo da Cúpula (Bottom Cap) */}
+        {/* Modo Base — total fill (fully solid, closed piece) */}
+        <Section title={t('left.solidFill')} accent>
+          <ToggleRow
+            testId="solidfill-toggle"
+            label={t('left.solidFill.enable')}
+            value={lampshade.solidFill}
+            onChange={(v) => setLampshade({ solidFill: v })}
+          />
+          {lampshade.solidFill && (
+            <div className="fade-in" style={{
+              fontSize: 9, color: 'var(--text-secondary)',
+              fontFamily: 'var(--font-condensed)', letterSpacing: '0.06em',
+              marginTop: 8, lineHeight: 1.35,
+            }}>
+              {t('left.solidFill.hint')}
+            </div>
+          )}
+        </Section>
+
+        {/* Fundo da Cúpula (Bottom Cap) — not applicable in Modo Base,
+            since the whole piece is already solid and sealed. */}
         <Section title={t('left.bottomCap')} accent>
+          {lampshade.solidFill ? (
+            <div style={{
+              fontSize: 9, color: 'var(--text-dim)',
+              fontFamily: 'var(--font-condensed)', letterSpacing: '0.06em',
+              lineHeight: 1.35, opacity: 0.6,
+            }}>
+              {t('left.solidFill.hint')}
+            </div>
+          ) : (
           <ToggleRow
             testId="bottomcap-toggle"
             label={t('left.bottomCap.enable')}
             value={bottomCap.enabled}
             onChange={(v) => setBottomCap({ enabled: v })}
           />
+          )}
 
-          {bottomCap.enabled && (
+          {!lampshade.solidFill && bottomCap.enabled && (
             <div className="fade-in" style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 12 }}>
               {/* Model cards */}
               <SubLabel>{t('left.bottomCap.model')}</SubLabel>

@@ -214,6 +214,10 @@ export const useStore = create((set, get) => ({
     smoothing: 1,
     flareAngle: 0,
     fitterType: 'E27',
+    // "Modo Base" — total fill: the shade becomes a fully solid, closed
+    // piece (no hollow interior, sealed at the top too) instead of a
+    // thin-walled shell. Wall thickness / bottom cap do not apply here.
+    solidFill: false,
   },
 
   setLampshade: (patch) =>

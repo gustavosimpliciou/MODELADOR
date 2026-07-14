@@ -60,7 +60,9 @@ function buildExportGeometry(state) {
   const { lampshade, meshParams, activeMesh, activeTexture, textureParams, exportQuality, bottomCap } = state
   const lamp = applyQuality(lampshade, exportQuality)
   const shadeGeo = buildLampshadeGeometry(lamp, meshParams, activeMesh, activeTexture, textureParams)
-  if (!bottomCap || !bottomCap.enabled) return shadeGeo
+  // "Modo Base" already yields a fully solid, sealed piece — skip the
+  // fundo merge entirely (redundant, would just duplicate/overlap geometry).
+  if (!bottomCap || !bottomCap.enabled || lampshade.solidFill) return shadeGeo
   const fundoGeo = buildPlacedFundoGeometry(lamp, bottomCap, shadeGeo)
   if (!fundoGeo) return shadeGeo
   // Normalise attributes for merge: both need position + normal only,

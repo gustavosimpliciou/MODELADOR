@@ -259,6 +259,7 @@ export const BOTTOM_CAP_MODELS = [
   { id: 'hexagons',  name: 'Hexágonos',  desc: 'Colmeia — rigidez extra'      },
   { id: 'diamonds',  name: 'Losangos',   desc: 'Contemporâneo — muita luz'    },
   { id: 'arabesque', name: 'Arabesco',   desc: 'Quatrefoil — decorativo'      },
+  { id: 'solid',     name: 'Fechado',    desc: 'Totalmente vedado — sem furos' },
 ]
 
 // ─── Full geometry builder ──────────────────────────────────────
@@ -315,58 +316,62 @@ export function buildBottomCapGeometry({
     shape.closePath()
   }
 
-  // Central socket hole (CW winding)
-  const socketHole = new THREE.Path()
-  const skSteps = 48
-  for (let i = 0; i <= skSteps; i++) {
-    const a = -(i / skSteps) * Math.PI * 2
-    if (i === 0) socketHole.moveTo(Math.cos(a) * rSocket, Math.sin(a) * rSocket)
-    else socketHole.lineTo(Math.cos(a) * rSocket, Math.sin(a) * rSocket)
-  }
-  socketHole.closePath()
-  shape.holes.push(socketHole)
-
-  // ── Vent holes per sector
-  //     Use the MIN radius of the outerBoundary as reference so vents never
-  //     poke through the wall in "waves" (concave points).
-  let refROut = rOut
-  if (outerBoundary && outerBoundary.length >= 8) {
-    refROut = Math.min(...outerBoundary)
-  }
-  const N = Math.max(2, Math.min(4, supports))
-  const angPerSector = (2 * Math.PI) / N
-  const meanR = (rHub + refROut) / 2
-  const supportHalf = Math.atan2(mm(supportWidthMm) / 2, meanR)
-  const angMargin = mm(2) / meanR
-  const rMarginInner = mm(1.5)
-  const rMarginOuter = Math.max(rimWidth, mm(2.5))
-  const shrink = 1 - (100 - ventedArea) / 100 * 0.35
-  const rIn = rHub + rMarginInner
-  const rOutV = refROut - rMarginOuter
-  const radialCenter = (rIn + rOutV) / 2
-  const shrunkIn = radialCenter - (radialCenter - rIn) * shrink
-  const shrunkOut = radialCenter + (rOutV - radialCenter) * shrink
-
-  const builder = SECTOR_BUILDERS[model] || SECTOR_BUILDERS.triangles
-
-  for (let i = 0; i < N; i++) {
-    const aMid = i * angPerSector + angPerSector / 2 + supportOffset
-    const aHalfSpan = angPerSector / 2 - supportHalf - angMargin
-    if (aHalfSpan <= 0.05) continue
-    const ptsCCW = builder({
-      rIn: shrunkIn,
-      rOut: shrunkOut,
-      aMid,
-      aHalfSpan,
-    })
-    const rev = new THREE.Path()
-    for (let j = ptsCCW.length - 1; j >= 0; j--) {
-      const [x, y] = ptsCCW[j]
-      if (j === ptsCCW.length - 1) rev.moveTo(x, y)
-      else rev.lineTo(x, y)
+  // "Fechado" (solid) model: a fully sealed disc — no socket hole, no
+  // vents, no openings of any kind. Skip all hole punching entirely.
+  if (model !== 'solid') {
+    // Central socket hole (CW winding)
+    const socketHole = new THREE.Path()
+    const skSteps = 48
+    for (let i = 0; i <= skSteps; i++) {
+      const a = -(i / skSteps) * Math.PI * 2
+      if (i === 0) socketHole.moveTo(Math.cos(a) * rSocket, Math.sin(a) * rSocket)
+      else socketHole.lineTo(Math.cos(a) * rSocket, Math.sin(a) * rSocket)
     }
-    rev.closePath()
-    shape.holes.push(rev)
+    socketHole.closePath()
+    shape.holes.push(socketHole)
+
+    // ── Vent holes per sector
+    //     Use the MIN radius of the outerBoundary as reference so vents never
+    //     poke through the wall in "waves" (concave points).
+    let refROut = rOut
+    if (outerBoundary && outerBoundary.length >= 8) {
+      refROut = Math.min(...outerBoundary)
+    }
+    const N = Math.max(2, Math.min(4, supports))
+    const angPerSector = (2 * Math.PI) / N
+    const meanR = (rHub + refROut) / 2
+    const supportHalf = Math.atan2(mm(supportWidthMm) / 2, meanR)
+    const angMargin = mm(2) / meanR
+    const rMarginInner = mm(1.5)
+    const rMarginOuter = Math.max(rimWidth, mm(2.5))
+    const shrink = 1 - (100 - ventedArea) / 100 * 0.35
+    const rIn = rHub + rMarginInner
+    const rOutV = refROut - rMarginOuter
+    const radialCenter = (rIn + rOutV) / 2
+    const shrunkIn = radialCenter - (radialCenter - rIn) * shrink
+    const shrunkOut = radialCenter + (rOutV - radialCenter) * shrink
+
+    const builder = SECTOR_BUILDERS[model] || SECTOR_BUILDERS.triangles
+
+    for (let i = 0; i < N; i++) {
+      const aMid = i * angPerSector + angPerSector / 2 + supportOffset
+      const aHalfSpan = angPerSector / 2 - supportHalf - angMargin
+      if (aHalfSpan <= 0.05) continue
+      const ptsCCW = builder({
+        rIn: shrunkIn,
+        rOut: shrunkOut,
+        aMid,
+        aHalfSpan,
+      })
+      const rev = new THREE.Path()
+      for (let j = ptsCCW.length - 1; j >= 0; j--) {
+        const [x, y] = ptsCCW[j]
+        if (j === ptsCCW.length - 1) rev.moveTo(x, y)
+        else rev.lineTo(x, y)
+      }
+      rev.closePath()
+      shape.holes.push(rev)
+    }
   }
 
   const geo = new THREE.ExtrudeGeometry(shape, {

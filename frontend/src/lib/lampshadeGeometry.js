@@ -133,7 +133,7 @@ function repairLatheSeam(geo, segs, numProfilePts) {
 export function buildLampshadeGeometry(lampshade, meshParams, activeMesh, activeTexture = null, textureParams = null) {
   const {
     profile, height, topDiameter, middleDiameter, bottomDiameter, bellCurve,
-    segments, wallThickness, flareAngle, smoothing,
+    segments, wallThickness, flareAngle, smoothing, solidFill,
   } = lampshade
 
   const h = Math.max(0.5, height / 100)
@@ -168,14 +168,27 @@ export function buildLampshadeGeometry(lampshade, meshParams, activeMesh, active
     outerPts.push(new THREE.Vector2(r, (1 - t) * h - h / 2))
   }
 
-  // Build closed shell profile: outer down, bottom cap, inner up, top cap
+  // Build revolve profile:
+  //  • Normal mode (shell): outer down → bottom cap → inner up → top cap,
+  //    giving a hollow piece with real wall thickness.
+  //  • "Modo Base" (solidFill): outer profile only, closed to the central
+  //    axis (r=0) at both top and bottom → a single fully solid, sealed
+  //    revolved volume (no interior cavity, no open top/bottom rim).
   const profilePts = []
-  outerPts.forEach((p) => profilePts.push(new THREE.Vector2(p.x, p.y)))
-  const bot = outerPts[outerPts.length - 1]
-  profilePts.push(new THREE.Vector2(Math.max(0.015, bot.x - wall), bot.y))
-  for (let i = outerPts.length - 2; i >= 0; i--) {
-    const p = outerPts[i]
-    profilePts.push(new THREE.Vector2(Math.max(0.015, p.x - wall), p.y))
+  if (solidFill) {
+    const top = outerPts[0]
+    profilePts.push(new THREE.Vector2(0, top.y))
+    outerPts.forEach((p) => profilePts.push(new THREE.Vector2(p.x, p.y)))
+    const bot = outerPts[outerPts.length - 1]
+    profilePts.push(new THREE.Vector2(0, bot.y))
+  } else {
+    outerPts.forEach((p) => profilePts.push(new THREE.Vector2(p.x, p.y)))
+    const bot = outerPts[outerPts.length - 1]
+    profilePts.push(new THREE.Vector2(Math.max(0.015, bot.x - wall), bot.y))
+    for (let i = outerPts.length - 2; i >= 0; i--) {
+      const p = outerPts[i]
+      profilePts.push(new THREE.Vector2(Math.max(0.015, p.x - wall), p.y))
+    }
   }
 
   const geo = new THREE.LatheGeometry(profilePts, segs)
