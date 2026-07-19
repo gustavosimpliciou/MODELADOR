@@ -10,12 +10,19 @@ import MobileBlock, { useIsMobile } from './components/MobileBlock'
 import UpgradeModal from './components/UpgradeModal'
 import ProjectsModal from './components/ProjectsModal'
 import LoginScreen from './components/LoginScreen'
+import ToolSelector from './components/ToolSelector'
 import { useT } from './i18n/useT'
 import { supabase } from './lib/supabase'
 
 export default function App() {
-  const [loaded, setLoaded] = useState(false)
-  const handleSplashDone = useCallback(() => setLoaded(true), [])
+  // Pula o SplashScreen se o usuário já passou por ele nesta sessão
+  // (ex.: voltando do Cortes via botão Studio). sessionStorage é limpo ao fechar o browser.
+  const [loaded, setLoaded] = useState(() => !!sessionStorage.getItem('nativos_splash_done'))
+  const [activeTool, setActiveTool] = useState(null) // null = selector, 'modelador' = 3D editor
+  const handleSplashDone = useCallback(() => {
+    sessionStorage.setItem('nativos_splash_done', '1')
+    setLoaded(true)
+  }, [])
   const isMobile      = useIsMobile()
   const token         = useStore((s) => s.token)
   const user          = useStore((s) => s.user)
@@ -86,11 +93,9 @@ export default function App() {
   }
 
   // ── Not logged in ───────────────────────────────────────────────
-  // (mobile gate does not apply here — login/signup must work on mobile)
   if (!user) return <LoginScreen />
 
   // ── Mobile gate ───────────────────────────────────────────────────
-  // Only enforced once the user is authenticated and about to enter the tool.
   if (isMobile) return <MobileBlock />
 
   // ── Loading screen ───────────────────────────────────────────────
@@ -98,7 +103,12 @@ export default function App() {
     return <SplashScreen onDone={handleSplashDone} />
   }
 
-  // ── Main app ─────────────────────────────────────────────────────
+  // ── Tool selector ─────────────────────────────────────────────────
+  if (!activeTool) {
+    return <ToolSelector onSelectModelador={() => setActiveTool('modelador')} />
+  }
+
+  // ── Main app (Modelador 3D) ───────────────────────────────────────
   return (
     <div style={{
       width: '100vw', height: '100vh',
@@ -108,7 +118,7 @@ export default function App() {
     }}>
       <UpgradeModal />
       <ProjectsModal />
-      <Navbar />
+      <Navbar onBackToSelector={() => setActiveTool(null)} />
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
         {/* Left panel — 220px */}

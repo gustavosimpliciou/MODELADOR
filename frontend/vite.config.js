@@ -14,6 +14,11 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
+      // Proxy /cortes/* to the Cortes Studio Next.js app on port 3001
+      '/cortes': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
     },
   },
   preview: {
@@ -23,9 +28,7 @@ export default defineConfig({
     allowedHosts: true,
   },
   build: {
-    // Larger chunks are fine — this app has heavy 3D deps (three.js, drei)
     chunkSizeWarningLimit: 2000,
-    // Disable minification-heavy transforms that slow down first build
     target: 'es2020',
   },
 })

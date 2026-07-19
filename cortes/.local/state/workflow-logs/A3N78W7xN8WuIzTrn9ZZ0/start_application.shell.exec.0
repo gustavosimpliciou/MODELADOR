@@ -1,0 +1,45 @@
+[43m[33m[[39m[49m[43m[30mWARN[39m[49m[43m[33m][39m[49m The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.overrides". See https://pnpm.io/settings for the new home of each setting.
+[43m[33m[[39m[49m[43m[30mWARN[39m[49m[43m[33m][39m[49m The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.overrides". See https://pnpm.io/settings for the new home of each setting.
+Already up to date
+[K[0JDone in 475ms using pnpm v11.14.0
+[K[0J[2m$ next dev -p 5000[22m
+[1m[38;2;173;127;168m▲ Next.js 16.2.6[39m[22m (Turbopack)
+- Local:         http://localhost:5000
+- Network:       http://172.24.0.2:5000
+[32m[1m✓[22m[39m Ready in 674ms
+
+[37m[1m○[22m[39m Compiling / ...
+ GET / [32m200[39m in 96s[2m (next.js: 95s, application-code: 548ms)[22m
+ GET / [32m200[39m in 28.1s[2m (next.js: 27.3s, application-code: 752ms)[22m
+[36m[browser][39m [33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.[39m
+[36m[browser][39m THREE.WebGLRenderer: A WebGL context could not be created. Reason:  Could not create a WebGL context, VENDOR = 0xffff, DEVICE = 0xffff, Sandboxed = no, Optimus = no, AMD switchable = no, Reset notification strategy = 0x0000, ErrorMessage = BindToCurrentSequence failed: . 
+[36m[browser][39m [33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.[39m [2m(https://6ab016cc-db89-45d3-bf69-7a0d278ea383-00-2ncslgcqb1ll7.janeway.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
+[36m[browser][39m THREE.WebGLRenderer: A WebGL context could not be created. Reason:  Could not create a WebGL context, VENDOR = 0xffff, DEVICE = 0xffff, Sandboxed = no, Optimus = no, AMD switchable = no, Reset notification strategy = 0x0000, ErrorMessage = BindToCurrentSequence failed: . 
+[36m[browser][39m THREE.WebGLRenderer: THREE.WebGLRenderer: Error creating WebGL context. 
+[36m[browser][39m [31m⨯ unhandledRejection: Error: THREE.WebGLRenderer: Error creating WebGL context.[39m
+[36m[browser][39m [33m[Viewport3D] WebGL unavailable — showing fallback UI[39m [2m(components/viewport/viewport-3d.tsx:443:17)[22m
+[32m[1m✓[22m[39m Compiled in 4.3s
+[32m[1m✓[22m[39m Compiled in 6.3s
+ GET / [32m200[39m in 2.3s[2m (next.js: 2.2s, application-code: 120ms)[22m
+ GET / [32m200[39m in 1685ms[2m (next.js: 1582ms, application-code: 103ms)[22m
+ GET / [32m200[39m in 3.3s[2m (next.js: 3.2s, application-code: 38ms)[22m
+ GET / [32m200[39m in 1114ms[2m (next.js: 1094ms, application-code: 20ms)[22m
+[32m[1m✓[22m[39m Compiled in 3.9s
+[32m[1m✓[22m[39m Compiled in 4.4s
+[32m[1m✓[22m[39m Compiled in 4.4s
+[32m[1m✓[22m[39m Compiled in 5.5s
+[32m[1m✓[22m[39m Compiled in 9.6s
+ GET / [32m200[39m in 9.7s[2m (next.js: 9.6s, application-code: 96ms)[22m
+[36m[browser][39m [33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.[39m [2m(https://6ab016cc-db89-45d3-bf69-7a0d278ea383-00-2ncslgcqb1ll7.janeway.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
+[36m[browser][39m [33m[Viewport3D] WebGL context lost[39m [2m(https://6ab016cc-db89-45d3-bf69-7a0d278ea383-00-2ncslgcqb1ll7.janeway.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
+ GET / [32m200[39m in 5.2s[2m (next.js: 5.2s, application-code: 30ms)[22m
+ GET / [32m200[39m in 7.9s[2m (next.js: 7.7s, application-code: 131ms)[22m
+ GET / [32m200[39m in 3.0s[2m (next.js: 2.9s, application-code: 56ms)[22m
+[32m[1m✓[22m[39m Compiled in 18.3s
+ GET / [32m200[39m in 12.1s[2m (next.js: 11.8s, application-code: 281ms)[22m
+ GET / [32m200[39m in 12.1s[2m (next.js: 12.0s, application-code: 149ms)[22m
+ GET / [32m200[39m in 19.1s[2m (next.js: 18.9s, application-code: 135ms)[22m
+[32m[1m✓[22m[39m Compiled in 14.1s
+ GET / [32m200[39m in 12.1s[2m (next.js: 12.1s, application-code: 46ms)[22m
+ GET / [32m200[39m in 17.1s[2m (next.js: 17.0s, application-code: 61ms)[22m
+ GET / [32m200[39m in 12.1s[2m (next.js: 11.8s, application-code: 270ms)[22m

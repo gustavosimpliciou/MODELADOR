@@ -22,6 +22,10 @@ args = "Start application"
 task = "workflow.run"
 args = "Backend API"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Cortes 3D"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -46,6 +50,22 @@ waitForPort = 8000
 [workflows.workflow.metadata]
 outputType = "console"
 
+[[workflows.workflow]]
+name = "Cortes 3D"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd cortes && npm run dev"
+waitForPort = 3001
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[ports]]
+localPort = 3001
+externalPort = 3001
+
 [[ports]]
 localPort = 5000
 externalPort = 80
@@ -58,3 +78,4 @@ externalPort = 8000
 
 [userenv.shared]
 SUPABASE_URL = "https://blqvsglspdayrznnbzzf.supabase.co"
+SUPABASE_KEY = "sb_publishable_fg_66namw-ZLUeYkyg365w_zwsGvCIR"

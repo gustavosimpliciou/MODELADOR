@@ -142,7 +142,7 @@ function SaveNameDialog({ defaultName, saving, onSave, onCancel }) {
 
 // ─── Main Navbar ───────────────────────────────────────────────────────
 
-export default function Navbar() {
+export default function Navbar({ onBackToSelector }) {
   const openMenu            = useStore((s) => s.openMenu)
   const setOpenMenu         = useStore((s) => s.setOpenMenu)
   const setViewMode         = useStore((s) => s.setViewMode)
@@ -250,6 +250,30 @@ export default function Navbar() {
         position: 'relative',
         zIndex: 100,
       }}>
+        {/* ← Voltar ao seletor */}
+        {onBackToSelector && (
+          <button
+            onClick={onBackToSelector}
+            title="Trocar ferramenta"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              padding: '4px 8px', marginRight: 8,
+              background: 'none', border: '1px solid var(--line)',
+              borderRadius: 4, cursor: 'pointer',
+              fontFamily: 'var(--font-mono)', fontSize: 10,
+              letterSpacing: '0.1em', textTransform: 'uppercase',
+              color: 'var(--text-dim)', transition: 'all 0.15s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.borderColor = 'var(--accent)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-dim)'; e.currentTarget.style.borderColor = 'var(--line)' }}
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 12H5M12 5l-7 7 7 7"/>
+            </svg>
+            Ferramentas
+          </button>
+        )}
+
         {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 16 }}>
           <img

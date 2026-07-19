@@ -1,0 +1,32 @@
+VERDICT: REJECTED
+The diff should not be accepted for task #1 because it does not represent a clean “project setup/dependency verification” change and introduces functional risk.
+
+Critical findings:
+- The task scope was environment setup (install deps, verify frontend/backend/cortes run), but the commit includes broad application behavior changes across Cortes UI/rendering/auth flow and frontend splash behavior. That is out of scope and adds regression surface for a setup task.
+- `.replit` removed `SUPABASE_KEY` from shared env without replacing it with a secure injected secret path in this task. Backend code depends on `SUPABASE_KEY`; with it absent, backend auth/data operations degrade/disable. This is a functional regression risk, not a setup validation.
+- Runtime verification is not evidenced by code changes; instead, substantial product logic was altered (file open flow, quit/logout behavior, render loop mode, model material behavior). These changes are unrelated to dependency installation and should not be bundled into task #1 completion.
+
+Security: none observed at critical threshold in this diff.
+
+Next actions:
+1) Revert non-setup application code changes from this task and keep task #1 limited to reproducible setup/workflow/dependency adjustments.
+2) Restore backend-required Supabase key wiring via secure environment secrets (not hardcoded), and confirm backend startup with required env present.
+3) Provide explicit setup verification evidence (commands and successful starts for frontend, backend, cortes) in task notes without shipping unrelated feature/refactor changes.
+
+VERDICT: REJECTED
+VERDICT: REJECTED
+The diff should not be accepted for task #1 because it does not represent a clean “project setup/dependency verification” change and introduces functional risk.
+
+Critical findings:
+- The task scope was environment setup (install deps, verify frontend/backend/cortes run), but the commit includes broad application behavior changes across Cortes UI/rendering/auth flow and frontend splash behavior. That is out of scope and adds regression surface for a setup task.
+- `.replit` removed `SUPABASE_KEY` from shared env without replacing it with a secure injected secret path in this task. Backend code depends on `SUPABASE_KEY`; with it absent, backend auth/data operations degrade/disable. This is a functional regression risk, not a setup validation.
+- Runtime verification is not evidenced by code changes; instead, substantial product logic was altered (file open flow, quit/logout behavior, render loop mode, model material behavior). These changes are unrelated to dependency installation and should not be bundled into task #1 completion.
+
+Security: none observed at critical threshold in this diff.
+
+Next actions:
+1) Revert non-setup application code changes from this task and keep task #1 limited to reproducible setup/workflow/dependency adjustments.
+2) Restore backend-required Supabase key wiring via secure environment secrets (not hardcoded), and confirm backend startup with required env present.
+3) Provide explicit setup verification evidence (commands and successful starts for frontend, backend, cortes) in task notes without shipping unrelated feature/refactor changes.
+
+VERDICT: REJECTED

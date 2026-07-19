@@ -1,0 +1,17 @@
+
+> my-project@0.1.0 dev
+> next dev -p 3001
+
+[1G[0K[1m[38;2;173;127;168m▲ Next.js 16.2.10[39m[22m (Turbopack)
+- Local:         http://localhost:3001
+- Network:       http://172.24.0.2:3001
+[32m[1m✓[22m[39m Ready in 842ms
+
+[37m[1m○[22m[39m Compiling / ...
+ GET / [32m200[39m in 4.8s[2m (next.js: 4.4s, application-code: 464ms)[22m
+[36m[browser][39m [33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.[39m
+[36m[browser][39m THREE.WebGLRenderer: A WebGL context could not be created. Reason:  Could not create a WebGL context, VENDOR = 0xffff, DEVICE = 0xffff, Sandboxed = no, Optimus = no, AMD switchable = no, Reset notification strategy = 0x0000, ErrorMessage = BindToCurrentSequence failed: . 
+[36m[browser][39m THREE.WebGLRenderer: A WebGL context could not be created. Reason:  Could not create a WebGL context, VENDOR = 0xffff, DEVICE = 0xffff, Sandboxed = no, Optimus = no, AMD switchable = no, Reset notification strategy = 0x0000, ErrorMessage = BindToCurrentSequence failed: . 
+[36m[browser][39m THREE.WebGLRenderer: THREE.WebGLRenderer: Error creating WebGL context. 
+[36m[browser][39m [31m⨯ unhandledRejection: Error: THREE.WebGLRenderer: Error creating WebGL context.[39m
+[36m[browser][39m [33m[Viewport3D] WebGL unavailable — showing fallback UI[39m [2m(components/viewport/viewport-3d.tsx:479:17)[22m
