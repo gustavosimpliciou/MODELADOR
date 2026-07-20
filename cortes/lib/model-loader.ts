@@ -160,6 +160,7 @@ async function loadPLYFromBuffer(buffer: ArrayBuffer): Promise<THREE.BufferGeome
 }
 
 async function loadGLTFFromBuffer(buffer: ArrayBuffer, filename: string): Promise<THREE.BufferGeometry> {
+  const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js')
   return new Promise((resolve, reject) => {
     const loader = new GLTFLoader()
     const ext = filename.split('.').pop()?.toLowerCase()

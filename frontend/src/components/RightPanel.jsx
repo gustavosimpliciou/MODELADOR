@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useStore } from '../store/useStore'
 import MeshLibrary from './MeshLibrary'
 import TextureLibrary from './TextureLibrary'
@@ -62,10 +62,12 @@ export default function RightPanel() {
     { key: 'analysis', label: t('tab.analysis') },
   ]
 
-  // Redirect removed tabs to meshes
-  if (rightPanel === 'modifiers' || rightPanel === 'ai') {
-    setRightPanel('meshes')
-  }
+  // Redirect removed tabs to meshes (must be in useEffect to avoid setState during render)
+  useEffect(() => {
+    if (rightPanel === 'modifiers' || rightPanel === 'ai') {
+      setRightPanel('meshes')
+    }
+  }, [rightPanel, setRightPanel])
 
   return (
     <div style={{

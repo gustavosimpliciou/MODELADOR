@@ -192,10 +192,8 @@ export const useStore = create((set, get) => ({
       set({ credits: newCredits, freeDownloadUsed: true })
       return 'ok'
     } catch (e) {
-      if (!s.freeDownloadUsed) {
-        set({ freeDownloadUsed: true })
-        return 'free'
-      }
+      // Network or Supabase error — do not consume free download silently.
+      // Show upgrade modal as a safe fallback; the user can retry.
       set({ showUpgradeModal: true })
       return 'upgrade_required'
     }

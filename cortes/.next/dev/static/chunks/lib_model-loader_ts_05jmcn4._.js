@@ -136,6 +136,7 @@ async function loadPLYFromBuffer(buffer) {
     return new PLYLoader().parse(buffer);
 }
 async function loadGLTFFromBuffer(buffer, filename) {
+    const { GLTFLoader } = await __turbopack_context__.A("[project]/node_modules/three/examples/jsm/loaders/GLTFLoader.js [app-client] (ecmascript, async loader)");
     return new Promise((resolve, reject)=>{
         const loader = new GLTFLoader();
         const ext = filename.split('.').pop()?.toLowerCase();

@@ -2,11 +2,7 @@
   # Build the React frontend, then build the Cortes 3D Next.js app as a static
   # export and merge it into frontend/dist/cortes/ so both apps are served from
   # the same Netlify site under their respective paths.
-  #
-  # --webpack: Next.js 16 defaults to Turbopack for production builds; Turbopack
-  # native binaries can fail on Netlify's Ubuntu build servers. Webpack is the
-  # proven fallback for CI/CD static-export builds.
-  command   = "cd frontend && yarn install && yarn build && cd ../cortes && npm install && npm run build -- --webpack && mkdir -p ../frontend/dist/cortes && cp -r out/. ../frontend/dist/cortes/"
+  command   = "cd frontend && yarn install && yarn build && cd ../cortes && npm install && npm run build && mkdir -p ../frontend/dist/cortes && cp -r out/. ../frontend/dist/cortes/"
   publish   = "frontend/dist"
   functions = "netlify/functions"
 

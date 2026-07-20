@@ -3,7 +3,7 @@ module.exports = [
 
 __turbopack_context__.v((parentImport) => {
     return Promise.all([
-  "server/chunks/ssr/node_modules_three_examples_jsm_11svwkj._.js",
+  "server/chunks/ssr/node_modules_three_examples_jsm_0vl471z._.js",
   "server/chunks/ssr/lib_model-loader_ts_1nf0oic._.js"
 ].map((chunk) => __turbopack_context__.l(chunk))).then(() => {
         return parentImport("[project]/lib/model-loader.ts [app-ssr] (ecmascript)");

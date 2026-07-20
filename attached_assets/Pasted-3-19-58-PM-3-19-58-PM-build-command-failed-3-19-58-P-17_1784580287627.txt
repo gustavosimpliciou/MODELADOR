@@ -1,0 +1,41 @@
+3:19:58 PM: ​
+3:19:58 PM: "build.command" failed                                        
+3:19:58 PM: ────────────────────────────────────────────────────────────────
+3:19:58 PM: ​
+3:19:58 PM:   Error message
+3:19:58 PM:   Command failed with exit code 1: cd frontend && yarn install && yarn build && cd ../cortes && npm install && npm run build -- --webpack && mkdir -p ../frontend/dist/cortes && cp -r out/. ../frontend/dist/cortes/
+3:19:58 PM: ​
+3:19:58 PM:   Error location
+3:19:58 PM:   In build.command from netlify.toml:
+3:19:58 PM:   cd frontend && yarn install && yarn build && cd ../cortes && npm install && npm run build -- --webpack && mkdir -p ../frontend/dist/cortes && cp -r out/. ../frontend/dist/cortes/
+3:19:58 PM: ​
+3:19:58 PM:   Resolved config
+3:19:58 PM:   build:
+3:19:58 PM:     command: cd frontend && yarn install && yarn build && cd ../cortes && npm
+3:19:58 PM:       install && npm run build -- --webpack && mkdir -p ../frontend/dist/cortes &&
+3:19:58 PM:       cp -r out/. ../frontend/dist/cortes/
+3:19:58 PM:     commandOrigin: config
+3:19:58 PM:     environment:
+3:19:58 PM:       - NODE_VERSION
+3:19:58 PM:       - NODE_OPTIONS
+3:19:58 PM:     publish: /opt/build/repo/frontend/dist
+3:19:58 PM:     publishOrigin: config
+3:19:58 PM:   functionsDirectory: /opt/build/repo/netlify/functions
+3:19:58 PM:   redirects:
+3:19:58 PM:     - from: /api/webhook/kiwify
+3:19:58 PM:       status: 200
+3:19:58 PM:       to: /.netlify/functions/kiwify
+3:19:58 PM:     - force: true
+3:19:58 PM:       from: /cortes
+3:19:58 PM:       status: 301
+3:19:58 PM:       to: /cortes/
+3:19:58 PM:     - from: /cortes/*
+3:19:58 PM:       status: 200
+3:19:58 PM:       to: /cortes/index.html
+3:19:58 PM:     - from: /*
+3:19:58 PM:       status: 200
+3:19:58 PM:       to: /index.html
+3:19:58 PM:   redirectsOrigin: config
+3:19:58 PM: Build failed due to a user error: Build script returned non-zero exit code: 2
+3:19:58 PM: Failing build: Failed to build site
+3:19:59 PM: Finished processing build request in 1m53.171s

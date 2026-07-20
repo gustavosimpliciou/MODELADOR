@@ -3,7 +3,7 @@
 
 __turbopack_context__.v((parentImport) => {
     return Promise.all([
-  "static/chunks/node_modules_three_examples_jsm_0i96arb._.js",
+  "static/chunks/node_modules_three_examples_jsm_0246yxc._.js",
   "static/chunks/lib_model-loader_ts_05jmcn4._.js",
   "static/chunks/lib_model-loader_ts_0d5fpzh._.js"
 ].map((chunk) => __turbopack_context__.l(chunk))).then(() => {
@@ -28,7 +28,7 @@ __turbopack_context__.v((parentImport) => {
 
 __turbopack_context__.v((parentImport) => {
     return Promise.all([
-  "static/chunks/node_modules_three_examples_jsm_0i96arb._.js",
+  "static/chunks/node_modules_three_examples_jsm_0246yxc._.js",
   "static/chunks/_0a64fpn._.js",
   "static/chunks/node_modules_three_build_three_module_0i8qy8g.js",
   "static/chunks/node_modules_@react-three_fiber_dist_1e28_bc._.js",
