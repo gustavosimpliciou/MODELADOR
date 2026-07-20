@@ -1,4 +1,4 @@
-modules = ["nodejs-20", "web", "python-3.12"]
+modules = ["nodejs-20", "web", "bash", "python-3.12"]
 [agent]
 expertMode = true
 
@@ -42,13 +42,13 @@ waitForPort = 5000
 name = "Backend API"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd backend && uvicorn server:app --host 0.0.0.0 --port 8000 --reload"
-waitForPort = 8000
-
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd backend && python -m uvicorn server:app --host 0.0.0.0 --port 8000 --reload"
+waitForPort = 8000
 
 [[workflows.workflow]]
 name = "Cortes 3D"

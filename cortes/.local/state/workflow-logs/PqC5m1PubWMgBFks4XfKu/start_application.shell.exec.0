@@ -1,25 +1,0 @@
-[43m[33m[[39m[49m[43m[30mWARN[39m[49m[43m[33m][39m[49m The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.overrides". See https://pnpm.io/settings for the new home of each setting.
-[43m[33m[[39m[49m[43m[30mWARN[39m[49m[43m[33m][39m[49m The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.overrides". See https://pnpm.io/settings for the new home of each setting.
-Already up to date
-[K[0JDone in 414ms using pnpm v11.14.0
-[K[0J[2m$ next dev -p 5000[22m
-[1m[38;2;173;127;168m▲ Next.js 16.2.6[39m[22m (Turbopack)
-- Local:         http://localhost:5000
-- Network:       http://172.24.0.2:5000
-[32m[1m✓[22m[39m Ready in 998ms
-[33m[1m⚠[22m[39m Slow filesystem detected. The benchmark took 317ms. If /home/runner/workspace/.next/dev is a network drive, consider moving it to a local folder.
-See more: https://nextjs.org/docs/app/guides/local-development
-
-[37m[1m○[22m[39m Compiling / ...
- GET / [32m200[39m in 30.1s[2m (next.js: 29.3s, application-code: 822ms)[22m
- GET / [32m200[39m in 2.1s[2m (next.js: 1070ms, application-code: 1078ms)[22m
-[36m[browser][39m [33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.[39m [2m(https://6ab016cc-db89-45d3-bf69-7a0d278ea383-00-2ncslgcqb1ll7.janeway.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
- GET / [32m200[39m in 11.4s[2m (next.js: 11.3s, application-code: 99ms)[22m
-[36m[browser][39m [33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.[39m
-[36m[browser][39m THREE.WebGLRenderer: A WebGL context could not be created. Reason:  Could not create a WebGL context, VENDOR = 0xffff, DEVICE = 0xffff, Sandboxed = no, Optimus = no, AMD switchable = no, Reset notification strategy = 0x0000, ErrorMessage = BindToCurrentSequence failed: . 
-[36m[browser][39m THREE.WebGLRenderer: A WebGL context could not be created. Reason:  Could not create a WebGL context, VENDOR = 0xffff, DEVICE = 0xffff, Sandboxed = no, Optimus = no, AMD switchable = no, Reset notification strategy = 0x0000, ErrorMessage = BindToCurrentSequence failed: . 
-[36m[browser][39m THREE.WebGLRenderer: THREE.WebGLRenderer: Error creating WebGL context. 
-[36m[browser][39m [31m⨯ unhandledRejection: Error: THREE.WebGLRenderer: Error creating WebGL context.[39m
-[36m[browser][39m [33m[Viewport3D] WebGL unavailable — showing fallback UI[39m [2m(components/viewport/viewport-3d.tsx:443:17)[22m
- GET / [32m200[39m in 63ms[2m (next.js: 9ms, application-code: 54ms)[22m
-[36m[browser][39m [33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.[39m [2m(https://6ab016cc-db89-45d3-bf69-7a0d278ea383-00-2ncslgcqb1ll7.janeway.replit.dev/__replco/static/devtools/injected.js:37:27)[22m

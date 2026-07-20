@@ -1,0 +1,31 @@
+
+> my-project@0.1.0 dev
+> next dev -p 3001
+
+[1G[0K[1m[38;2;173;127;168m▲ Next.js 16.2.10[39m[22m (Turbopack)
+- Local:         http://localhost:3001
+- Network:       http://172.24.0.2:3001
+[32m[1m✓[22m[39m Ready in 336ms
+
+[37m[1m○[22m[39m Compiling / ...
+ GET / [32m200[39m in 23.6s[2m (next.js: 23.0s, application-code: 573ms)[22m
+ GET / [32m200[39m in 173ms[2m (next.js: 16ms, application-code: 157ms)[22m
+ GET / [32m200[39m in 73ms[2m (next.js: 11ms, application-code: 62ms)[22m
+ GET / [32m200[39m in 149ms[2m (next.js: 5ms, application-code: 144ms)[22m
+ GET / [32m200[39m in 64ms[2m (next.js: 4ms, application-code: 60ms)[22m
+ GET / [32m200[39m in 46ms[2m (next.js: 3ms, application-code: 43ms)[22m
+ GET / [32m200[39m in 80ms[2m (next.js: 5ms, application-code: 75ms)[22m
+ GET / [32m200[39m in 91ms[2m (next.js: 20ms, application-code: 71ms)[22m
+ GET / [32m200[39m in 73ms[2m (next.js: 13ms, application-code: 60ms)[22m
+ GET / [32m200[39m in 53ms[2m (next.js: 5ms, application-code: 48ms)[22m
+ GET / [32m200[39m in 51ms[2m (next.js: 4ms, application-code: 47ms)[22m
+ GET / [32m200[39m in 54ms[2m (next.js: 9ms, application-code: 45ms)[22m
+ GET / [32m200[39m in 58ms[2m (next.js: 6ms, application-code: 52ms)[22m
+ GET / [32m200[39m in 43ms[2m (next.js: 3ms, application-code: 40ms)[22m
+[33m[1m⚠[22m[39m Found a change in next.config.mjs. Restarting the server to apply the changes...
+[1m[38;2;173;127;168m▲ Next.js 16.2.10[39m[22m (Turbopack)
+- Local:         http://localhost:3001
+- Network:       http://172.24.0.2:3001
+[32m[1m✓[22m[39m Ready in 2.5s
+[?25h
+[1G[0K⠙[1G[0K

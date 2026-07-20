@@ -1,5 +1,0 @@
-1:"$Sreact.fragment"
-2:I[97367,["/cortes/_next/static/chunks/158myu8e_yme3.js"],"ViewportBoundary"]
-3:I[97367,["/cortes/_next/static/chunks/158myu8e_yme3.js"],"MetadataBoundary"]
-4:"$Sreact.suspense"
-0:{"rsc":["$","$1","h",{"children":[null,["$","$L2",null,{"children":[["$","meta","0",{"charSet":"utf-8"}],["$","meta","1",{"name":"viewport","content":"width=device-width, initial-scale=1"}],["$","meta","2",{"name":"theme-color","content":"#000000"}],["$","meta","3",{"name":"color-scheme","content":"dark"}]]}],["$","div",null,{"hidden":true,"children":["$","$L3",null,{"children":["$","$4",null,{"name":"Next.Metadata","children":[["$","title","0",{"children":"Nativos Cut — Corte Inteligente de Modelos 3D"}],["$","meta","1",{"name":"description","content":"Software profissional de corte inteligente para modelos 3D com tecnologia SmartCut."}],["$","meta","2",{"name":"generator","content":"v0.app"}]]}]}]}],["$","meta",null,{"name":"next-size-adjust","content":""}]]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"vghVBiGcqV_Xb9_uxWLsh"}

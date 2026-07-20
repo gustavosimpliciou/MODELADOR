@@ -1,10 +1,18 @@
 [build]
-  command   = "cd frontend && yarn install && yarn build"
+  # Build the React frontend, then build the Cortes 3D Next.js app as a static
+  # export and merge it into frontend/dist/cortes/ so both apps are served from
+  # the same Netlify site under their respective paths.
+  #
+  # --webpack: Next.js 16 defaults to Turbopack for production builds; Turbopack
+  # native binaries can fail on Netlify's Ubuntu build servers. Webpack is the
+  # proven fallback for CI/CD static-export builds.
+  command   = "cd frontend && yarn install && yarn build && cd ../cortes && npm install && npm run build -- --webpack && mkdir -p ../frontend/dist/cortes && cp -r out/. ../frontend/dist/cortes/"
   publish   = "frontend/dist"
   functions = "netlify/functions"
 
 [build.environment]
-  NODE_VERSION = "22"
+  NODE_VERSION    = "22"
+  NODE_OPTIONS    = "--max-old-space-size=4096"
 
 # Kiwify webhook → Netlify Function
 [[redirects]]
@@ -12,7 +20,25 @@
   to     = "/.netlify/functions/kiwify"
   status = 200
 
-# SPA fallback — deve ser o último
+# ── Cortes 3D (Next.js static export) ────────────────────────────────────────
+# Estes dois blocos devem ficar ANTES do fallback SPA, senão o Netlify serve
+# o index.html do React para qualquer rota /cortes/* e o app nunca abre.
+#
+# /cortes  → redireciona para /cortes/ (trailing slash) onde o index.html vive
+[[redirects]]
+  from   = "/cortes"
+  to     = "/cortes/"
+  status = 301
+  force  = true
+
+# /cortes/* → serve o index.html do Next.js (SPA interno do Cortes)
+# force=false: se o arquivo existe (ex: _next/static/…) ele é servido diretamente
+[[redirects]]
+  from   = "/cortes/*"
+  to     = "/cortes/index.html"
+  status = 200
+
+# ── SPA fallback do React (deve ser o último) ─────────────────────────────────
 [[redirects]]
   from   = "/*"
   to     = "/index.html"
