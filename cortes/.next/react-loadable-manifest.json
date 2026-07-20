@@ -1,0 +1,40 @@
+{
+  "components/layout/export-panel.tsx -> jszip": {
+    "id": 4453,
+    "files": [
+      "static/chunks/453.e0dbde62f12f6c8e.js"
+    ]
+  },
+  "components/layout/export-panel.tsx -> three/examples/jsm/exporters/OBJExporter.js": {
+    "id": 9098,
+    "files": [
+      "static/chunks/98.f1d5f9e46a15c166.js"
+    ]
+  },
+  "components/layout/export-panel.tsx -> three/examples/jsm/exporters/STLExporter.js": {
+    "id": 6774,
+    "files": [
+      "static/chunks/774.f7f7473f2821337e.js"
+    ]
+  },
+  "lib/model-loader.ts -> three/examples/jsm/exporters/OBJExporter.js": {
+    "id": 9098,
+    "files": [
+      "static/chunks/98.f1d5f9e46a15c166.js"
+    ]
+  },
+  "lib/model-loader.ts -> three/examples/jsm/exporters/STLExporter.js": {
+    "id": 6774,
+    "files": [
+      "static/chunks/774.f7f7473f2821337e.js"
+    ]
+  },
+  "node_modules/@react-three/drei/core/VideoTexture.js -> hls.js": {
+    "id": null,
+    "files": []
+  },
+  "node_modules/@react-three/drei/web/FaceLandmarker.js -> @mediapipe/tasks-vision": {
+    "id": null,
+    "files": []
+  }
+}
