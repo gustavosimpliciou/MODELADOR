@@ -1,3 +1,11 @@
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  ⚠️  NÃO MODIFICAR ESTE ARQUIVO  —  DO NOT MODIFY THIS FILE  ⚠️         ║
+// ║                                                                          ║
+// ║  Este é o algoritmo de geração de tampa (cap) aprovado e testado.       ║
+// ║  Qualquer alteração pode quebrar a funcionalidade de corte no Netlify.  ║
+// ║  Se precisar ajustar, crie um arquivo separado e importe a partir dele. ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
 /**
  * High-Quality Cap Generation
  * ─────────────────────────────────────────────────────────────────────────────
