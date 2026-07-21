@@ -57,23 +57,6 @@ export interface CapOptions {
  * Generate a high-quality cap surface for a single closed boundary loop.
  * Returns flat position/normal arrays (triangle soup, unindexed) ready to
  * append to a BufferGeometry.
- *
- * Algorithm (redesigned for exact boundary conformance):
- *  1.  Analyse boundary — normal, centroid, spacing, area.
- *  2.  Derive orthonormal 2-D plane basis from the cap normal (or provided plane).
- *  3.  Project boundary to 2-D — EXACT, no resampling or fairing.
- *  4.  Base triangulation via THREE.ShapeUtils (Ear Clipping) — every vertex is
- *      a boundary vertex, so the triangulation is guaranteed inside the polygon.
- *  5.  Interior enrichment: split the longest edge of each large triangle on its
- *      midpoint (midpoints are inside by construction; concave cases are
- *      verified with a point-in-polygon test before insertion).
- *  6.  Constrained Taubin smoothing on interior-only vertices; after each
- *      Laplacian step any vertex that escaped the 2-D polygon is projected back
- *      to the nearest boundary edge — containment is mathematically guaranteed.
- *  7.  Remove degenerate triangles.
- *  8.  Fix winding for consistent outward normals.
- *  9.  Per-vertex normals with G1 blend at the boundary ring.
- * 10.  Flatten to unindexed triangle soup.
  */
 export function generateCap(
   boundary: THREE.Vector3[],
@@ -85,164 +68,83 @@ export function generateCap(
   const analysis = analyseBoundary(boundary)
   const capNormal = analysis.normal
 
-  // ── 2. Plane basis ──────────────────────────────────────────────────────────
-  // For plane-cuts the provided plane is authoritative.
-  // For smart-cuts (no plane), derive orthonormal basis from the Newell normal.
-  const planeNormal = options.plane
-    ? options.plane.normal.clone().normalize()
-    : capNormal.clone()
-  const planePoint = options.plane ? options.plane.point : analysis.centroid
+  // ── 2–4. Boundary lock (watertight outer edge) ─────────────────────────────
+  // The original boundary vertices are kept EXACTLY so the cap's outer edge
+  // matches the shell's open boundary edges — any deviation creates visible gaps.
+  const lockedBoundary = boundary.map(p => p.clone())
+  const boundaryCount = lockedBoundary.length
 
-  const refUp = Math.abs(planeNormal.y) < 0.9
-    ? new THREE.Vector3(0, 1, 0)
-    : new THREE.Vector3(1, 0, 0)
-  const uAxis = new THREE.Vector3().crossVectors(refUp, planeNormal).normalize()
-  const vAxis = new THREE.Vector3().crossVectors(planeNormal, uAxis).normalize()
-
-  const to2d = (p: THREE.Vector3): THREE.Vector2 => {
-    const rel = p.clone().sub(planePoint)
-    return new THREE.Vector2(rel.dot(uAxis), rel.dot(vAxis))
-  }
-  const to3d = (p2: THREE.Vector2): THREE.Vector3 => {
-    const p3 = planePoint.clone()
-      .addScaledVector(uAxis, p2.x)
-      .addScaledVector(vAxis, p2.y)
-    return options.plane ? projectToPlane(p3, options.plane) : p3
-  }
-
-  // ── 3. Project boundary to 2-D — EXACT, no resampling ───────────────────────
-  // Boundary vertices are the raw cut-edge coordinates. Moving them even
-  // slightly creates a seam gap between the cap and the surrounding shell.
-  const raw2d = boundary.map(to2d)
-  const rawArea = signedArea2D(raw2d)
-  const bnd2d = rawArea >= 0 ? raw2d : [...raw2d].reverse()
-  const bnd3d = rawArea >= 0 ? [...boundary] : [...boundary].reverse()
-  const N = bnd2d.length
-
-  // ── 4. Base triangulation — guaranteed inside the boundary ──────────────────
-  // ShapeUtils.triangulateShape (Ear Clipping) only emits triangles whose
-  // vertices are existing boundary vertices → geometrically impossible to exceed
-  // the cut boundary.
-  let baseFaces: number[][]
-  try {
-    baseFaces = THREE.ShapeUtils.triangulateShape(bnd2d, [])
-  } catch {
-    baseFaces = []
-    for (let i = 1; i + 1 < N; i++) baseFaces.push([0, i, i + 1])
-  }
-  if (baseFaces.length === 0) return empty()
-
-  // ── 5. Interior enrichment via edge-midpoint subdivision ────────────────────
-  // The midpoint of any edge between two interior points is also interior.
-  // For boundary-edge midpoints we still verify with a point-in-polygon test
-  // for safety on highly concave shapes.
-  const verts2d: THREE.Vector2[] = bnd2d.map(p => p.clone())
-  const verts3d: THREE.Vector3[] = bnd3d.map(p => p.clone())
-  const tris: [number, number, number][] = baseFaces.map(([a, b, c]) => [a, b, c])
-
-  const targetLen = Math.max(analysis.avgSpacing * 1.8, 1e-6)
-  const maxInterior = Math.min(
-    400,
-    Math.max(0, Math.round((analysis.area / (targetLen * targetLen)) * 3)),
+  // ── 2b. Smooth transition ring ──────────────────────────────────────────────
+  // Build a uniformly-spaced ring at ~12% inward from the boundary.
+  // This ring acts as the true "inner boundary" for the concentric mesh:
+  // the irregular outer ring is stitched to it with a variable-ratio strip,
+  // eliminating the sliver triangles that the jagged cut edge would cause.
+  const targetInner = Math.max(24, Math.min(96, Math.round(boundaryCount * 0.45)))
+  const T_INNER = 0.12
+  const rawInner: THREE.Vector3[] = lockedBoundary.map(p => {
+    const v = p.clone().lerp(analysis.centroid, T_INNER)
+    return options.plane ? projectToPlane(v, options.plane) : v
+  })
+  const innerRing: THREE.Vector3[] = fairContour(
+    rawInner.length > targetInner
+      ? resampleCatmullRom(rawInner, targetInner, options.plane)
+      : rawInner,
+    options.contourFairIter ?? 8,
+    0.4,
+    options.plane,
   )
-  const midCache = new Map<string, number>()
+  const innerCount = innerRing.length
 
-  const getOrCreateMid = (a: number, b: number): number | null => {
-    const key = a < b ? `${a}_${b}` : `${b}_${a}`
-    const cached = midCache.get(key)
-    if (cached !== undefined) return cached
-    if (verts2d.length - N >= maxInterior) return null
-    const m2d = new THREE.Vector2(
-      (verts2d[a].x + verts2d[b].x) * 0.5,
-      (verts2d[a].y + verts2d[b].y) * 0.5,
-    )
-    if (!pointInsidePoly2D(m2d, bnd2d)) return null
-    const idx = verts2d.length
-    verts2d.push(m2d)
-    verts3d.push(to3d(m2d))
-    midCache.set(key, idx)
-    return idx
-  }
+  // ── 5. Interior surface generation ─────────────────────────────────────────
+  // Concentric mesh is built FROM the smooth inner ring inward; the jagged
+  // outer ring is handled separately via stitching.
+  const rings = options.interiorRings ?? autoRings(analysis.area, analysis.avgSpacing)
+  const { vertices: coreVerts, triangles: coreTris, boundaryCount: innerBC } =
+    buildConcentricMesh(innerRing, analysis.centroid, Math.max(1, rings - 1), options.plane)
 
-  for (let pass = 0; pass < 3; pass++) {
-    let subdivided = false
-    const next: [number, number, number][] = []
-    for (const [a, b, c] of tris) {
-      const lab = verts2d[a].distanceTo(verts2d[b])
-      const lbc = verts2d[b].distanceTo(verts2d[c])
-      const lca = verts2d[c].distanceTo(verts2d[a])
-      const longest = Math.max(lab, lbc, lca)
-      if (longest > targetLen) {
-        let midIdx: number | null
-        if (lab >= lbc && lab >= lca) {
-          midIdx = getOrCreateMid(a, b)
-          if (midIdx !== null) { next.push([a, midIdx, c]); next.push([midIdx, b, c]); subdivided = true; continue }
-        } else if (lbc >= lab && lbc >= lca) {
-          midIdx = getOrCreateMid(b, c)
-          if (midIdx !== null) { next.push([a, b, midIdx]); next.push([a, midIdx, c]); subdivided = true; continue }
-        } else {
-          midIdx = getOrCreateMid(c, a)
-          if (midIdx !== null) { next.push([a, b, midIdx]); next.push([midIdx, b, c]); subdivided = true; continue }
-        }
-      }
-      next.push([a, b, c])
-    }
-    tris.length = 0
-    for (const t of next) tris.push(t)
-    if (!subdivided) break
-  }
+  // Assemble: [lockedBoundary (N) | coreVerts (innerRing + interior)]
+  // Shift all core triangle indices by N so they reference the combined array.
+  const vertices: THREE.Vector3[] = [...lockedBoundary, ...coreVerts]
+  const triangles: number[][] = coreTris.map(t => [
+    t[0] + boundaryCount,
+    t[1] + boundaryCount,
+    t[2] + boundaryCount,
+  ])
 
-  // ── 6. Constrained Taubin smoothing — interior vertices only ────────────────
-  // Boundary vertices (indices 0..N-1) are IMMUTABLE.
-  // After each Laplacian step, any interior vertex that moved outside the 2-D
-  // polygon is projected back to the nearest boundary edge, maintaining strict
-  // containment throughout smoothing.
-  const totalVerts = verts2d.length
-  if (totalVerts > N) {
-    const lambda = options.lambda ?? 0.5
-    const mu = options.mu ?? -0.53
-    const iters = Math.min(options.smoothIterations ?? 20, 30)
+  // Stitch outer ring (0..N-1) → inner ring (N..N+innerCount-1)
+  stitchRings(
+    vertices, triangles,
+    Array.from({ length: boundaryCount }, (_, i) => i),
+    Array.from({ length: innerCount }, (_, i) => i + boundaryCount),
+    analysis.centroid,
+  )
 
-    const adj: Set<number>[] = Array.from({ length: totalVerts }, () => new Set<number>())
-    for (const [a, b, c] of tris) {
-      adj[a].add(b); adj[a].add(c)
-      adj[b].add(a); adj[b].add(c)
-      adj[c].add(a); adj[c].add(b)
-    }
+  // Fixed count: outer ring + inner ring are both pinned during smoothing.
+  const fixedCount = boundaryCount + innerBC
 
-    const step = (factor: number) => {
-      for (let i = N; i < totalVerts; i++) {
-        const nb = adj[i]
-        if (nb.size === 0) continue
-        let sx = 0, sy = 0
-        for (const j of nb) { sx += verts2d[j].x; sy += verts2d[j].y }
-        const inv = 1 / nb.size
-        verts2d[i].x += factor * (sx * inv - verts2d[i].x)
-        verts2d[i].y += factor * (sy * inv - verts2d[i].y)
-        if (!pointInsidePoly2D(verts2d[i], bnd2d)) {
-          clipVertexToPolygon2D(verts2d[i], bnd2d)
-        }
-        verts3d[i] = to3d(verts2d[i])
-      }
-    }
-
-    for (let iter = 0; iter < iters; iter++) step(iter % 2 === 0 ? lambda : mu)
-  }
+  // ── 6. Global Taubin solver (free interior only) ────────────────────────────
+  const smoothIter = options.smoothIterations ?? 30
+  const lambda = options.lambda ?? 0.5
+  const mu = options.mu ?? -0.53
+  taubinSmooth(vertices, triangles, fixedCount, smoothIter, lambda, mu, options.plane)
 
   // ── 7. Validate / remove degenerate triangles ───────────────────────────────
-  const validTris = filterDegenerates(verts3d, tris as number[][])
+  const validTris = filterDegenerates(vertices, triangles)
   if (validTris.length === 0) return empty()
 
-  // ── 8. Fix winding ─────────────────────────────────────────────────────────
-  fixWinding(verts3d, validTris, capNormal)
+  // ── 8+9. Adaptive fairing — free interior only ─────────────────────────────
+  adaptiveFairing(vertices, validTris, fixedCount, analysis.curvature, options.plane)
 
-  // ── 9. Per-vertex normals (smooth; G1 blend at the boundary ring) ───────────
+  // ── 10. Defect correction: ensure consistent winding ───────────────────────
+  fixWinding(vertices, validTris, capNormal)
+
+  // ── 11. Per-vertex normals (G1 continuity only at outer boundary) ───────────
   const normals = computePerVertexNormals(
-    verts3d, validTris, capNormal, N, options.adjacentNormals,
+    vertices, validTris, capNormal, boundaryCount, options.adjacentNormals,
   )
 
-  // ── 10. Flatten to triangle soup ────────────────────────────────────────────
-  return flattenToSoup(verts3d, validTris, normals, options.flipped ?? false)
+  // ── Flatten to triangle soup ────────────────────────────────────────────────
+  return flattenToSoup(vertices, validTris, normals, options.flipped ?? false)
 }
 
 /**
@@ -829,60 +731,6 @@ function computePerVertexNormals(
 
 function empty(): { pos: Float32Array; nrm: Float32Array } {
   return { pos: new Float32Array(0), nrm: new Float32Array(0) }
-}
-
-// ── Point-in-polygon (ray casting, 2-D) ──────────────────────────────────────
-// Returns true when `pt` is strictly inside `poly` (closed planar polygon).
-function pointInsidePoly2D(pt: THREE.Vector2, poly: THREE.Vector2[]): boolean {
-  let inside = false
-  const n = poly.length
-  for (let i = 0, j = n - 1; i < n; j = i++) {
-    const xi = poly[i].x, yi = poly[i].y
-    const xj = poly[j].x, yj = poly[j].y
-    if (
-      (yi > pt.y) !== (yj > pt.y) &&
-      pt.x < ((xj - xi) * (pt.y - yi)) / (yj - yi + 1e-30) + xi
-    ) {
-      inside = !inside
-    }
-  }
-  return inside
-}
-
-// ── Project a vertex back onto the polygon boundary ───────────────────────────
-// Used when a smoothing step pushes an interior vertex outside the polygon.
-// Projects to the nearest point on the boundary perimeter, then nudges it
-// slightly toward the polygon centroid so it remains strictly inside.
-function clipVertexToPolygon2D(pt: THREE.Vector2, poly: THREE.Vector2[]): void {
-  const n = poly.length
-
-  // Compute centroid for the inward nudge direction
-  let cx = 0, cy = 0
-  for (const p of poly) { cx += p.x; cy += p.y }
-  cx /= n; cy /= n
-
-  let bestDist = Infinity
-  let bestPX = pt.x, bestPY = pt.y
-
-  for (let i = 0; i < n; i++) {
-    const a = poly[i], b = poly[(i + 1) % n]
-    const dx = b.x - a.x, dy = b.y - a.y
-    const lenSq = dx * dx + dy * dy
-    if (lenSq < 1e-20) continue
-    const t = Math.max(0, Math.min(1, ((pt.x - a.x) * dx + (pt.y - a.y) * dy) / lenSq))
-    const projX = a.x + t * dx, projY = a.y + t * dy
-    const d = (pt.x - projX) ** 2 + (pt.y - projY) ** 2
-    if (d < bestDist) {
-      bestDist = d
-      bestPX = projX
-      bestPY = projY
-    }
-  }
-
-  // Nudge 0.1 % of the way toward the centroid so the point is strictly inside
-  const NUDGE = 0.001
-  pt.x = bestPX + (cx - bestPX) * NUDGE
-  pt.y = bestPY + (cy - bestPY) * NUDGE
 }
 
 function projectToPlane(

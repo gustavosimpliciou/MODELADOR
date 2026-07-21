@@ -1,57 +1,18 @@
 "use client"
 
 import { useState } from 'react'
-import dynamic from 'next/dynamic'
 import { TopBar } from '@/components/layout/top-bar'
 import { LeftPanel } from '@/components/layout/left-panel'
 import { RightPanel } from '@/components/layout/right-panel'
 import { StatusBar } from '@/components/layout/status-bar'
+import { CutActions } from '@/components/layout/cut-actions'
+import { PlaneCutPanel } from '@/components/layout/plane-cut-panel'
+import { AutoSplitPanel } from '@/components/layout/auto-split-panel'
+import { SmartAutoCutPanel } from '@/components/layout/smart-autocut-panel'
+import { EncaixePanel } from '@/components/layout/encaixe-panel'
+import { ExportPanel } from '@/components/layout/export-panel'
+import { Viewport3D } from '@/components/viewport/viewport-3d'
 
-// ─── Lazy-loaded 3D & heavy components ───────────────────────────────────────
-// Splitting these into separate chunks means the browser only downloads
-// Three.js / R3F / BVH / CSG code AFTER the UI shell has already painted.
-// ssr: false → these components use browser-only APIs (WebGL, canvas).
-
-const Viewport3D = dynamic(
-  () => import('@/components/viewport/viewport-3d').then((m) => ({ default: m.Viewport3D })),
-  {
-    ssr: false,
-    // Placeholder so layout doesn't jump while the chunk loads
-    loading: () => <div className="absolute inset-0 bg-[#060608]" />,
-  },
-)
-
-const CutActions = dynamic(
-  () => import('@/components/layout/cut-actions').then((m) => ({ default: m.CutActions })),
-  { ssr: false },
-)
-
-const SmartAutoCutPanel = dynamic(
-  () => import('@/components/layout/smart-autocut-panel').then((m) => ({ default: m.SmartAutoCutPanel })),
-  { ssr: false },
-)
-
-const EncaixePanel = dynamic(
-  () => import('@/components/layout/encaixe-panel').then((m) => ({ default: m.EncaixePanel })),
-  { ssr: false },
-)
-
-const PlaneCutPanel = dynamic(
-  () => import('@/components/layout/plane-cut-panel').then((m) => ({ default: m.PlaneCutPanel })),
-  { ssr: false },
-)
-
-const AutoSplitPanel = dynamic(
-  () => import('@/components/layout/auto-split-panel').then((m) => ({ default: m.AutoSplitPanel })),
-  { ssr: false },
-)
-
-const ExportPanel = dynamic(
-  () => import('@/components/layout/export-panel').then((m) => ({ default: m.ExportPanel })),
-  { ssr: false },
-)
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
 export default function NativosCut() {
   const [exportOpen, setExportOpen] = useState(false)
 

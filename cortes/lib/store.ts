@@ -1,7 +1,7 @@
 "use client"
 
 import { create } from 'zustand'
-import type * as THREE from 'three'
+import * as THREE from 'three'
 import type { AutoSplitPlan } from './auto-split'
 import { type Part, createPart } from './parts-manager'
 
@@ -653,7 +653,6 @@ function pushSnapshot(past: HistorySnapshot[], snap: HistorySnapshot): HistorySn
 function getDefaultMessage(status: AppStatus): string {
   // Use lang store if available (lazy import to avoid circular deps at module load time)
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { getT } = require('./lang-store') as typeof import('./lang-store')
     const t = getT()
     switch (status) {

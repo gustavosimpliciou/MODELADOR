@@ -1,0 +1,10 @@
+
+> my-project@0.1.0 dev /home/runner/workspace/cortes
+> next dev -p 3001
+
+[1m[38;2;173;127;168m▲ Next.js 16.2.10[39m[22m (Turbopack)
+- Local:         http://localhost:3001
+- Network:       http://172.24.0.2:3001
+[32m[1m✓[22m[39m Ready in 365ms
+
+[?25h

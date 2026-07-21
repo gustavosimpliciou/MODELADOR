@@ -54,13 +54,13 @@ waitForPort = 8000
 name = "Cortes 3D"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd cortes && npm run dev"
-waitForPort = 3001
-
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd cortes && pnpm dev"
+waitForPort = 3001
 
 [[ports]]
 localPort = 3001

@@ -9,12 +9,11 @@
  */
 
 import * as THREE from 'three'
+import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
+import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js'
+import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import type { ModelInfo } from './store'
-
-// Loaders are imported lazily inside each function so they are only fetched
-// when the user actually opens a file of that format. This keeps the initial
-// bundle lean — Three.js core is still loaded eagerly (needed everywhere),
-// but the per-format parser code is split into separate dynamic chunks.
 
 /** Acima deste limite de triângulos, sugerir decimação */
 const DECIMATE_THRESHOLD = 800_000
@@ -34,11 +33,11 @@ export async function loadModel(file: File): Promise<LoadResult> {
   let geometry: THREE.BufferGeometry | null = null
 
   if (ext === 'stl') {
-    geometry = await loadSTLFromBuffer(buffer)
+    geometry = loadSTLFromBuffer(buffer)
   } else if (ext === 'obj') {
     geometry = await loadOBJFromText(buffer)
   } else if (ext === 'ply') {
-    geometry = await loadPLYFromBuffer(buffer)
+    geometry = loadPLYFromBuffer(buffer)
   } else if (ext === 'glb' || ext === 'gltf') {
     geometry = await loadGLTFFromBuffer(buffer, file.name)
   } else {
@@ -98,9 +97,7 @@ export async function loadModel(file: File): Promise<LoadResult> {
     color: new THREE.Color(0x888888),
     roughness: 0.6,
     metalness: 0.1,
-    // DoubleSide garante que modelos com normais invertidas (winding incorreto)
-    // ainda apareçam visíveis — correção crítica para compatibilidade geral.
-    side: THREE.DoubleSide,
+    side: THREE.FrontSide,
     flatShading: true,
   })
 
@@ -128,13 +125,12 @@ export async function loadModel(file: File): Promise<LoadResult> {
 
 // ─── Loaders sincronos / assíncronos usando buffer direto ─────────────────
 
-async function loadSTLFromBuffer(buffer: ArrayBuffer): Promise<THREE.BufferGeometry> {
-  const { STLLoader } = await import('three/examples/jsm/loaders/STLLoader.js')
-  return new STLLoader().parse(buffer)
+function loadSTLFromBuffer(buffer: ArrayBuffer): THREE.BufferGeometry {
+  const loader = new STLLoader()
+  return loader.parse(buffer)
 }
 
 async function loadOBJFromText(buffer: ArrayBuffer): Promise<THREE.BufferGeometry> {
-  const { OBJLoader } = await import('three/examples/jsm/loaders/OBJLoader.js')
   const text = new TextDecoder().decode(buffer)
   const loader = new OBJLoader()
   const obj = loader.parse(text)
@@ -154,13 +150,12 @@ async function loadOBJFromText(buffer: ArrayBuffer): Promise<THREE.BufferGeometr
   return mergeGeometriesFast(geometries)
 }
 
-async function loadPLYFromBuffer(buffer: ArrayBuffer): Promise<THREE.BufferGeometry> {
-  const { PLYLoader } = await import('three/examples/jsm/loaders/PLYLoader.js')
-  return new PLYLoader().parse(buffer)
+function loadPLYFromBuffer(buffer: ArrayBuffer): THREE.BufferGeometry {
+  const loader = new PLYLoader()
+  return loader.parse(buffer)
 }
 
 async function loadGLTFFromBuffer(buffer: ArrayBuffer, filename: string): Promise<THREE.BufferGeometry> {
-  const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js')
   return new Promise((resolve, reject) => {
     const loader = new GLTFLoader()
     const ext = filename.split('.').pop()?.toLowerCase()

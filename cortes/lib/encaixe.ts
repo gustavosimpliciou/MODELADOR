@@ -96,7 +96,7 @@ export function planEncaixe(
   const ana = analyzeSelection(geometry, selectedFaces)
 
   // ── Normal orientada da seleção para o complemento ───────────────────────
-  const seamNormal = ana.fitNormal.clone().normalize()
+  let seamNormal = ana.fitNormal.clone().normalize()
   const sourceOffset = ana.selectionCenter.clone().sub(ana.seamCenter).dot(seamNormal)
   // Se a seleção está no lado positivo da normal, a normal já aponta
   // para longe da seleção (em direção ao complemento). Caso contrário, inverte.
