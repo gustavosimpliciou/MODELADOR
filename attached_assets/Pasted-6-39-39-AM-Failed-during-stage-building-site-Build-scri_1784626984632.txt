@@ -1,0 +1,46 @@
+6:39:39 AM: Failed during stage 'building site': Build script returned non-zero exit code: 2 (https://ntl.fyi/exit-code-2)
+6:39:39 AM: npm error Exit handler never called!
+6:39:39 AM: npm error This is an error with npm itself. Please report this error at:
+6:39:39 AM: npm error   <https://github.com/npm/cli/issues&gt;
+6:39:39 AM: npm error A complete log of this run can be found in: /opt/buildhome/.npm/_logs/2026-07-21T09_38_28_447Z-debug-0.log
+6:39:39 AM: ​
+6:39:39 AM: "build.command" failed                                        
+6:39:39 AM: ────────────────────────────────────────────────────────────────
+6:39:39 AM: ​
+6:39:39 AM:   Error message
+6:39:39 AM:   Command failed with exit code 1: cd frontend && yarn install && yarn build && cd ../cortes && npm install && npm run build -- --webpack && mkdir -p ../frontend/dist/cortes && cp -r out/. ../frontend/dist/cortes/ (https://ntl.fyi/exit-code-1)
+6:39:39 AM: ​
+6:39:39 AM:   Error location
+6:39:39 AM:   In build.command from netlify.toml:
+6:39:39 AM:   cd frontend && yarn install && yarn build && cd ../cortes && npm install && npm run build -- --webpack && mkdir -p ../frontend/dist/cortes && cp -r out/. ../frontend/dist/cortes/
+6:39:39 AM: ​
+6:39:39 AM:   Resolved config
+6:39:39 AM:   build:
+6:39:39 AM:     command: cd frontend && yarn install && yarn build && cd ../cortes && npm
+6:39:39 AM:       install && npm run build -- --webpack && mkdir -p ../frontend/dist/cortes &&
+6:39:39 AM:       cp -r out/. ../frontend/dist/cortes/
+6:39:39 AM:     commandOrigin: config
+6:39:39 AM:     environment:
+6:39:39 AM:       - NODE_VERSION
+6:39:39 AM:       - NODE_OPTIONS
+6:39:39 AM:     publish: /opt/build/repo/frontend/dist
+6:39:39 AM:     publishOrigin: config
+6:39:39 AM:   functionsDirectory: /opt/build/repo/netlify/functions
+6:39:39 AM:   redirects:
+6:39:39 AM:     - from: /api/webhook/kiwify
+6:39:39 AM:       status: 200
+6:39:39 AM:       to: /.netlify/functions/kiwify
+6:39:39 AM:     - force: true
+6:39:39 AM:       from: /cortes
+6:39:39 AM:       status: 301
+6:39:39 AM:       to: /cortes/
+6:39:39 AM:     - from: /cortes/*
+6:39:39 AM:       status: 200
+6:39:39 AM:       to: /cortes/index.html
+6:39:39 AM:     - from: /*
+6:39:39 AM:       status: 200
+6:39:39 AM:       to: /index.html
+6:39:39 AM:   redirectsOrigin: config
+6:39:39 AM: Build failed due to a user error: Build script returned non-zero exit code: 2
+6:39:39 AM: Failing build: Failed to build site
+6:39:40 AM: Finished processing build request in 1m52.295s

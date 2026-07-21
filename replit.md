@@ -60,8 +60,24 @@ cd frontend && yarn install
 cd backend && pip install -r requirements.txt
 
 # Cortes
-cd cortes && npm install --legacy-peer-deps
+cd cortes && npm install
 ```
+
+## Deploy no Netlify
+
+O Cortes 3D é pré-compilado e commitado em `cortes/out/`.
+O Netlify **não** executa o build do Cortes — apenas copia o output já gerado.
+
+**Fluxo para deploy:**
+1. Se alterou o Cortes 3D, rebuild localmente:
+   ```bash
+   cd cortes && npm run build -- --webpack
+   git add cortes/out/
+   ```
+2. Commit e push de tudo (incluindo `cortes/out/`)
+3. O Netlify executa apenas: `cd frontend && yarn install && yarn build && cp -r ../cortes/out/. dist/cortes/`
+
+Isso elimina o OOM que ocorria ao instalar 680+ pacotes pesados (Three.js, R3F, BVH) no Netlify.
 
 ## Credits / Monetization
 

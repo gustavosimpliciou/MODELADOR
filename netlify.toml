@@ -1,8 +1,12 @@
 [build]
-  # Build the React frontend, then build the Cortes 3D Next.js app as a static
-  # export and merge it into frontend/dist/cortes/ so both apps are served from
-  # the same Netlify site under their respective paths.
-  command   = "cd frontend && yarn install && yarn build && cd ../cortes && npm install && npm run build -- --webpack && mkdir -p ../frontend/dist/cortes && cp -r out/. ../frontend/dist/cortes/"
+  # O Cortes 3D (Next.js) é pré-compilado localmente e commitado em cortes/out/.
+  # O Netlify só precisa buildar o frontend React/Vite e copiar o output do Cortes.
+  # Isso elimina o `npm install` + `next build` no Netlify que causava OOM/crash.
+  #
+  # IMPORTANTE: sempre que alterar o Cortes 3D, execute localmente:
+  #   cd cortes && npm run build -- --webpack
+  # e faça commit da pasta cortes/out/ antes de fazer deploy.
+  command   = "cd frontend && yarn install && yarn build && mkdir -p dist/cortes && cp -r ../cortes/out/. dist/cortes/"
   publish   = "frontend/dist"
   functions = "netlify/functions"
 
