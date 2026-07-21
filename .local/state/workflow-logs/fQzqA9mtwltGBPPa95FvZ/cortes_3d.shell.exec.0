@@ -22,3 +22,5 @@
 [36m[browser][39m [33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.[39m [2m(https://63beb8cc-0d78-437a-90b2-70dc73819568-00-17ndaf3eaxhe.worf.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
  GET / [32m200[39m in 90ms[2m (next.js: 18ms, application-code: 72ms)[22m
 [36m[browser][39m [33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.[39m [2m(https://63beb8cc-0d78-437a-90b2-70dc73819568-00-17ndaf3eaxhe.worf.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
+ GET / [32m200[39m in 191ms[2m (next.js: 26ms, application-code: 165ms)[22m
+[36m[browser][39m [33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.[39m [2m(https://63beb8cc-0d78-437a-90b2-70dc73819568-00-17ndaf3eaxhe.worf.replit.dev/__replco/static/devtools/injected.js:37:27)[22m

@@ -33,3 +33,6 @@
 {"timestamp":"01:27:55.695","source":"Browser","level":"WARN","message":"THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."}
 {"timestamp":"01:27:55.695","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\\u001b[39m\" \"\\u001b[2m(https://63beb8cc-0d78-437a-90b2-70dc73819568-00-17ndaf3eaxhe.worf.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
 {"timestamp":"01:27:55.696","source":"Browser","level":"WARN","message":"\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\u001b[39m"}
+{"timestamp":"02:01:08.594","source":"Browser","level":"WARN","message":"THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."}
+{"timestamp":"02:01:08.595","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\\u001b[39m\" \"\\u001b[2m(https://63beb8cc-0d78-437a-90b2-70dc73819568-00-17ndaf3eaxhe.worf.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
+{"timestamp":"02:01:08.595","source":"Browser","level":"WARN","message":"\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\u001b[39m"}

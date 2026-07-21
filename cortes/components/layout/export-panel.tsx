@@ -21,6 +21,8 @@ export function ExportPanel({ open, onClose }: ExportPanelProps) {
   if (!open) return null
 
   const visibleParts = parts.filter((p) => p.mesh)
+  const printSize = computePrintSizeMM(visibleParts.map((p) => p.mesh))
+  const isScaled = printSize !== null && printSize.scale < 0.9999
 
   const handleExport = async () => {
     if (visibleParts.length === 0) return
@@ -140,6 +142,33 @@ export function ExportPanel({ open, onClose }: ExportPanelProps) {
             </div>
           </div>
 
+          {/* Tamanho de impressão */}
+          {printSize && (
+            <div
+              className="px-3 py-3 rounded-lg border text-[11px] font-mono"
+              style={{
+                borderColor: isScaled ? 'oklch(0.70 0.22 42 / 40%)' : 'oklch(0.5 0 0 / 30%)',
+                background: isScaled ? 'oklch(0.70 0.22 42 / 8%)' : 'oklch(0.5 0 0 / 8%)',
+              }}
+            >
+              <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1.5">
+                Tamanho de impressão (mm)
+              </p>
+              <p className="text-foreground font-medium">
+                {printSize.x} × {printSize.y} × {printSize.z} mm
+              </p>
+              {isScaled ? (
+                <p className="text-muted-foreground/70 mt-1">
+                  ↓ Reduzido para caber em 20 cm · escala {(printSize.scale * 100).toFixed(1)}% · encaixes preservados
+                </p>
+              ) : (
+                <p className="text-muted-foreground/70 mt-1">
+                  ✓ Dentro do limite de 20 cm · sem redução
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Botão exportar */}
           <button
             onClick={handleExport}
@@ -167,18 +196,70 @@ export function ExportPanel({ open, onClose }: ExportPanelProps) {
 
 // ─── Helpers de exportação ────────────────────────────────────────────────────
 
+/** Tamanho máximo de impressão: 200 mm = 20 cm */
+const MAX_PRINT_MM = 200
+
 function sanitizeFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9_\-À-ÿ ]/g, '_').trim() || 'Parte'
 }
 
-async function meshToBlob(mesh: THREE.Mesh, format: ExportFormat): Promise<Blob> {
+/**
+ * Calcula o fator de escala uniforme para que a maior dimensão de QUALQUER
+ * peça não ultrapasse MAX_PRINT_MM (200 mm = 20 cm).
+ *
+ * TODAS as peças compartilham o mesmo fator → encaixe preservado.
+ * Se o modelo já couber em 20 cm, fator = 1 (sem alteração).
+ */
+function computeUniformScaleFactor(meshes: THREE.Mesh[]): number {
+  let maxDim = 0
+  for (const mesh of meshes) {
+    // Box3.setFromObject respeita position/rotation/scale do mesh
+    const box = new THREE.Box3().setFromObject(mesh)
+    const size = new THREE.Vector3()
+    box.getSize(size)
+    maxDim = Math.max(maxDim, size.x, size.y, size.z)
+  }
+  if (maxDim <= 0) return 1
+  // Nunca escalar para cima — apenas reduzir se necessário
+  return maxDim > MAX_PRINT_MM ? MAX_PRINT_MM / maxDim : 1
+}
+
+/**
+ * Cria uma cópia temporária do mesh com:
+ *  1. A transformação world (position/rotation/scale) aplicada na geometria
+ *  2. O fator de escala de impressão aplicado
+ *
+ * O mesh original NÃO é modificado.
+ */
+function buildExportMesh(mesh: THREE.Mesh, scaleFactor: number): THREE.Mesh {
+  // Garante que a matrix do objeto está atualizada
+  mesh.updateWorldMatrix(true, false)
+
+  const geo = mesh.geometry.clone()
+
+  // Aplica a transformação world + escala de impressão em uma única matrix
+  const exportMatrix = new THREE.Matrix4()
+    .makeScale(scaleFactor, scaleFactor, scaleFactor)
+    .multiply(mesh.matrixWorld)
+
+  geo.applyMatrix4(exportMatrix)
+
+  const exportMesh = new THREE.Mesh(geo, mesh.material)
+  // Sem transform residual — tudo já está na geometria
+  exportMesh.position.set(0, 0, 0)
+  exportMesh.rotation.set(0, 0, 0)
+  exportMesh.scale.set(1, 1, 1)
+  return exportMesh
+}
+
+async function meshToBlob(exportMesh: THREE.Mesh, format: ExportFormat): Promise<Blob> {
   if (format === 'stl') {
     const { STLExporter } = await import('three/examples/jsm/exporters/STLExporter.js')
-    const result = new STLExporter().parse(mesh, { binary: true })
+    const result = new STLExporter().parse(exportMesh, { binary: true })
     return new Blob([result], { type: 'application/octet-stream' })
   } else {
     const { OBJExporter } = await import('three/examples/jsm/exporters/OBJExporter.js')
-    const result = new OBJExporter().parse(mesh)
+    const result = new OBJExporter().parse(exportMesh)
     return new Blob([result], { type: 'text/plain' })
   }
 }
@@ -193,7 +274,10 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 async function exportSingleMesh(mesh: THREE.Mesh, format: ExportFormat, name: string) {
-  const blob = await meshToBlob(mesh, format)
+  const scaleFactor = computeUniformScaleFactor([mesh])
+  const exportMesh = buildExportMesh(mesh, scaleFactor)
+  const blob = await meshToBlob(exportMesh, format)
+  exportMesh.geometry.dispose()
   downloadBlob(blob, `${sanitizeFilename(name)}.${format}`)
 }
 
@@ -204,6 +288,10 @@ async function exportAllAsZip(
   const JSZip = (await import('jszip')).default
   const zip = new JSZip()
 
+  // ── Escala uniforme: calculada sobre TODAS as peças juntas ───────────────
+  // Garante que os encaixes se mantenham corretos após impressão.
+  const scaleFactor = computeUniformScaleFactor(parts.map((p) => p.mesh))
+
   // Deduplicate filenames (e.g. two parts both named "Parte 1")
   const usedNames = new Map<string, number>()
 
@@ -213,10 +301,32 @@ async function exportAllAsZip(
     usedNames.set(base, count + 1)
     const filename = count === 0 ? `${base}.${format}` : `${base} (${count + 1}).${format}`
 
-    const blob = await meshToBlob(mesh, format)
+    const exportMesh = buildExportMesh(mesh, scaleFactor)
+    const blob = await meshToBlob(exportMesh, format)
+    exportMesh.geometry.dispose()
     zip.file(filename, blob)
   }
 
   const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } })
   downloadBlob(zipBlob, 'Projeto.zip')
+}
+
+/** Calcula o tamanho real que será exportado (em mm) para exibir na UI */
+function computePrintSizeMM(meshes: THREE.Mesh[]): { x: number; y: number; z: number; scale: number } | null {
+  if (meshes.length === 0) return null
+  const scale = computeUniformScaleFactor(meshes)
+
+  // Bounding box combinada de todas as peças
+  const combined = new THREE.Box3()
+  for (const mesh of meshes) {
+    combined.union(new THREE.Box3().setFromObject(mesh))
+  }
+  const size = new THREE.Vector3()
+  combined.getSize(size)
+  return {
+    x: Math.round(size.x * scale),
+    y: Math.round(size.y * scale),
+    z: Math.round(size.z * scale),
+    scale,
+  }
 }
