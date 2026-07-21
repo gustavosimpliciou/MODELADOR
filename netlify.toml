@@ -1,9 +1,6 @@
 [build]
-  # O Cortes 3D (Next.js) é pré-compilado localmente e commitado em cortes/out/.
+  # O Cortes 3D (Next.js) é pré-compilado e commitado em cortes/out/.
   # O Netlify só precisa buildar o frontend React/Vite e copiar o output do Cortes.
-  # Isso elimina o `npm install` + `next build` no Netlify que causava OOM/crash.
-  #
-  # IMPORTANTE: sempre que alterar o Cortes 3D, o Replit já tem o build pronto.
   command   = "cd frontend && yarn install && yarn build && mkdir -p dist/cortes && cp -r ../cortes/out/. dist/cortes/"
   publish   = "frontend/dist"
   functions = "netlify/functions"
@@ -19,20 +16,24 @@
   status = 200
 
 # ── Cortes 3D (Next.js static export) ────────────────────────────────────────
-# Serve o index.html do Cortes diretamente para /cortes (sem trailing slash).
-# Não usamos 301 aqui pois causaria ERR_TOO_MANY_REDIRECTS com o basePath do Next.js.
+#
+# REGRA CRÍTICA: NÃO usar force=true em /cortes/* pois impede o Netlify
+# de servir arquivos estáticos reais (CSS, JS, fontes, imagens).
+# force=true faz o Netlify ignorar arquivos existentes e sempre retornar index.html,
+# quebrando completamente o carregamento de assets.
+#
+# /cortes (sem barra) → serve o index.html diretamente (sem 301, evita redirect loop)
 [[redirects]]
   from   = "/cortes"
   to     = "/cortes/index.html"
   status = 200
-  force  = true
 
-# /cortes/ e /cortes/* → serve o index.html do Next.js (SPA interno do Cortes)
+# /cortes/* → SPA fallback: só atua se o arquivo NÃO existir em disco
+# Arquivos reais (_next/static/css, js, fonts) são servidos diretamente pelo CDN
 [[redirects]]
   from   = "/cortes/*"
   to     = "/cortes/index.html"
   status = 200
-  force  = true
 
 # ── SPA fallback do React (deve ser o último) ─────────────────────────────────
 [[redirects]]
