@@ -71,6 +71,19 @@ export async function loadModel(file: File): Promise<LoadResult> {
       : (geometry.getAttribute('position') as THREE.BufferAttribute).count / 3
   }
 
+  // ── Correção de orientação Z-up → Y-up ────────────────────────────────────
+  // STL e PLY não têm convenção de eixo definida. Ferramentas de impressão 3D
+  // (Blender, Cura, PrusaSlicer, SolidWorks) exportam com Z=cima, mas o
+  // THREE.js usa Y=cima. Sem correção o modelo aparece "deitado" (caído para
+  // trás 90°). Aplicamos rotX(-90°) antes de centralizar para que a peça
+  // apareça exatamente como foi desenhada na ferramenta de origem.
+  // GLB/GLTF e OBJ já são Y-up por especificação — não precisam de correção.
+  if (ext === 'stl' || ext === 'ply') {
+    geometry.applyMatrix4(
+      new THREE.Matrix4().makeRotationX(-Math.PI / 2)
+    )
+  }
+
   // Normais e bounding
   geometry.computeVertexNormals()
   geometry.computeBoundingBox()

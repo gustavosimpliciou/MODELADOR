@@ -15,7 +15,6 @@ import {
 } from '@/lib/smart-cut'
 import { loadModel } from '@/lib/model-loader'
 import { ModelRenderer } from './model-renderer'
-import { AxesHelper } from './axes-helper'
 
 // ─── WebGL Error Boundary ─────────────────────────────────────────────────────
 // Catches the "Error creating WebGL context" thrown by @react-three/fiber's
@@ -437,7 +436,6 @@ function CameraFitter({ controlsRef }: { controlsRef: React.RefObject<any> }) {
 export function Viewport3D() {
   // Selective selectors — prevents re-render when unrelated state (fps, selection, etc.) changes
   const showGrid  = useAppStore((s) => s.showGrid)
-  const showAxes  = useAppStore((s) => s.showAxes)
   const modelMesh = useAppStore((s) => s.modelMesh)
   const [webglFailed, setWebglFailed] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
@@ -547,7 +545,7 @@ export function Viewport3D() {
 
       <WebGLErrorBoundary>
       <Canvas
-        frameloop="demand"
+        frameloop="always"
         camera={{ position: [0, 0, 5], fov: 45, near: 0.001, far: 2000 }}
         gl={{
           antialias: true,
@@ -594,8 +592,6 @@ export function Viewport3D() {
           />
         )}
 
-        {showAxes && <AxesHelper />}
-
         <Suspense fallback={null}>
           <ModelRenderer />
         </Suspense>
@@ -604,18 +600,22 @@ export function Viewport3D() {
           ref={controlsRef}
           enableDamping
           dampingFactor={0.06}
-          rotateSpeed={0.65}
-          zoomSpeed={1.2}
-          panSpeed={0.85}
+          rotateSpeed={-0.85}
+          zoomSpeed={1.0}
+          panSpeed={0.8}
           minDistance={0.001}
           maxDistance={500}
           enablePan
+          screenSpacePanning
           mouseButtons={{
             LEFT:   THREE.MOUSE.ROTATE,
             MIDDLE: THREE.MOUSE.DOLLY,
             RIGHT:  THREE.MOUSE.PAN,
           }}
-          onChange={() => invalidate()}
+          touches={{
+            ONE:  THREE.TOUCH.ROTATE,
+            TWO:  THREE.TOUCH.DOLLY_PAN,
+          }}
         />
       </Canvas>
       </WebGLErrorBoundary>

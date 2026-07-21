@@ -6,7 +6,6 @@ import {
   Download,
   Settings,
   Grid3x3,
-  Axis3d,
   Wifi,
   Lock,
   LockOpen,
@@ -27,7 +26,6 @@ export function TopBar({ onExport }: TopBarProps) {
   // so unrelated state changes (fps, hoveredFaceIndices, etc.) don't re-render TopBar.
   const modelMesh              = useAppStore((s) => s.modelMesh)
   const showGrid               = useAppStore((s) => s.showGrid)
-  const showAxes               = useAppStore((s) => s.showAxes)
   const showWireframe          = useAppStore((s) => s.showWireframe)
   const allowCutPartSelection  = useAppStore((s) => s.allowCutPartSelection)
   const status                 = useAppStore((s) => s.status)
@@ -38,7 +36,6 @@ export function TopBar({ onExport }: TopBarProps) {
     setModelInfo,
     setOriginalGeometry,
     toggleGrid,
-    toggleAxes,
     toggleWireframe,
     toggleCutPartSelection,
   } = useAppStore.getState()
@@ -221,7 +218,6 @@ export function TopBar({ onExport }: TopBarProps) {
         {/* View toggles */}
         <div className="flex items-center gap-1">
           <ViewToggleBtn icon={<Grid3x3 className="w-3.5 h-3.5" />} label={t.grid} active={showGrid} onClick={toggleGrid} />
-          <ViewToggleBtn icon={<Axis3d className="w-3.5 h-3.5" />} label={t.axes} active={showAxes} onClick={toggleAxes} />
           <ViewToggleBtn icon={<Wifi className="w-3.5 h-3.5 rotate-90" />} label={t.wireframe} active={showWireframe} onClick={toggleWireframe} />
           <ViewToggleBtn
             icon={allowCutPartSelection ? <LockOpen className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}

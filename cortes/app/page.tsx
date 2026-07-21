@@ -12,11 +12,13 @@ import { SmartAutoCutPanel } from '@/components/layout/smart-autocut-panel'
 import { EncaixePanel } from '@/components/layout/encaixe-panel'
 import { ExportPanel } from '@/components/layout/export-panel'
 import { Viewport3D } from '@/components/viewport/viewport-3d'
+import { AuthGuard } from '@/components/auth-guard'
 
 export default function NativosCut() {
   const [exportOpen, setExportOpen] = useState(false)
 
   return (
+    <AuthGuard>
     <main
       className="flex flex-col h-dvh w-screen overflow-hidden select-none"
       style={{ background: 'oklch(0.08 0 0)' }}
@@ -54,5 +56,6 @@ export default function NativosCut() {
       {/* Modal de exportação */}
       <ExportPanel open={exportOpen} onClose={() => setExportOpen(false)} />
     </main>
+    </AuthGuard>
   )
 }

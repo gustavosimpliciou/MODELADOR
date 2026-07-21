@@ -1,0 +1,42 @@
+
+> my-project@0.1.0 dev /home/runner/workspace/cortes
+> next dev -p 3001
+
+[1m[38;2;173;127;168m▲ Next.js 16.2.10[39m[22m (Turbopack)
+- Local:         http://localhost:3001
+- Network:       http://172.24.0.2:3001
+[32m[1m✓[22m[39m Ready in 589ms
+
+thread 'tokio-runtime-worker' (884) panicked at turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:197:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 178612)
+
+Caused by:
+    0: Looking up task storage for TaskId 178612 from database failed
+    1: Unable to open static sorted file referenced from 00000055.meta
+    2: Unable to open static sorted file 00000050.sst
+    3: Failed to open SST file /home/runner/workspace/cortes/.next/dev/cache/turbopack/v16.2.10/00000050.sst
+    4: No such file or directory (os error 2)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+-----
+[1m[31mFATAL[39m[0m: An unexpected Turbopack error occurred. A panic log has been written to /tmp/next-panic-615bd136ad3bbc46409e008848fb8262.log.
+
+To help make Turbopack better, report this error by clicking here: https://bugs.nextjs.org/search?category=turbopack-error-report&title=Turbopack%20Error%3A%20Failed%20to%20restore%20task%20data%20%28corrupted%20database%20or%20bug%29%3A%20Data%20for%20TaskId%20178612%29&body=Turbopack%20version%3A%20%60v16.2.10%60%0ANext.js%20version%3A%20%600.0.0%60%0A%0AError%20message%3A%0A%60%60%60%0AFailed%20to%20restore%20task%20data%20%28corrupted%20database%20or%20bug%29%3A%20Data%20for%20TaskId%20178612%29%0A%0ADebug%20info%3A%0A-%20Failed%20to%20restore%20task%20data%20%28corrupted%20database%20or%20bug%29%3A%20Data%20for%20TaskId%20178612%29%0A%20%20%0A%20%20Caused%20by%3A%0A%20%20%20%20%20%200%3A%20Looking%20up%20task%20storage%20for%20TaskId%20178612%20from%20database%20failed%0A%20%20%20%20%20%201%3A%20Unable%20to%20open%20static%20sorted%20file%20referenced%20from%2000000055.meta%0A%20%20%20%20%20%202%3A%20Unable%20to%20open%20static%20sorted%20file%2000000050.sst%0A%20%20%20%20%20%203%3A%20Failed%20to%20open%20SST%20file%20%2Fhome%2Frunner%2Fworkspace%2Fcortes%2F.next%2Fdev%2Fcache%2Fturbopack%2Fv16.2.10%2F00000050.sst%0A%20%20%20%20%20%204%3A%20No%20such%20file%20or%20directory%20%28os%20error%202%29%0A%60%60%60&labels=Turbopack,Turbopack%20Panic%20Backtrace
+-----
+
+Error [TurbopackInternalError]: Failed to restore task data (corrupted database or bug): Data for TaskId 178612)
+
+Debug info:
+- Failed to restore task data (corrupted database or bug): Data for TaskId 178612)
+  
+  Caused by:
+      0: Looking up task storage for TaskId 178612 from database failed
+      1: Unable to open static sorted file referenced from 00000055.meta
+      2: Unable to open static sorted file 00000050.sst
+      3: Failed to open SST file /home/runner/workspace/cortes/.next/dev/cache/turbopack/v16.2.10/00000050.sst
+      4: No such file or directory (os error 2)
+    at <unknown> (TurbopackInternalError: Failed to restore task data (corrupted database or bug): Data for TaskId 178612)) {
+  location: [32m'turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:197:17'[39m
+}
+[?25h
+[41m[30m ELIFECYCLE [39m[49m [31mCommand failed with exit code 1.[39m

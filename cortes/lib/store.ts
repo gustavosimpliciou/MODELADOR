@@ -118,7 +118,6 @@ export interface AppState {
 
   // Configurações de visualização
   showGrid: boolean
-  showAxes: boolean
   showWireframe: boolean
 
   allowCutPartSelection: boolean
@@ -228,7 +227,6 @@ export interface AppState {
   setCutPreview: (preview: CutPreviewData | null) => void
   setPreviewViewMode: (mode: PreviewViewMode) => void
   toggleGrid: () => void
-  toggleAxes: () => void
   toggleWireframe: () => void
   toggleCutPartSelection: () => void
   clearSelection: () => void
@@ -277,7 +275,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeCutPartId: null,
 
   showGrid: true,
-  showAxes: true,
   showWireframe: false,
 
   allowCutPartSelection: false,
@@ -525,7 +522,6 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   toggleGrid: () => set((state) => ({ showGrid: !state.showGrid })),
 
-  toggleAxes: () => set((state) => ({ showAxes: !state.showAxes })),
 
   toggleWireframe: () => set((state) => ({ showWireframe: !state.showWireframe })),
 

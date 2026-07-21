@@ -1,0 +1,48 @@
+
+> my-project@0.1.0 dev /home/runner/workspace/cortes
+> next dev -p 3001
+
+[1m[38;2;173;127;168m▲ Next.js 16.2.10[39m[22m (Turbopack)
+- Local:         http://localhost:3001
+- Network:       http://172.24.0.2:3001
+[32m[1m✓[22m[39m Ready in 573ms
+
+[37m[1m○[22m[39m Compiling / ...
+ GET / [32m200[39m in 20.2s[2m (next.js: 19.6s, application-code: 619ms)[22m
+ GET / [32m200[39m in 535ms[2m (next.js: 375ms, application-code: 161ms)[22m
+[36m[browser][39m [33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.[39m [2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
+[32m[1m✓[22m[39m Compiled in 12.3s
+[36m[browser][39m [33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.[39m [2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
+[36m[browser][39m [33m[Viewport3D] WebGL context lost[39m [2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
+[32m[1m✓[22m[39m Compiled in 1114ms
+[36m[browser][39m [33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.[39m [2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
+[36m[browser][39m [33m[Viewport3D] WebGL context lost[39m [2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
+[32m[1m✓[22m[39m Finished filesystem cache database compaction in 17.5s
+[32m[1m✓[22m[39m Compiled in 1314ms
+[36m[browser][39m [33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.[39m [2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
+[36m[browser][39m [33m[Viewport3D] WebGL context lost[39m [2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
+ GET / [32m200[39m in 460ms[2m (next.js: 383ms, application-code: 77ms)[22m
+[36m[browser][39m [33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.[39m [2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
+[32m[1m✓[22m[39m Compiled in 2.4s
+ GET / [32m200[39m in 2.1s[2m (next.js: 863ms, application-code: 1228ms)[22m
+[32m[1m✓[22m[39m Compiled in 0ms
+ GET / [32m200[39m in 2.9s[2m (next.js: 1519ms, application-code: 1366ms)[22m
+ GET / [32m200[39m in 50ms[2m (next.js: 5ms, application-code: 45ms)[22m
+ GET / [32m200[39m in 832ms[2m (next.js: 143ms, application-code: 689ms)[22m
+[32m[1m✓[22m[39m Compiled in 1203ms
+[36m[browser][39m [33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.[39m [2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
+ GET / [32m200[39m in 71ms[2m (next.js: 15ms, application-code: 55ms)[22m
+[36m[browser][39m [33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.[39m [2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
+ GET / [32m200[39m in 73ms[2m (next.js: 5ms, application-code: 68ms)[22m
+[32m[1m✓[22m[39m Compiled in 1640ms
+[36m[browser][39m [33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.[39m [2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
+[36m[browser][39m [33m[Viewport3D] WebGL context lost[39m [2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
+ GET / [32m200[39m in 60ms[2m (next.js: 16ms, application-code: 44ms)[22m
+[36m[browser][39m [33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.[39m [2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
+ GET / [32m200[39m in 59ms[2m (next.js: 3ms, application-code: 56ms)[22m
+[36m[browser][39m [33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.[39m [2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
+[32m[1m✓[22m[39m Compiled in 1735ms
+[36m[browser][39m [33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.[39m [2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
+[36m[browser][39m [33m[Viewport3D] WebGL context lost[39m [2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
+ GET / [32m200[39m in 47ms[2m (next.js: 7ms, application-code: 40ms)[22m
+[36m[browser][39m [33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.[39m [2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
