@@ -3,9 +3,7 @@
   # O Netlify só precisa buildar o frontend React/Vite e copiar o output do Cortes.
   # Isso elimina o `npm install` + `next build` no Netlify que causava OOM/crash.
   #
-  # IMPORTANTE: sempre que alterar o Cortes 3D, execute localmente:
-  #   cd cortes && npm run build -- --webpack
-  # e faça commit da pasta cortes/out/ antes de fazer deploy.
+  # IMPORTANTE: sempre que alterar o Cortes 3D, o Replit já tem o build pronto.
   command   = "cd frontend && yarn install && yarn build && mkdir -p dist/cortes && cp -r ../cortes/out/. dist/cortes/"
   publish   = "frontend/dist"
   functions = "netlify/functions"
@@ -21,22 +19,20 @@
   status = 200
 
 # ── Cortes 3D (Next.js static export) ────────────────────────────────────────
-# Estes dois blocos devem ficar ANTES do fallback SPA, senão o Netlify serve
-# o index.html do React para qualquer rota /cortes/* e o app nunca abre.
-#
-# /cortes  → redireciona para /cortes/ (trailing slash) onde o index.html vive
+# Serve o index.html do Cortes diretamente para /cortes (sem trailing slash).
+# Não usamos 301 aqui pois causaria ERR_TOO_MANY_REDIRECTS com o basePath do Next.js.
 [[redirects]]
   from   = "/cortes"
-  to     = "/cortes/"
-  status = 301
+  to     = "/cortes/index.html"
+  status = 200
   force  = true
 
-# /cortes/* → serve o index.html do Next.js (SPA interno do Cortes)
-# force=false: se o arquivo existe (ex: _next/static/…) ele é servido diretamente
+# /cortes/ e /cortes/* → serve o index.html do Next.js (SPA interno do Cortes)
 [[redirects]]
   from   = "/cortes/*"
   to     = "/cortes/index.html"
   status = 200
+  force  = true
 
 # ── SPA fallback do React (deve ser o último) ─────────────────────────────────
 [[redirects]]
