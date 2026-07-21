@@ -1,0 +1,42 @@
+6:35:30 PM: ​
+6:35:30 PM: "build.command" failed                                        
+6:35:30 PM: ────────────────────────────────────────────────────────────────
+6:35:30 PM: ​
+6:35:30 PM:   Error message
+6:35:30 PM:   Command failed with exit code 1: cd frontend && yarn install && yarn build && cd ../cortes && npm install && npm run build && mkdir -p ../frontend/dist/cortes && cp -r out/. ../frontend/dist/cortes/ (https://ntl.fyi/exit-code-1)
+6:35:30 PM: ​
+6:35:30 PM:   Error location
+6:35:30 PM:   In build.command from netlify.toml:
+6:35:30 PM:   cd frontend && yarn install && yarn build && cd ../cortes && npm install && npm run build && mkdir -p ../frontend/dist/cortes && cp -r out/. ../frontend/dist/cortes/
+6:35:30 PM: ​
+6:35:30 PM:   Resolved config
+6:35:30 PM:   build:
+6:35:30 PM:     command: cd frontend && yarn install && yarn build && cd ../cortes && npm
+6:35:30 PM:       install && npm run build && mkdir -p ../frontend/dist/cortes && cp -r out/.
+6:35:30 PM:       ../frontend/dist/cortes/
+6:35:30 PM:     commandOrigin: config
+6:35:30 PM:     environment:
+6:35:30 PM:       - NODE_VERSION
+6:35:30 PM:       - NODE_OPTIONS
+6:35:30 PM:     publish: /opt/build/repo/frontend/dist
+6:35:30 PM:     publishOrigin: config
+6:35:30 PM:   functionsDirectory: /opt/build/repo/netlify/functions
+6:35:30 PM:   redirects:
+6:35:30 PM:     - from: /api/webhook/kiwify
+6:35:30 PM:       status: 200
+6:35:30 PM:       to: /.netlify/functions/kiwify
+6:35:30 PM:     - force: true
+6:35:30 PM:       from: /cortes
+6:35:30 PM:       status: 301
+6:35:30 PM:       to: /cortes/
+6:35:30 PM:     - from: /cortes/*
+6:35:30 PM:       status: 200
+6:35:30 PM:       to: /cortes/index.html
+6:35:30 PM:     - from: /*
+6:35:30 PM:       status: 200
+6:35:30 PM:       to: /index.html
+6:35:30 PM:   redirectsOrigin: config
+6:35:31 PM: Failed during stage 'building site': Build script returned non-zero exit code: 2 (https://ntl.fyi/exit-code-2)
+6:35:31 PM: Build failed due to a user error: Build script returned non-zero exit code: 2
+6:35:31 PM: Failing build: Failed to build site
+6:35:31 PM: Finished processing build request in 1m55.457s

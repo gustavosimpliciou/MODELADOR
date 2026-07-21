@@ -2,7 +2,7 @@
   # Build the React frontend, then build the Cortes 3D Next.js app as a static
   # export and merge it into frontend/dist/cortes/ so both apps are served from
   # the same Netlify site under their respective paths.
-  command   = "cd frontend && yarn install && yarn build && cd ../cortes && npm install && npm run build && mkdir -p ../frontend/dist/cortes && cp -r out/. ../frontend/dist/cortes/"
+  command   = "cd frontend && yarn install && yarn build && cd ../cortes && npm install && npm run build -- --webpack && mkdir -p ../frontend/dist/cortes && cp -r out/. ../frontend/dist/cortes/"
   publish   = "frontend/dist"
   functions = "netlify/functions"
 
