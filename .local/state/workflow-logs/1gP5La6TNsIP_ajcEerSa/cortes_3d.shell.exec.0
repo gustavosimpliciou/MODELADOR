@@ -13,3 +13,5 @@ See more: https://nextjs.org/docs/app/guides/local-development
  GET / [32m200[39m in 17.9s[2m (next.js: 17.7s, application-code: 256ms)[22m
  GET / [32m200[39m in 51ms[2m (next.js: 5ms, application-code: 47ms)[22m
 [36m[browser][39m [33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.[39m [2m(https://113b5156-8711-4aac-811a-41b1bdc3b325-00-1mect6i21a1yb.riker.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
+ GET / [32m200[39m in 240ms[2m (next.js: 135ms, application-code: 105ms)[22m
+[36m[browser][39m [33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.[39m [2m(https://113b5156-8711-4aac-811a-41b1bdc3b325-00-1mect6i21a1yb.riker.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
