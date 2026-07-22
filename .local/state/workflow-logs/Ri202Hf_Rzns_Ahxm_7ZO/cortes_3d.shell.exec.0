@@ -1,0 +1,21 @@
+
+> my-project@0.1.0 dev /home/runner/workspace/cortes
+> next dev -p 3001
+
+[1m[38;2;173;127;168m▲ Next.js 16.2.10[39m[22m (Turbopack)
+- Local:         http://localhost:3001
+- Network:       http://172.24.0.2:3001
+[32m[1m✓[22m[39m Ready in 969ms
+[33m[1m⚠[22m[39m Turbopack's filesystem cache has been deleted because we previously detected an internal error in Turbopack. Builds or page loads may be slower as a result.
+
+[37m[1m○[22m[39m Compiling / ...
+ GET / [32m200[39m in 22.9s[2m (next.js: 22.5s, application-code: 417ms)[22m
+ GET / [32m200[39m in 91ms[2m (next.js: 22ms, application-code: 69ms)[22m
+[36m[browser][39m [33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.[39m [2m(https://0832d70d-b276-4526-9eb2-7144e9a839b8-00-2k6z1gj8wtqca.janeway.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
+ HEAD / [33m404[39m in 614ms[2m (next.js: 565ms, application-code: 49ms)[22m
+ GET / [32m200[39m in 77ms[2m (next.js: 20ms, application-code: 56ms)[22m
+[36m[browser][39m [33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.[39m [2m(https://0832d70d-b276-4526-9eb2-7144e9a839b8-00-2k6z1gj8wtqca.janeway.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
+[32m[1m✓[22m[39m Compiled in 14.6s
+[36m[browser][39m [33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.[39m [2m(https://0832d70d-b276-4526-9eb2-7144e9a839b8-00-2k6z1gj8wtqca.janeway.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
+[36m[browser][39m [33m[Viewport3D] WebGL context lost[39m [2m(https://0832d70d-b276-4526-9eb2-7144e9a839b8-00-2k6z1gj8wtqca.janeway.replit.dev/__replco/static/devtools/injected.js:37:27)[22m
+[32m[1m✓[22m[39m Finished filesystem cache database compaction in 15.7s

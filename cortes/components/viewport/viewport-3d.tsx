@@ -600,7 +600,7 @@ export function Viewport3D() {
           ref={controlsRef}
           enableDamping
           dampingFactor={0.06}
-          rotateSpeed={-0.85}
+          rotateSpeed={0.85}
           zoomSpeed={1.0}
           panSpeed={0.8}
           minDistance={0.001}

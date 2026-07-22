@@ -1,70 +1,19 @@
-{"timestamp":"00:00:01.271","source":"Server","level":"LOG","message":""}
-{"timestamp":"00:00:18.226","source":"Server","level":"LOG","message":"○ Compiling / ..."}
-{"timestamp":"00:00:36.015","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
-{"timestamp":"00:11:44.121","source":"Browser","level":"WARN","message":"THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."}
-{"timestamp":"00:11:44.561","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\\u001b[39m\" \"\\u001b[2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
-{"timestamp":"00:11:44.562","source":"Browser","level":"WARN","message":"\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\u001b[39m"}
-{"timestamp":"00:15:07.650","source":"Server","level":"LOG","message":"✓ Compiled in 12.3s"}
-{"timestamp":"00:15:08.481","source":"Browser","level":"WARN","message":"THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."}
-{"timestamp":"00:15:08.481","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\\u001b[39m\" \"\\u001b[2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
-{"timestamp":"00:15:08.482","source":"Browser","level":"WARN","message":"\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\u001b[39m"}
-{"timestamp":"00:15:08.969","source":"Browser","level":"LOG","message":"THREE.WebGLRenderer: Context Lost."}
-{"timestamp":"00:15:08.970","source":"Browser","level":"WARN","message":"[Viewport3D] WebGL context lost"}
-{"timestamp":"00:15:09.006","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33m[Viewport3D] WebGL context lost\\u001b[39m\" \"\\u001b[2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
-{"timestamp":"00:15:09.007","source":"Browser","level":"WARN","message":"\u001b[33m[Viewport3D] WebGL context lost\u001b[39m"}
-{"timestamp":"00:15:12.784","source":"Server","level":"LOG","message":"✓ Compiled in 1114ms"}
-{"timestamp":"00:15:13.690","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\\u001b[39m\" \"\\u001b[2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
-{"timestamp":"00:15:13.690","source":"Browser","level":"WARN","message":"\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\u001b[39m"}
-{"timestamp":"00:15:13.690","source":"Browser","level":"WARN","message":"THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."}
-{"timestamp":"00:15:14.099","source":"Browser","level":"LOG","message":"THREE.WebGLRenderer: Context Lost."}
-{"timestamp":"00:15:14.099","source":"Browser","level":"WARN","message":"[Viewport3D] WebGL context lost"}
-{"timestamp":"00:15:14.109","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33m[Viewport3D] WebGL context lost\\u001b[39m\" \"\\u001b[2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
-{"timestamp":"00:15:14.109","source":"Browser","level":"WARN","message":"\u001b[33m[Viewport3D] WebGL context lost\u001b[39m"}
-{"timestamp":"00:15:34.027","source":"Server","level":"LOG","message":"✓ Finished filesystem cache database compaction in 17.5s"}
-{"timestamp":"00:15:41.251","source":"Server","level":"LOG","message":"✓ Compiled in 1314ms"}
-{"timestamp":"00:15:42.153","source":"Browser","level":"WARN","message":"THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."}
-{"timestamp":"00:15:42.154","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\\u001b[39m\" \"\\u001b[2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
-{"timestamp":"00:15:42.154","source":"Browser","level":"WARN","message":"\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\u001b[39m"}
-{"timestamp":"00:15:42.573","source":"Browser","level":"LOG","message":"THREE.WebGLRenderer: Context Lost."}
-{"timestamp":"00:15:42.573","source":"Browser","level":"WARN","message":"[Viewport3D] WebGL context lost"}
-{"timestamp":"00:15:42.574","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33m[Viewport3D] WebGL context lost\\u001b[39m\" \"\\u001b[2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
-{"timestamp":"00:15:42.574","source":"Browser","level":"WARN","message":"\u001b[33m[Viewport3D] WebGL context lost\u001b[39m"}
-{"timestamp":"00:20:25.627","source":"Browser","level":"WARN","message":"THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."}
-{"timestamp":"00:20:25.628","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\\u001b[39m\" \"\\u001b[2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
-{"timestamp":"00:20:25.628","source":"Browser","level":"WARN","message":"\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\u001b[39m"}
-{"timestamp":"00:23:42.150","source":"Server","level":"LOG","message":"✓ Compiled in 2.4s"}
-{"timestamp":"00:23:45.209","source":"Server","level":"LOG","message":"✓ Compiled in 0ms"}
-{"timestamp":"00:23:49.264","source":"Browser","level":"ERROR","message":"uncaughtError: ReferenceError: showAxes is not defined"}
-{"timestamp":"00:24:15.129","source":"Server","level":"LOG","message":"✓ Compiled in 1203ms"}
-{"timestamp":"00:26:37.569","source":"Browser","level":"WARN","message":"THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."}
-{"timestamp":"00:26:37.632","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\\u001b[39m\" \"\\u001b[2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
-{"timestamp":"00:26:37.633","source":"Browser","level":"WARN","message":"\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\u001b[39m"}
-{"timestamp":"00:27:13.845","source":"Browser","level":"WARN","message":"THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."}
-{"timestamp":"00:27:13.846","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\\u001b[39m\" \"\\u001b[2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
-{"timestamp":"00:27:13.846","source":"Browser","level":"WARN","message":"\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\u001b[39m"}
-{"timestamp":"00:27:18.847","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
-{"timestamp":"00:32:54.152","source":"Server","level":"LOG","message":"✓ Compiled in 1640ms"}
-{"timestamp":"00:32:55.054","source":"Browser","level":"WARN","message":"THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."}
-{"timestamp":"00:32:55.054","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\\u001b[39m\" \"\\u001b[2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
-{"timestamp":"00:32:55.055","source":"Browser","level":"WARN","message":"\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\u001b[39m"}
-{"timestamp":"00:32:55.487","source":"Browser","level":"LOG","message":"THREE.WebGLRenderer: Context Lost."}
-{"timestamp":"00:32:55.487","source":"Browser","level":"WARN","message":"[Viewport3D] WebGL context lost"}
-{"timestamp":"00:32:55.508","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33m[Viewport3D] WebGL context lost\\u001b[39m\" \"\\u001b[2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
-{"timestamp":"00:32:55.509","source":"Browser","level":"WARN","message":"\u001b[33m[Viewport3D] WebGL context lost\u001b[39m"}
-{"timestamp":"00:36:22.068","source":"Browser","level":"WARN","message":"THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."}
-{"timestamp":"00:36:22.068","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\\u001b[39m\" \"\\u001b[2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
-{"timestamp":"00:36:22.069","source":"Browser","level":"WARN","message":"\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\u001b[39m"}
-{"timestamp":"00:37:27.543","source":"Browser","level":"WARN","message":"THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."}
-{"timestamp":"00:37:27.543","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\\u001b[39m\" \"\\u001b[2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
-{"timestamp":"00:37:27.543","source":"Browser","level":"WARN","message":"\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\u001b[39m"}
-{"timestamp":"00:38:26.261","source":"Server","level":"LOG","message":"✓ Compiled in 1735ms"}
-{"timestamp":"00:38:26.718","source":"Browser","level":"WARN","message":"THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."}
-{"timestamp":"00:38:26.718","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\\u001b[39m\" \"\\u001b[2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
-{"timestamp":"00:38:26.719","source":"Browser","level":"WARN","message":"\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\u001b[39m"}
-{"timestamp":"00:38:27.136","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33m[Viewport3D] WebGL context lost\\u001b[39m\" \"\\u001b[2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
-{"timestamp":"00:38:27.136","source":"Browser","level":"WARN","message":"\u001b[33m[Viewport3D] WebGL context lost\u001b[39m"}
-{"timestamp":"00:38:27.136","source":"Browser","level":"LOG","message":"THREE.WebGLRenderer: Context Lost."}
-{"timestamp":"00:38:27.136","source":"Browser","level":"WARN","message":"[Viewport3D] WebGL context lost"}
-{"timestamp":"00:38:51.371","source":"Browser","level":"WARN","message":"THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."}
-{"timestamp":"00:38:51.372","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\\u001b[39m\" \"\\u001b[2m(https://9cc0b407-e3c3-443c-8b26-2f941ad6cf55-00-1qcwvuz3wio8q.riker.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
-{"timestamp":"00:38:51.372","source":"Browser","level":"WARN","message":"\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\u001b[39m"}
+{"timestamp":"00:00:01.250","source":"Server","level":"WARN","message":"⚠ Turbopack's filesystem cache has been deleted because we previously detected an internal error in Turbopack. Builds or page loads may be slower as a result."}
+{"timestamp":"00:00:01.724","source":"Server","level":"LOG","message":""}
+{"timestamp":"00:00:13.513","source":"Server","level":"LOG","message":"○ Compiling / ..."}
+{"timestamp":"00:00:33.876","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
+{"timestamp":"00:01:22.531","source":"Browser","level":"WARN","message":"THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."}
+{"timestamp":"00:01:22.655","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\\u001b[39m\" \"\\u001b[2m(https://0832d70d-b276-4526-9eb2-7144e9a839b8-00-2k6z1gj8wtqca.janeway.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
+{"timestamp":"00:01:22.656","source":"Browser","level":"WARN","message":"\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\u001b[39m"}
+{"timestamp":"00:07:28.575","source":"Browser","level":"WARN","message":"THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."}
+{"timestamp":"00:07:28.576","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\\u001b[39m\" \"\\u001b[2m(https://0832d70d-b276-4526-9eb2-7144e9a839b8-00-2k6z1gj8wtqca.janeway.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
+{"timestamp":"00:07:28.576","source":"Browser","level":"WARN","message":"\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\u001b[39m"}
+{"timestamp":"00:09:45.453","source":"Server","level":"LOG","message":"✓ Compiled in 14.6s"}
+{"timestamp":"00:09:46.361","source":"Browser","level":"WARN","message":"THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."}
+{"timestamp":"00:09:46.363","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\\u001b[39m\" \"\\u001b[2m(https://0832d70d-b276-4526-9eb2-7144e9a839b8-00-2k6z1gj8wtqca.janeway.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
+{"timestamp":"00:09:46.363","source":"Browser","level":"WARN","message":"\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\u001b[39m"}
+{"timestamp":"00:09:46.722","source":"Browser","level":"LOG","message":"THREE.WebGLRenderer: Context Lost."}
+{"timestamp":"00:09:46.722","source":"Browser","level":"WARN","message":"[Viewport3D] WebGL context lost"}
+{"timestamp":"00:09:47.126","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33m[Viewport3D] WebGL context lost\\u001b[39m\" \"\\u001b[2m(https://0832d70d-b276-4526-9eb2-7144e9a839b8-00-2k6z1gj8wtqca.janeway.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
+{"timestamp":"00:09:47.126","source":"Browser","level":"WARN","message":"\u001b[33m[Viewport3D] WebGL context lost\u001b[39m"}
+{"timestamp":"00:09:56.508","source":"Server","level":"LOG","message":"✓ Finished filesystem cache database compaction in 15.7s"}

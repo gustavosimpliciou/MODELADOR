@@ -22,8 +22,8 @@ The Vite frontend proxies `/api` → port 8000 and `/cortes` → port 3001, so u
 Each service has its own Replit workflow. Start all three:
 
 - **Start application** — `cd frontend && yarn dev` (port 5000)
-- **Backend API** — `cd backend && uvicorn server:app --host 0.0.0.0 --port 8000 --reload` (port 8000)
-- **Cortes 3D** — `cd cortes && npm run dev` (port 3001)
+- **Backend API** — `cd backend && python -m uvicorn server:app --host 0.0.0.0 --port 8000 --reload` (port 8000)
+- **Cortes 3D** — `cd cortes && NEXT_EXPERIMENTAL_DISABLE_TURBOPACK=1 pnpm dev` (port 3001)
 
 ## User Flow
 
@@ -56,11 +56,11 @@ Each service has its own Replit workflow. Start all three:
 # Frontend
 cd frontend && yarn install
 
-# Backend
-cd backend && pip install -r requirements.txt
+# Backend (uses uv / pyproject.toml)
+uv sync
 
 # Cortes
-cd cortes && npm install
+cd cortes && pnpm install --ignore-scripts
 ```
 
 ## Deploy no Netlify
