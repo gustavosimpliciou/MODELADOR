@@ -2,3 +2,4 @@
 - [supabase-py shared client mutates session](supabase-py-client-session-mutation.md) — never call `.auth.*` on the client you also use for service-role table queries.
 - [Lampshade mesh displacement quality](lampshade-mesh-quality.md) — displacement must stay proportional to local radius; unclamped slider stacking caused "amateur/deformed" models.
 - [Procedural weave pattern technique](procedural-weave-pattern-technique.md) — checkerboard bit for over/under illusion, duty-cycle smoothstep for % open area, true hexCell for hex grids.
+- [Imported multi-service setup](imported-multiservice-setup.md) — Cortes 3D needs Next.js Webpack mode because the imported Turbopack cache can crash.

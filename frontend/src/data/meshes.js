@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────
-// Premium mesh library — 60 procedurally-generated relief patterns.
+// Premium mesh library — 88 procedurally-generated relief patterns.
 //
 // Each pattern is a pure function:
 //   fn(angle, heightNorm, params) → displacement (scene units)
@@ -26,7 +26,20 @@ export const MESH_CATEGORIES = [
 const baseParams = (overrides = {}) => ({
   density:       1.0,
   rotation:      0,
-  lineThickness: 1.0,
+  // Presentation baseline: restrained relief reads as a designed surface
+  // instead of a noisy/spiky displacement when a mesh is first selected.
+  lineThickness: 0.92,
+  amplitude:     0.95,
+  frequency:     1.0,
+  noise:         0,
+  scale:         0.9,
+  openingWidth:  6.0,
+  depth:         0.78,
+  tilt:          0,
+  randomization: 0,
+  symmetry:      1,
+  gradient:      0,
+  curvature:     0,
   ...overrides,
 })
 
@@ -920,6 +933,66 @@ const patterns = {
   },
 }
 
+// ─── Presentation tuning ───────────────────────────────────────────
+// The procedural functions have intentionally different amplitude budgets.
+// A single global editor preset made delicate patterns disappear while
+// stronger ones looked over-deformed. These category/pattern presets keep
+// each family visually premium without changing its identity or count.
+const PRESENTATION_BY_CATEGORY = {
+  Diamond:     { lineThickness: 0.88, amplitude: 0.82, depth: 0.68, scale: 0.86, openingWidth: 6.4 },
+  Hexagonal:   { lineThickness: 0.86, amplitude: 0.78, depth: 0.66, scale: 0.88, openingWidth: 6.6 },
+  Voronoi:     { lineThickness: 0.78, amplitude: 0.68, depth: 0.58, scale: 0.82, openingWidth: 7.0 },
+  Spiral:      { lineThickness: 0.84, amplitude: 0.76, depth: 0.64, scale: 0.88, openingWidth: 6.8 },
+  Vertical:    { lineThickness: 0.82, amplitude: 0.74, depth: 0.62, scale: 0.9,  openingWidth: 6.8 },
+  Organic:     { lineThickness: 0.76, amplitude: 0.66, depth: 0.56, scale: 0.82, openingWidth: 7.2 },
+  Luxury:      { lineThickness: 0.74, amplitude: 0.62, depth: 0.52, scale: 0.8,  openingWidth: 7.4 },
+  Minimal:     { lineThickness: 0.78, amplitude: 0.72, depth: 0.58, scale: 0.88, openingWidth: 7.0 },
+  Geometric:   { lineThickness: 0.82, amplitude: 0.74, depth: 0.62, scale: 0.88, openingWidth: 6.8 },
+  Nature:      { lineThickness: 0.74, amplitude: 0.64, depth: 0.54, scale: 0.8,  openingWidth: 7.4 },
+  Weave:       { lineThickness: 0.76, amplitude: 0.66, depth: 0.56, scale: 0.82, openingWidth: 7.2 },
+  Architectural:{ lineThickness: 0.82, amplitude: 0.72, depth: 0.6, scale: 0.86, openingWidth: 6.8 },
+  Têxteis:     { lineThickness: 0.74, amplitude: 0.62, depth: 0.52, scale: 0.8,  openingWidth: 7.4 },
+  Cordas:      { lineThickness: 0.78, amplitude: 0.68, depth: 0.58, scale: 0.84, openingWidth: 7.0 },
+  Onduladas:   { lineThickness: 0.76, amplitude: 0.66, depth: 0.56, scale: 0.84, openingWidth: 7.2 },
+  Premium:     { lineThickness: 0.74, amplitude: 0.62, depth: 0.52, scale: 0.8,  openingWidth: 7.4 },
+}
+
+const PRESENTATION_BY_PATTERN = {
+  // High-frequency or stepped patterns benefit from more air and less depth.
+  diamondFaceted: { density: 1.12, amplitude: 0.62, depth: 0.5, scale: 0.78, openingWidth: 7.6 },
+  diamondLattice: { amplitude: 0.68, depth: 0.52, scale: 0.8, openingWidth: 7.5 },
+  diamondCrisscross: { amplitude: 0.7, depth: 0.55, scale: 0.82 },
+  hexTriangle: { amplitude: 0.68, depth: 0.54, scale: 0.82 },
+  hexWeave: { density: 0.95, amplitude: 0.64, depth: 0.5, scale: 0.8, openingWidth: 7.5 },
+  voronoiCracked: { density: 1.05, amplitude: 0.54, depth: 0.44, scale: 0.74, openingWidth: 8.0 },
+  voronoiCells: { amplitude: 0.58, depth: 0.48, scale: 0.78, openingWidth: 7.8 },
+  voronoiScale: { density: 1.0, amplitude: 0.58, depth: 0.48, scale: 0.78, openingWidth: 7.8 },
+  spiralTornado: { density: 1.0, amplitude: 0.64, depth: 0.52, scale: 0.82 },
+  spiralDNA: { density: 1.0, amplitude: 0.64, depth: 0.52, scale: 0.82 },
+  organicCoral: { density: 0.92, amplitude: 0.52, depth: 0.42, scale: 0.74, openingWidth: 8.0 },
+  organicBlobs: { amplitude: 0.58, depth: 0.48, scale: 0.76, openingWidth: 7.8 },
+  luxuryFloral: { density: 0.82, amplitude: 0.5, depth: 0.42, scale: 0.72, openingWidth: 8.2 },
+  luxuryMedallion: { density: 0.76, amplitude: 0.48, depth: 0.4, scale: 0.7, openingWidth: 8.4 },
+  moroccanStar: { density: 0.82, amplitude: 0.54, depth: 0.44, scale: 0.76, openingWidth: 8.0 },
+  minimalLines: { amplitude: 0.72, depth: 0.58, scale: 0.9, openingWidth: 7.2 },
+  microPerforated: { amplitude: 0.58, depth: 0.42, scale: 0.74, openingWidth: 8.0 },
+  voile: { amplitude: 0.5, depth: 0.38, scale: 0.7, openingWidth: 8.4 },
+  juteWeave: { density: 0.9, amplitude: 0.56, depth: 0.44, scale: 0.76, openingWidth: 7.8 },
+  wickerWillow: { density: 0.9, amplitude: 0.54, depth: 0.42, scale: 0.74, openingWidth: 8.0 },
+  sisalFiber: { density: 0.9, amplitude: 0.5, depth: 0.4, scale: 0.72, openingWidth: 8.2 },
+}
+
+function polishMesh(mesh) {
+  return {
+    ...mesh,
+    params: {
+      ...mesh.params,
+      ...(PRESENTATION_BY_CATEGORY[mesh.category] || {}),
+      ...(PRESENTATION_BY_PATTERN[mesh.pattern] || {}),
+    },
+  }
+}
+
 // ─── Mesh catalogue ───────────────────────────────────────────────
 export const MESHES = [
 
@@ -1290,7 +1363,7 @@ export const MESHES = [
   { id: 'weave-wicker',       name: 'Vime',               category: 'Weave', pattern: 'wickerWillow',
     params: baseParams({ density: 1.0 }), printDiff: 'Medium', printTime: '4h 40m', lightTransp: 57, filament: '15g',
     vaseModeCompat: true,  stdPrintCompat: true,  description: 'Cestaria de vime com tiras arqueadas artesanais.' },
-]
+].map(polishMesh)
 
 export function getPattern(name) {
   return patterns[name] || null

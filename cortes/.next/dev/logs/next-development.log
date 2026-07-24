@@ -1,19 +1,5 @@
-{"timestamp":"00:00:01.250","source":"Server","level":"WARN","message":"⚠ Turbopack's filesystem cache has been deleted because we previously detected an internal error in Turbopack. Builds or page loads may be slower as a result."}
-{"timestamp":"00:00:01.724","source":"Server","level":"LOG","message":""}
-{"timestamp":"00:00:13.513","source":"Server","level":"LOG","message":"○ Compiling / ..."}
-{"timestamp":"00:00:33.876","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
-{"timestamp":"00:01:22.531","source":"Browser","level":"WARN","message":"THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."}
-{"timestamp":"00:01:22.655","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\\u001b[39m\" \"\\u001b[2m(https://0832d70d-b276-4526-9eb2-7144e9a839b8-00-2k6z1gj8wtqca.janeway.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
-{"timestamp":"00:01:22.656","source":"Browser","level":"WARN","message":"\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\u001b[39m"}
-{"timestamp":"00:07:28.575","source":"Browser","level":"WARN","message":"THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."}
-{"timestamp":"00:07:28.576","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\\u001b[39m\" \"\\u001b[2m(https://0832d70d-b276-4526-9eb2-7144e9a839b8-00-2k6z1gj8wtqca.janeway.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
-{"timestamp":"00:07:28.576","source":"Browser","level":"WARN","message":"\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\u001b[39m"}
-{"timestamp":"00:09:45.453","source":"Server","level":"LOG","message":"✓ Compiled in 14.6s"}
-{"timestamp":"00:09:46.361","source":"Browser","level":"WARN","message":"THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."}
-{"timestamp":"00:09:46.363","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\\u001b[39m\" \"\\u001b[2m(https://0832d70d-b276-4526-9eb2-7144e9a839b8-00-2k6z1gj8wtqca.janeway.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
-{"timestamp":"00:09:46.363","source":"Browser","level":"WARN","message":"\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\u001b[39m"}
-{"timestamp":"00:09:46.722","source":"Browser","level":"LOG","message":"THREE.WebGLRenderer: Context Lost."}
-{"timestamp":"00:09:46.722","source":"Browser","level":"WARN","message":"[Viewport3D] WebGL context lost"}
-{"timestamp":"00:09:47.126","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33m[Viewport3D] WebGL context lost\\u001b[39m\" \"\\u001b[2m(https://0832d70d-b276-4526-9eb2-7144e9a839b8-00-2k6z1gj8wtqca.janeway.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
-{"timestamp":"00:09:47.126","source":"Browser","level":"WARN","message":"\u001b[33m[Viewport3D] WebGL context lost\u001b[39m"}
-{"timestamp":"00:09:56.508","source":"Server","level":"LOG","message":"✓ Finished filesystem cache database compaction in 15.7s"}
+{"timestamp":"00:00:01.760","source":"Server","level":"LOG","message":""}
+{"timestamp":"00:00:23.332","source":"Server","level":"LOG","message":"○ Compiling / ..."}
+{"timestamp":"00:25:12.346","source":"Browser","level":"WARN","message":"THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."}
+{"timestamp":"00:25:13.191","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\\u001b[39m\" \"\\u001b[2m(https://1ed1415e-5c46-47bc-b864-2edfb3b75b65-00-1qlxgv6fv81d.picard.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
+{"timestamp":"00:25:13.191","source":"Browser","level":"WARN","message":"\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\u001b[39m"}

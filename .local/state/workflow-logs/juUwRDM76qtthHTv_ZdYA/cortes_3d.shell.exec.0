@@ -1,0 +1,40 @@
+[1m[38;2;173;127;168m▲ Next.js 16.2.10[39m[22m (webpack)
+- Local:         http://localhost:3001
+- Network:       http://172.24.0.2:3001
+[32m[1m✓[22m[39m Ready in 336ms
+
+[37m[1m○[22m[39m Compiling / ...
+ GET / [32m200[39m in 23.0s[2m (next.js: 21.7s, application-code: 1323ms)[22m
+ GET / [32m200[39m in 73ms[2m (next.js: 4ms, application-code: 69ms)[22m
+ GET / [32m200[39m in 31ms[2m (next.js: 4ms, application-code: 27ms)[22m
+ GET / [32m200[39m in 188ms[2m (next.js: 3ms, application-code: 184ms)[22m
+ GET / [33m404[39m in 3.0s[2m (next.js: 2.9s, application-code: 100ms)[22m
+[31m[1m⨯[22m[39m Error [ChunkLoadError]: Failed to load chunk server/chunks/ssr/1hdb_next_dist_esm_0ug75nl._.js from runtime for chunk server/app/page.js
+    at Object.<anonymous> (.next/dev/server/app/page.js:2:3) {
+  page: [32m'/'[39m,
+  [cause]: Error: Cannot find module '/home/runner/workspace/cortes/.next/dev/server/chunks/ssr/1hdb_next_dist_esm_0ug75nl._.js'
+  Require stack:
+  - /home/runner/workspace/cortes/.next/dev/server/chunks/ssr/[turbopack]_runtime.js
+  - /home/runner/workspace/cortes/.next/dev/server/app/page.js
+  - /home/runner/workspace/cortes/node_modules/.pnpm/next@16.2.10_@babel+core@7.29.7_react-dom@19.2.4_react@19.2.4__react@19.2.4/node_modules/next/dist/server/require.js
+  - /home/runner/workspace/cortes/node_modules/.pnpm/next@16.2.10_@babel+core@7.29.7_react-dom@19.2.4_react@19.2.4__react@19.2.4/node_modules/next/dist/server/load-components.js
+  - /home/runner/workspace/cortes/node_modules/.pnpm/next@16.2.10_@babel+core@7.29.7_react-dom@19.2.4_react@19.2.4__react@19.2.4/node_modules/next/dist/build/utils.js
+  - /home/runner/workspace/cortes/node_modules/.pnpm/next@16.2.10_@babel+core@7.29.7_react-dom@19.2.4_react@19.2.4__react@19.2.4/node_modules/next/dist/server/lib/router-utils/setup-dev-bundler.js
+  - /home/runner/workspace/cortes/node_modules/.pnpm/next@16.2.10_@babel+core@7.29.7_react-dom@19.2.4_react@19.2.4__react@19.2.4/node_modules/next/dist/server/lib/router-server.js
+  - /home/runner/workspace/cortes/node_modules/.pnpm/next@16.2.10_@babel+core@7.29.7_react-dom@19.2.4_react@19.2.4__react@19.2.4/node_modules/next/dist/server/lib/start-server.js
+      at Object.<anonymous> (.next/dev/server/app/page.js:2:3) {
+    code: [32m'MODULE_NOT_FOUND'[39m,
+    requireStack: [
+      [32m'/home/runner/workspace/cortes/.next/dev/server/chunks/ssr/[turbopack]_runtime.js'[39m,
+      [32m'/home/runner/workspace/cortes/.next/dev/server/app/page.js'[39m,
+      [32m'/home/runner/workspace/cortes/node_modules/.pnpm/next@16.2.10_@babel+core@7.29.7_react-dom@19.2.4_react@19.2.4__react@19.2.4/node_modules/next/dist/server/require.js'[39m,
+      [32m'/home/runner/workspace/cortes/node_modules/.pnpm/next@16.2.10_@babel+core@7.29.7_react-dom@19.2.4_react@19.2.4__react@19.2.4/node_modules/next/dist/server/load-components.js'[39m,
+      [32m'/home/runner/workspace/cortes/node_modules/.pnpm/next@16.2.10_@babel+core@7.29.7_react-dom@19.2.4_react@19.2.4__react@19.2.4/node_modules/next/dist/build/utils.js'[39m,
+      [32m'/home/runner/workspace/cortes/node_modules/.pnpm/next@16.2.10_@babel+core@7.29.7_react-dom@19.2.4_react@19.2.4__react@19.2.4/node_modules/next/dist/server/lib/router-utils/setup-dev-bundler.js'[39m,
+      [32m'/home/runner/workspace/cortes/node_modules/.pnpm/next@16.2.10_@babel+core@7.29.7_react-dom@19.2.4_react@19.2.4__react@19.2.4/node_modules/next/dist/server/lib/router-server.js'[39m,
+      [32m'/home/runner/workspace/cortes/node_modules/.pnpm/next@16.2.10_@babel+core@7.29.7_react-dom@19.2.4_react@19.2.4__react@19.2.4/node_modules/next/dist/server/lib/start-server.js'[39m
+    ]
+  }
+}
+[37m[1m○[22m[39m Compiling /_error ...
+ GET / [31m500[39m in 8.9s[2m (next.js: 8.6s, application-code: 343ms)[22m

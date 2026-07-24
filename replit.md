@@ -23,7 +23,7 @@ Each service has its own Replit workflow. Start all three:
 
 - **Start application** — `cd frontend && yarn dev` (port 5000)
 - **Backend API** — `cd backend && python -m uvicorn server:app --host 0.0.0.0 --port 8000 --reload` (port 8000)
-- **Cortes 3D** — `cd cortes && NEXT_EXPERIMENTAL_DISABLE_TURBOPACK=1 pnpm dev` (port 3001)
+- **Cortes 3D** — `cd cortes && pnpm exec next dev --webpack -p 3001` (port 3001)
 
 ## User Flow
 

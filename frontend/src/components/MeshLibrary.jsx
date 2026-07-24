@@ -62,7 +62,9 @@ function MeshPatternSVG({ mesh, active, hovered }) {
   )
 }
 
-// ─── 3D Thumbnail (only for active mesh) ────────────────────────────
+// ─── 3D preview helpers ─────────────────────────────────────────────
+// The card grid uses SVG previews so all 88 cards do not create WebGL
+// contexts at once. The larger hover preview below is still 3D.
 
 const geoCache = new Map()
 
@@ -74,8 +76,18 @@ function getThumbGeometry(mesh) {
   }
   const dummyParams = {
     density: mesh.params.density || 1, rotation: mesh.params.rotation || 0,
-    lineThickness: mesh.params.lineThickness || 1, amplitude: 1.5,
-    frequency: 1, noise: 0, scale: 1,
+    lineThickness: mesh.params.lineThickness || 0.92,
+    amplitude: mesh.params.amplitude ?? 0.95,
+    frequency: mesh.params.frequency ?? 1,
+    noise: mesh.params.noise ?? 0,
+    scale: mesh.params.scale ?? 0.9,
+    openingWidth: mesh.params.openingWidth ?? 6,
+    depth: mesh.params.depth ?? 0.78,
+    tilt: mesh.params.tilt ?? 0,
+    randomization: mesh.params.randomization ?? 0,
+    symmetry: mesh.params.symmetry ?? 1,
+    gradient: mesh.params.gradient ?? 0,
+    curvature: mesh.params.curvature ?? 0,
   }
   const geo = buildLampshadeGeometry(dummyLamp, dummyParams, mesh)
   geoCache.set(mesh.id, geo)
@@ -182,18 +194,14 @@ function MeshCard({ mesh, active, onSelect, onFavorite, isFavorite, onHover, onH
     >
       {/* Thumbnail — square */}
       <div style={{ flex: 1, background: '#0c0c0c', position: 'relative', overflow: 'hidden', minHeight: 0 }}>
-        {active ? (
-          <ThumbCanvas mesh={mesh} active={active} />
-        ) : (
-          <div style={{
-            width: '100%', height: '100%',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            transition: 'transform 0.2s',
-            transform: hovered ? 'scale(1.08)' : 'scale(1)',
-          }}>
-            <MeshPatternSVG mesh={mesh} active={active} hovered={hovered} />
-          </div>
-        )}
+        <div style={{
+          width: '100%', height: '100%',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: 'transform 0.2s',
+          transform: hovered ? 'scale(1.08)' : 'scale(1)',
+        }}>
+          <MeshPatternSVG mesh={mesh} active={active} hovered={hovered} />
+        </div>
 
         {/* Favorite */}
         <button

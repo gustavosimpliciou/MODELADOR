@@ -1,0 +1,9 @@
+[1m[38;2;173;127;168m▲ Next.js 16.2.10[39m[22m (webpack)
+- Local:         http://localhost:3001
+- Network:       http://172.24.0.2:3001
+[32m[1m✓[22m[39m Ready in 1049ms
+
+[37m[1m○[22m[39m Compiling /_not-found ...
+ GET / [33m404[39m in 21.5s[2m (next.js: 19.4s, application-code: 2.1s)[22m
+[37m[1m○[22m[39m Compiling / ...
+ GET / [32m200[39m in 10.6s[2m (next.js: 10.0s, application-code: 578ms)[22m

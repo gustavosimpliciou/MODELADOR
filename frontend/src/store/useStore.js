@@ -5,9 +5,9 @@ import { supabase } from '../lib/supabase'
 // Used both to seed/reset `meshParams` and to detect whether the user has
 // touched the editor for the currently active mesh (see MeshLibrary.jsx).
 export const DEFAULT_MESH_PARAMS = {
-  density: 1.0, rotation: 0, lineThickness: 1.2, amplitude: 1.5,
-  frequency: 1.0, noise: 0, scale: 1.0, openingWidth: 5.0,
-  depth: 1.0, tilt: 0, randomization: 0, symmetry: 1, gradient: 0, curvature: 0,
+  density: 1.0, rotation: 0, lineThickness: 0.92, amplitude: 0.95,
+  frequency: 1.0, noise: 0, scale: 0.9, openingWidth: 6.0,
+  depth: 0.78, tilt: 0, randomization: 0, symmetry: 1, gradient: 0, curvature: 0,
 }
 
 // A mesh's own `params` (e.g. a tuned `density`) override the global

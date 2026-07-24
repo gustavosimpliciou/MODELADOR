@@ -59,7 +59,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd cortes && NEXT_EXPERIMENTAL_DISABLE_TURBOPACK=1 pnpm dev"
+args = "cd cortes && pnpm exec next dev --webpack -p 3001"
 waitForPort = 3001
 
 [[ports]]

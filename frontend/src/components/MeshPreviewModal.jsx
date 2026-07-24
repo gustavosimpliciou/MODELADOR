@@ -18,8 +18,18 @@ function PreviewMesh({ mesh }) {
     const dummyParams = {
       density: mesh.params.density || 1,
       rotation: mesh.params.rotation || 0,
-      lineThickness: mesh.params.lineThickness || 1,
-      amplitude: 1.5, frequency: 1, noise: 0, scale: 1,
+      lineThickness: mesh.params.lineThickness || 0.92,
+      amplitude: mesh.params.amplitude ?? 0.95,
+      frequency: mesh.params.frequency ?? 1,
+      noise: mesh.params.noise ?? 0,
+      scale: mesh.params.scale ?? 0.9,
+      openingWidth: mesh.params.openingWidth ?? 6,
+      depth: mesh.params.depth ?? 0.78,
+      tilt: mesh.params.tilt ?? 0,
+      randomization: mesh.params.randomization ?? 0,
+      symmetry: mesh.params.symmetry ?? 1,
+      gradient: mesh.params.gradient ?? 0,
+      curvature: mesh.params.curvature ?? 0,
     }
     geo.current = buildLampshadeGeometry(dummyLamp, dummyParams, mesh)
   }
