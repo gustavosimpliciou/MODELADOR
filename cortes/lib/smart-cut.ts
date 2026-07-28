@@ -39,6 +39,56 @@ export const DEFAULT_OPTIONS: SmartCutOptions = {
   mode: 'island',
 }
 
+// ─── Placa de Limitação ───────────────────────────────────────────────────────
+/**
+ * Representa uma Placa de Limitação no espaço LOCAL da geometria.
+ * O SmartCut nunca atravessa esta barreira durante a propagação.
+ */
+export interface LimitationPlate {
+  center: THREE.Vector3
+  /** Normal da placa (eixo Z local) — já normalizado */
+  normal: THREE.Vector3
+  /** Eixo X local da placa (direção da largura) — já normalizado */
+  right:  THREE.Vector3
+  /** Eixo Y local da placa (direção da altura) — já normalizado */
+  up:     THREE.Vector3
+  /** Metade da largura no espaço local da geometria */
+  halfWidth:  number
+  /** Metade da altura no espaço local da geometria */
+  halfHeight: number
+}
+
+/**
+ * Verorna true se o segmento centróide-f → centróide-nb atravessa
+ * a área finita da placa (colisão lógica da Placa de Limitação).
+ * Usa apenas operações numéricas para evitar alocação de objetos no loop quente.
+ */
+function segmentCrossesPlate(
+  fx: number, fy: number, fz: number,
+  nx: number, ny: number, nz: number,
+  p: LimitationPlate,
+): boolean {
+  const px = p.center.x, py = p.center.y, pz = p.center.z
+  const pnx = p.normal.x, pny = p.normal.y, pnz = p.normal.z
+
+  const dF = (fx - px) * pnx + (fy - py) * pny + (fz - pz) * pnz
+  const dN = (nx - px) * pnx + (ny - py) * pny + (nz - pz) * pnz
+
+  if (dF * dN >= 0) return false   // mesmo lado — sem cruzamento
+
+  // Ponto exato de cruzamento no plano da placa
+  const t  = dF / (dF - dN)
+  const cx = fx + t * (nx - fx) - px
+  const cy = fy + t * (ny - fy) - py
+  const cz = fz + t * (nz - fz) - pz
+
+  // Projeção nas coordenadas locais da placa (verifica bounds finitos)
+  const lx = cx * p.right.x + cy * p.right.y + cz * p.right.z
+  const ly = cx * p.up.x    + cy * p.up.y    + cz * p.up.z
+
+  return Math.abs(lx) <= p.halfWidth && Math.abs(ly) <= p.halfHeight
+}
+
 // ─── Cache de adjacência ──────────────────────────────────────────────────────
 interface GeomCache {
   /** adjList[f] = índices das faces vizinhas */
@@ -220,7 +270,9 @@ export function buildAdjacencyCache(
 export function smartSelect(
   geometry: THREE.BufferGeometry,
   clickedFaceIndex: number,
-  options: Partial<SmartCutOptions> = {}
+  options: Partial<SmartCutOptions> = {},
+  /** Placas de Limitação — a seleção nunca atravessa estas barreiras */
+  limitationPlates: LimitationPlate[] = [],
 ): Set<number> {
   const opts = { ...DEFAULT_OPTIONS, ...options }
   buildAdjacencyCache(geometry, opts.sharpAngle)
@@ -231,12 +283,9 @@ export function smartSelect(
 
   const clickedIsland = compLabel[clickedFaceIndex]
 
-  // ── Modo ILHA: seleciona a peça inteira (componente conexo) ────────────────
-  // Se o modelo tem partes separadas, isto captura exatamente a peça clicada
-  // (só o cabelo, só os óculos, só a roupa) sem vazar para nada mais.
-  // Fallback: se o modelo é uma única malha soldada (1 ilha), não faz sentido
-  // "selecionar tudo", então caímos no modo curvatura automaticamente.
-  if (opts.mode === 'island' && compCount > 1) {
+  // ── Modo ILHA sem placas: caminho rápido — seleciona componente inteiro ────
+  // Com placas ativas, cai no Dijkstra (budget infinito) para respeitar barreiras.
+  if (opts.mode === 'island' && compCount > 1 && limitationPlates.length === 0) {
     const selected = new Set<number>()
     for (let f = 0; f < faceCount; f++) {
       if (compLabel[f] === clickedIsland) selected.add(f)
@@ -244,22 +293,24 @@ export function smartSelect(
     return selected
   }
 
-  // ── Modo CURVATURA: Dijkstra com budget, restrito à ilha clicada ───────────
-  // Nunca cruza a fronteira para outra peça (compLabel diferente), evitando
-  // vazamento entre partes fisicamente separadas.
-  const budget = opts.sharpAngle       // budget = o sharpAngle (graus acumulados)
+  // ── Dijkstra com budget de curvatura (e/ou restrição por Placa de Limitação) ──
+  // Modo ilha com placas → budget infinito (atravessa tudo, mas para na placa).
+  // Modo curvatura → budget = sharpAngle (graus acumulados).
+  const budget = opts.mode === 'island' ? 1e9 : opts.sharpAngle
   const INF    = 1e9
 
   const dist    = new Float32Array(faceCount).fill(INF)
   const visited = new Uint8Array(faceCount)
   dist[clickedFaceIndex] = 0
 
-  // Heap binário mínimo real — O(log n) push/pop vs O(n) splice anterior
   const heap = new BinaryMinHeap(Math.min(faceCount * 2, 131072))
   heap.push(0, clickedFaceIndex)
 
   const selected = new Set<number>()
   selected.add(clickedFaceIndex)
+
+  // Pré-carrega centróides apenas quando há placas para checar (cache hit ~O(1))
+  const centroids = limitationPlates.length > 0 ? getFaceCentroids(geometry) : null
 
   while (!heap.empty && selected.size < opts.maxFaces) {
     const cost = heap.popCost()
@@ -276,6 +327,19 @@ export function smartSelect(
       if (visited[nb]) continue
       // Não sai da peça clicada
       if (compLabel[nb] !== clickedIsland) continue
+
+      // ── Placa de Limitação: bloqueia cruzamento da barreira ──────────────
+      if (centroids !== null) {
+        const fx = centroids[f  * 3], fy = centroids[f  * 3 + 1], fz = centroids[f  * 3 + 2]
+        const nx = centroids[nb * 3], ny = centroids[nb * 3 + 1], nz = centroids[nb * 3 + 2]
+        let blocked = false
+        for (let pi = 0; pi < limitationPlates.length; pi++) {
+          if (segmentCrossesPlate(fx, fy, fz, nx, ny, nz, limitationPlates[pi])) {
+            blocked = true; break
+          }
+        }
+        if (blocked) continue
+      }
 
       const newCost = cost + costs[i]
       if (newCost <= budget && newCost < dist[nb]) {

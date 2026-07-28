@@ -7,6 +7,7 @@ import { useAppStore } from '@/lib/store'
 import type { Part } from '@/lib/parts-manager'
 import { planeFromAxisOffset } from '@/lib/solid-plane-cut'
 import { CutPreviewOverlay } from './cut-preview-overlay'
+import { PlateGizmo } from './plate-gizmo'
 
 // Geometrias de plano pré-alocadas fora do ciclo de render — reutilizadas por
 // todas as instâncias de preview, evitando criação de objeto a cada render.
@@ -67,6 +68,8 @@ export function ModelRenderer() {
       {modelMesh && <AutoCutPreview mesh={modelMesh} />}
       {/* Preview interativo do corte (sobrepõe o modelo quando ativo) */}
       <CutPreviewOverlay />
+      {/* Gizmo da Placa de Limitação */}
+      <PlateGizmo />
     </group>
   )
 }
@@ -171,11 +174,11 @@ function AutoCutPreview({ mesh }: { mesh: THREE.Mesh }) {
 // ── Preview do plano de corte ─────────────────────────────────────────────────
 
 function PlaneCutPreview({ mesh }: { mesh: THREE.Mesh }) {
-  const { cutPlaneAxis, cutPlaneOffset, cutPlaneFlip, activeTool } = useAppStore()
+  const { cutPlaneAxis, cutPlaneOffset, cutPlaneFlip, activeTool, planeCutMode } = useAppStore()
   const overlayActive = useCutOverlayActive()
 
   const data = useMemo(() => {
-    if (activeTool !== 'cut' || overlayActive) return null
+    if (activeTool !== 'cut' || overlayActive || planeCutMode === 'plate') return null
     const geo = mesh.geometry as THREE.BufferGeometry
     if (!geo.boundingBox) geo.computeBoundingBox()
     const bb = geo.boundingBox!
@@ -185,7 +188,7 @@ function PlaneCutPreview({ mesh }: { mesh: THREE.Mesh }) {
     const { normal, point } = planeFromAxisOffset(bb, cutPlaneAxis, cutPlaneOffset, cutPlaneFlip)
     const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal)
     return { point, quat, diag }
-  }, [activeTool, mesh, cutPlaneAxis, cutPlaneOffset, cutPlaneFlip, overlayActive])
+  }, [activeTool, mesh, cutPlaneAxis, cutPlaneOffset, cutPlaneFlip, overlayActive, planeCutMode])
 
   useEffect(() => { invalidate() }, [data])
   if (!data) return null

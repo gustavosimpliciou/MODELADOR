@@ -62,8 +62,8 @@ export function EncaixePanel() {
     const hasComplement = plan.complementIndex >= 0
     setStatus('cutting',
       hasComplement
-        ? 'Gerando encaixe — furando peça atual e peça removida...'
-        : 'Gerando encaixe — furando peça selecionada...',
+        ? t.generating_enc_both
+        : t.generating_enc_one,
     )
 
     setTimeout(() => {
@@ -109,19 +109,15 @@ export function EncaixePanel() {
 
         addCutPart({
           id: `encaixe-pino-${Date.now()}`,
-          name: `Pino (${plan.side.toFixed(1)}×${plan.side.toFixed(1)})`,
+          name: t.connector_pin_name(plan.side.toFixed(1)),
           mesh: pegMesh, faceIndices: [], color: '#c8ccd4', isConnector: true,
         })
 
         clearSelection()
         setEncaixeOpen(false)
-        setStatus('loaded',
-          hasComplement
-            ? `Encaixe gerado · pino ${plan.side.toFixed(1)}×${plan.depth.toFixed(1)}mm`
-            : `Encaixe gerado · pino ${plan.side.toFixed(1)}×${plan.depth.toFixed(1)}mm`,
-        )
+        setStatus('loaded', t.connector_generated(plan.side.toFixed(1), plan.depth.toFixed(1)))
       } catch (err) {
-        setStatus('error', 'Falha ao gerar encaixe. Tente nova seleção.')
+        setStatus('error', t.connector_error)
         console.error('[Encaixe] Erro:', err)
       } finally { setBusy(false) }
     }, 60)
@@ -150,7 +146,7 @@ export function EncaixePanel() {
         <div
           className="flex items-center gap-1.5 cursor-grab active:cursor-grabbing select-none"
           onMouseDown={onHandleMouseDown}
-          title="Arraste para mover"
+          title={t.drag_to_move}
         >
           <GripHorizontal className="w-3 h-3 shrink-0 text-muted-foreground/30" />
           <Box className="w-3 h-3 shrink-0" style={{ color: 'oklch(0.65 0.18 260)' }} />
@@ -161,7 +157,7 @@ export function EncaixePanel() {
             onMouseDown={(e) => e.stopPropagation()}
             onClick={() => setEncaixeOpen(false)}
             className="p-0.5 rounded text-muted-foreground/50 hover:text-foreground hover:bg-secondary/50 transition-colors"
-            title="Fechar"
+            title={t.close}
           >
             <X className="w-3 h-3" />
           </button>

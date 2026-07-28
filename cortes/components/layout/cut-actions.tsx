@@ -3,8 +3,10 @@
 import { Sparkles, Box, X } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
+import { useT } from '@/lib/lang-store'
 
 export function CutActions() {
+  const t = useT()
   const {
     selectionState,
     selectedFaceIndices,
@@ -38,26 +40,26 @@ export function CutActions() {
           active={autoCutOpen}
           accent="oklch(0.70 0.22 42)"
           onClick={() => { setAutoCutOpen(!autoCutOpen); if (encaixeOpen) setEncaixeOpen(false) }}
-          title="Corte inteligente com contorno automático"
+          title={t.autocut_chip_title}
         />
 
-        {/* Encaixe */}
+        {/* Joint / Encaixe */}
         <ActionChip
           icon={<Box className="w-3.5 h-3.5" />}
-          label="Encaixe"
+          label={t.encaixe_chip}
           active={encaixeOpen}
           accent="oklch(0.62 0.15 260)"
           onClick={() => { setEncaixeOpen(!encaixeOpen); if (autoCutOpen) setAutoCutOpen(false) }}
-          title="Gerar pino/furo de encaixe na costura"
+          title={t.encaixe_chip_title}
         />
 
         {/* Divisor */}
         <div className="w-px h-5 mx-0.5" style={{ background: 'oklch(0.22 0 0)' }} />
 
-        {/* Cancelar */}
+        {/* Cancel */}
         <button
           onClick={clearSelection}
-          title="Cancelar seleção"
+          title={t.cancel_selection}
           className="flex items-center justify-center w-7 h-7 rounded-xl text-muted-foreground/50 hover:text-foreground hover:bg-secondary/50 transition-all duration-150"
         >
           <X className="w-3.5 h-3.5" />

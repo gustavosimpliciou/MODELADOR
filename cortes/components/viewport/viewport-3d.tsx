@@ -12,7 +12,33 @@ import {
   paintFaces,
   paintFacesDelta,
   paintHoverDelta,
+  type LimitationPlate,
 } from '@/lib/smart-cut'
+import { plateCutParamsFromTransform } from '@/lib/plate-cut'
+
+// ─── Constrói LimitationPlate a partir do estado do store ─────────────────────
+function buildLimitationPlates(
+  planeCutMode: 'infinite' | 'plate',
+  pos: [number, number, number],
+  rot: [number, number, number],
+  width: number,
+  height: number,
+): LimitationPlate[] {
+  if (planeCutMode !== 'plate') return []
+  const center = new THREE.Vector3(...pos)
+  const quat   = new THREE.Quaternion().setFromEuler(
+    new THREE.Euler(rot[0], rot[1], rot[2], 'XYZ'),
+  )
+  const params = plateCutParamsFromTransform(center, quat, width, height)
+  return [{
+    center:     params.center,
+    normal:     params.normal,
+    right:      params.right,
+    up:         params.up,
+    halfWidth:  params.width  / 2,
+    halfHeight: params.height / 2,
+  }]
+}
 import { loadModel } from '@/lib/model-loader'
 import { ModelRenderer } from './model-renderer'
 
@@ -94,9 +120,22 @@ function SmartCutInteraction() {
     activeCutPartId,
     setActiveCutPartId,
     activePartId,
+    planeCutMode,
+    plateCutPosition,
+    plateCutRotation,
+    plateCutWidth,
+    plateCutHeight,
   } = useAppStore()
 
   const { camera, gl, raycaster } = useThree()
+
+  // ── Placa de Limitação: ref sempre atualizado para uso nos callbacks ─────────
+  const limitationPlatesRef = useRef<LimitationPlate[]>([])
+  useEffect(() => {
+    limitationPlatesRef.current = buildLimitationPlates(
+      planeCutMode, plateCutPosition, plateCutRotation, plateCutWidth, plateCutHeight,
+    )
+  }, [planeCutMode, plateCutPosition, plateCutRotation, plateCutWidth, plateCutHeight])
 
   // Refs para estado mutable sem re-render
   const mouseNDC       = useRef(new THREE.Vector2())
@@ -146,8 +185,10 @@ function SmartCutInteraction() {
     setTimeout(() => buildAdjacencyCache(modelMesh.geometry, sharpAngle ?? 35), 80)
   }, [modelMesh, sharpAngle])
 
-  // Invalida o hover cache sempre que os parâmetros de seleção mudam
-  useEffect(() => { hoverCache.current = null }, [cutMode, sharpAngle])
+  // Invalida o hover cache sempre que os parâmetros de seleção ou a placa mudam
+  useEffect(() => {
+    hoverCache.current = null
+  }, [cutMode, sharpAngle, planeCutMode, plateCutPosition, plateCutRotation, plateCutWidth, plateCutHeight])
 
   // ── Ctrl / Alt ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -206,7 +247,7 @@ function SmartCutInteraction() {
         if (c && c.face === faceIndex && c.mode === cutMode && c.angle === angle) {
           newHovered = c.result
         } else {
-          newHovered = smartSelect(modelMesh.geometry, faceIndex, { sharpAngle: angle, mode: cutMode })
+          newHovered = smartSelect(modelMesh.geometry, faceIndex, { sharpAngle: angle, mode: cutMode }, limitationPlatesRef.current)
           hoverCache.current = { face: faceIndex, mode: cutMode, angle, result: newHovered }
         }
       }
@@ -307,7 +348,7 @@ function SmartCutInteraction() {
       setStatus('selecting', 'SmartCut selecionando...')
 
       // Roda na mesma microtask para não bloquear o frame
-      const region = smartSelect(modelMesh.geometry, faceIndex, { sharpAngle: sharpAngle ?? 35, mode: cutMode })
+      const region = smartSelect(modelMesh.geometry, faceIndex, { sharpAngle: sharpAngle ?? 35, mode: cutMode }, limitationPlatesRef.current)
 
       let next: Set<number>
       if (mode === 'add') {
@@ -399,6 +440,17 @@ function SmartCutInteraction() {
   return null
 }
 
+// ─── OrbitControls disabler while plate gizmo is dragged ─────────────────────
+function OrbitControlsGuard({ controlsRef }: { controlsRef: React.RefObject<any> }) {
+  const dragging = useAppStore((s) => s.plateCutDragging)
+  useEffect(() => {
+    if (controlsRef.current) {
+      controlsRef.current.enabled = !dragging
+    }
+  }, [dragging, controlsRef])
+  return null
+}
+
 // ─── Camera auto-fit ──────────────────────────────────────────────────────────
 // Fires whenever modelMesh changes (new file loaded) and adjusts the camera +
 // OrbitControls target so the model fills the viewport nicely.
@@ -439,6 +491,8 @@ export function Viewport3D() {
   const modelMesh = useAppStore((s) => s.modelMesh)
   const [webglFailed, setWebglFailed] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
+  const loadProgress = useAppStore((s) => s.loadProgress)
+  const loadStage    = useAppStore((s) => s.loadStage)
   const controlsRef = useRef<any>(null)
 
   // R3F throws the WebGL context creation failure as an *async* unhandled
@@ -500,15 +554,22 @@ export function Viewport3D() {
       return
     }
     const { setStatus, registerModelAsPart, setModelInfo, setOriginalGeometry } = useAppStore.getState()
+    const { setLoadProgress } = useAppStore.getState()
     setStatus('loading', `Carregando ${file.name}...`)
+    setLoadProgress(0, 'Iniciando...')
     try {
-      const { mesh, info, wasDecimated } = await loadModel(file)
+      const { mesh, info } = await loadModel(file, (p) => {
+        setLoadProgress(p.percent, p.stage)
+        setStatus('loading', p.stage)
+      })
       registerModelAsPart(mesh, info.name)
       setModelInfo(info)
       setOriginalGeometry(mesh.geometry.clone())
-      setStatus('loaded', `Modelo carregado — ${info.name}${wasDecimated ? ' (decimado para fluidez)' : ''}`)
+      setLoadProgress(-1)
+      setStatus('loaded', `Modelo carregado — ${info.name} · ${info.faces.toLocaleString()} faces`)
     } catch (err: any) {
       console.error('[Cortes] Erro no drop:', err)
+      setLoadProgress(-1)
       setStatus('error', `Erro ao carregar: ${err?.message ?? 'desconhecido'}`)
     }
   }
@@ -520,6 +581,24 @@ export function Viewport3D() {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
+      {/* Overlay de progresso de carregamento */}
+      {loadProgress >= 0 && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center pointer-events-none"
+          style={{ background: 'oklch(0.04 0 0 / 88%)' }}>
+          <svg viewBox="0 0 40 40" className="w-10 h-10 mb-4 opacity-60 animate-spin" fill="none" stroke="oklch(0.70 0.22 42)" strokeWidth="2">
+            <circle cx="20" cy="20" r="16" strokeOpacity="0.2"/>
+            <path d="M20 4 A16 16 0 0 1 36 20" strokeLinecap="round"/>
+          </svg>
+          <div className="w-56 h-1.5 rounded-full overflow-hidden mb-2" style={{ background: 'oklch(0.18 0 0)' }}>
+            <div
+              className="h-full rounded-full transition-all duration-300 ease-out"
+              style={{ width: `${loadProgress}%`, background: 'oklch(0.70 0.22 42)' }}
+            />
+          </div>
+          <span className="text-xs font-mono" style={{ color: 'oklch(0.55 0 0)' }}>{loadStage}</span>
+        </div>
+      )}
+
       {/* Overlay de drag-and-drop */}
       {isDragOver && (
         <div className="absolute inset-0 z-50 flex flex-col items-center justify-center pointer-events-none"
@@ -569,6 +648,7 @@ export function Viewport3D() {
       >
         <FpsCounter />
         <CameraFitter controlsRef={controlsRef} />
+        <OrbitControlsGuard controlsRef={controlsRef} />
         <SmartCutInteraction />
 
         <ambientLight intensity={0.55} />
@@ -656,10 +736,10 @@ function ActiveToolIndicator() {
     selectionMode === 'subtract' ? '− Remover  (Alt)'    : null
 
   return (
-    <div className="absolute bottom-16 left-1/2 -translate-x-1/2 pointer-events-none flex flex-col items-center gap-2">
+    <div className="absolute bottom-28 left-1/2 -translate-x-1/2 pointer-events-none flex flex-col items-center gap-1.5">
       {modeLabel && (
         <div
-          className="glass-panel rounded px-3 py-1 text-xs font-mono tracking-wider"
+          className="glass-panel rounded px-2.5 py-0.5 text-[10px] font-mono tracking-wider"
           style={{
             color: selectionMode === 'add' ? 'oklch(0.75 0.22 42)' : 'oklch(0.70 0.12 250)',
             borderColor: selectionMode === 'add' ? 'oklch(0.50 0.20 42 / 60%)' : 'oklch(0.45 0.10 250 / 60%)',
@@ -670,13 +750,13 @@ function ActiveToolIndicator() {
       )}
 
       {selectionState === 'selected' && selectedFaceIndices.size > 0 && (
-        <div className="animate-fade-in glass-panel rounded-md px-4 py-2 flex items-center gap-3">
+        <div className="animate-fade-in glass-panel rounded px-3 py-1 flex items-center gap-2">
           <div
-            className="w-2 h-2 rounded-full"
-            style={{ background: 'oklch(0.70 0.22 42)', boxShadow: '0 0 6px oklch(0.70 0.22 42)' }}
+            className="w-1.5 h-1.5 rounded-full shrink-0"
+            style={{ background: 'oklch(0.70 0.22 42)', boxShadow: '0 0 5px oklch(0.70 0.22 42)' }}
           />
-          <span className="text-xs font-mono text-foreground">
-            {selectedFaceIndices.size.toLocaleString()} faces selecionadas
+          <span className="text-[10px] font-mono text-foreground/80">
+            {selectedFaceIndices.size.toLocaleString()} faces
           </span>
         </div>
       )}

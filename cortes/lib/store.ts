@@ -93,6 +93,10 @@ export interface AppState {
   statusMessage: string
   fps: number
 
+  // Progresso de carregamento (0–100, -1 = inativo)
+  loadProgress: number
+  loadStage: string
+
   // Arquivo e modelo
   modelInfo: ModelInfo | null
   modelMesh: THREE.Mesh | null
@@ -133,6 +137,15 @@ export interface AppState {
   cutPlaneAxis: 'x' | 'y' | 'z'
   cutPlaneOffset: number
   cutPlaneFlip: boolean
+
+  // Placa de Limitação
+  planeCutMode: 'infinite' | 'plate'
+  plateCutPosition: [number, number, number]
+  plateCutRotation: [number, number, number]
+  plateCutWidth: number
+  plateCutHeight: number
+  plateCutDragging: boolean
+  plateMoveMode: boolean
 
   // Auto Split — plano de cortes sugeridos por geometria
   autoSplitPlan: AutoSplitPlan | null
@@ -183,6 +196,7 @@ export interface AppState {
 
   // Ações
   setStatus: (status: AppStatus, message?: string) => void
+  setLoadProgress: (progress: number, stage?: string) => void
   setFps: (fps: number) => void
   setModelInfo: (info: ModelInfo | null) => void
   /**
@@ -215,6 +229,13 @@ export interface AppState {
   setCutPlaneAxis: (axis: 'x' | 'y' | 'z') => void
   setCutPlaneOffset: (offset: number) => void
   toggleCutPlaneFlip: () => void
+  setPlaneCutMode: (mode: 'infinite' | 'plate') => void
+  setPlateCutPosition: (pos: [number, number, number]) => void
+  setPlateCutRotation: (rot: [number, number, number]) => void
+  setPlateCutSize: (width: number, height: number) => void
+  setPlateCutDragging: (dragging: boolean) => void
+  setPlateMoveMode: (on: boolean) => void
+  initPlateFromModel: () => void
   setAutoSplitPlan: (plan: AutoSplitPlan | null) => void
   setAutoCutOpen: (open: boolean) => void
   setEncaixeOpen: (open: boolean) => void
@@ -256,6 +277,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   status: 'idle',
   statusMessage: 'Pronto. Abra um modelo 3D para começar.',
   fps: 60,
+  loadProgress: -1,
+  loadStage: '',
 
   modelInfo: null,
   modelMesh: null,
@@ -287,6 +310,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   cutPlaneAxis: 'y',
   cutPlaneOffset: 0.5,
   cutPlaneFlip: false,
+
+  planeCutMode: 'infinite',
+  plateCutPosition: [0, 0, 0],
+  plateCutRotation: [0, 0, 0],
+  plateCutWidth: 1,
+  plateCutHeight: 1,
+  plateCutDragging: false,
+  plateMoveMode: false,
 
   autoSplitPlan: null,
 
@@ -402,6 +433,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   setStatus: (status, message) =>
     set({ status, statusMessage: message ?? getDefaultMessage(status) }),
 
+  setLoadProgress: (progress, stage) =>
+    set({ loadProgress: progress, loadStage: stage ?? '' }),
+
   setFps: (fps) => set({ fps }),
 
   setModelInfo: (info) => set({ modelInfo: info }),
@@ -493,6 +527,38 @@ export const useAppStore = create<AppState>((set, get) => ({
   setCutPlaneOffset: (cutPlaneOffset) => set({ cutPlaneOffset }),
 
   toggleCutPlaneFlip: () => set((state) => ({ cutPlaneFlip: !state.cutPlaneFlip })),
+
+  setPlaneCutMode: (planeCutMode) => set({ planeCutMode }),
+
+  setPlateCutPosition: (plateCutPosition) => set({ plateCutPosition }),
+
+  setPlateCutRotation: (plateCutRotation) => set({ plateCutRotation }),
+
+  setPlateCutSize: (width, height) => set({ plateCutWidth: width, plateCutHeight: height }),
+
+  setPlateCutDragging: (plateCutDragging) => set({ plateCutDragging }),
+
+  setPlateMoveMode: (plateMoveMode) => set({ plateMoveMode }),
+
+  initPlateFromModel: () =>
+    set((state) => {
+      const mesh = state.modelMesh
+      if (!mesh) return {}
+      const geo = mesh.geometry as THREE.BufferGeometry
+      if (!geo.boundingBox) geo.computeBoundingBox()
+      const bb = geo.boundingBox!
+      const center = new THREE.Vector3()
+      bb.getCenter(center)
+      const size = new THREE.Vector3()
+      bb.getSize(size)
+      const maxDim = Math.max(size.x, size.y, size.z)
+      return {
+        plateCutPosition: [center.x, center.y, center.z] as [number, number, number],
+        plateCutRotation: [0, 0, 0] as [number, number, number],
+        plateCutWidth: maxDim * 0.6,
+        plateCutHeight: maxDim * 0.6,
+      }
+    }),
 
   setAutoSplitPlan: (autoSplitPlan) => set({ autoSplitPlan }),
 

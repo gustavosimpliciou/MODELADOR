@@ -1,5 +1,9 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# Replit attached assets (auto-uploaded files, not source code)
+attached_assets/
+
+
 # IDE and editors
 .idea/
 .vscode/
@@ -76,6 +80,14 @@ agenthub/agents/youtube/db
 
 # Build caches
 .cache/
+
+# Replit agent / runtime artifacts
+.local/share/pnpm/
+.local/state/
+.agents/skills/
+cortes/.next/
+frontend/dist/
+frontend/build/
 
 memory/test_credentials.md
 

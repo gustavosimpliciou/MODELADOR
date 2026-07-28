@@ -138,81 +138,81 @@ export function SmartAutoCutPanel() {
   }, [visible, cancelPendingCompute])
 
   // ─── Etapa 1–3: Calcular Corte (cascas abertas) ─────────────────────────────
-  const handleCalculateCut = useCallback(() => {
+  const handleCalculateCut = useCallback(async () => {
     if (!modelMesh || !analysis) return
     const myVersion = ++computeVersionRef.current
     setBusy(true)
     setCapsGenerated(false)
     setStatus('cutting', 'Calculando corte — extraindo cascas...')
 
-    setTimeout(() => {
-      if (myVersion !== computeVersionRef.current) { setBusy(false); return }
-      try {
-        const geo = modelMesh.geometry as THREE.BufferGeometry
+    try {
+      const geo = modelMesh.geometry as THREE.BufferGeometry
 
-        // ── Auto-fill micro-fragmentos ──────────────────────────────────────
-        // Antes de qualquer cálculo, absorve pequenas partículas não-selecionadas
-        // que ficaram de fora do SmartCut e descarta cacos selecionados isolados.
-        // Usa apenas limpeza por área — não altera o contorno da seleção principal.
-        const { cleaned: effectiveSelection, addedFaces, removedFaces } =
-          autoFillMicroFragments(geo, selectedFaceIndices)
-        if (addedFaces + removedFaces > 0) {
-          setSelectedFaceIndices(effectiveSelection)
-          if (addedFaces > 0) {
-            setStatus('cutting',
-              `Ajustando seleção — ${addedFaces} face(s) absorvida(s)${removedFaces > 0 ? `, ${removedFaces} caco(s) removido(s)` : ''}...`)
-          }
+      // ── Auto-fill micro-fragmentos ──────────────────────────────────────
+      // Antes de qualquer cálculo, absorve pequenas partículas não-selecionadas
+      // que ficaram de fora do SmartCut e descarta cacos selecionados isolados.
+      // Usa apenas limpeza por área — não altera o contorno da seleção principal.
+      const { cleaned: effectiveSelection, addedFaces, removedFaces } =
+        autoFillMicroFragments(geo, selectedFaceIndices)
+      if (addedFaces + removedFaces > 0) {
+        setSelectedFaceIndices(effectiveSelection)
+        if (addedFaces > 0) {
+          setStatus('cutting',
+            `Ajustando seleção — ${addedFaces} face(s) absorvida(s)${removedFaces > 0 ? `, ${removedFaces} caco(s) removido(s)` : ''}...`)
         }
-
-        let openResult
-        if (contourMode === 'exact') {
-          // Modo exato: separa pelo contorno da malha sem reconstrução
-          const selGeo = extractSubMesh(geo, effectiveSelection, true, weldQ)
-          const bodyGeo = removeSubMesh(geo, effectiveSelection, weldQ)
-          openResult = {
-            openSelectedGeometry: selGeo,
-            openBodyGeometry: bodyGeo,
-            seamPoints: new Float32Array(0),
-            seamScore: 0, seamSegments: 0, iterations: 0, ok: true,
-          }
-        } else {
-          openResult = computeOpenCut(geo, effectiveSelection, {
-            strength: smoothStrength,
-            weldQ,
-            offset,
-            relaxIterations,
-          })
-        }
-
-        if (myVersion !== computeVersionRef.current) {
-          openResult.openSelectedGeometry.dispose()
-          openResult.openBodyGeometry.dispose()
-          setBusy(false); return
-        }
-
-        if (!openResult.ok) {
-          setStatus('error', 'Seleção inválida para corte. Ajuste e tente novamente.')
-          setBusy(false); return
-        }
-
-        disposeOpenCutGeos(useAppStore.getState().openCutData)
-        disposePreviewGeos(useAppStore.getState().cutPreview)
-        setCutPreview(null)
-
-        setOpenCutData(openResult)
-        setAutoCutPipelineStage('cut_done')
-        setAutoCutPreviewMode('shell')
-        setPhase('preview')
-
-        const scoreLabel = openResult.seamScore < 8 ? 'Excelente' : openResult.seamScore < 15 ? 'Boa' : 'Razoável'
-        setStatus('loaded', `Cascas calculadas — qualidade ${scoreLabel} · ${openResult.seamSegments} segmentos`)
-      } catch (err) {
-        setStatus('error', 'Erro ao calcular corte.')
-        console.error('[SmartCut V2] Cut error:', err)
-      } finally {
-        setBusy(false)
       }
-    }, 60)
+
+      let openResult
+      if (contourMode === 'exact') {
+        // Modo exato: separa pelo contorno da malha sem reconstrução
+        const selGeo = extractSubMesh(geo, effectiveSelection, true, weldQ)
+        const bodyGeo = removeSubMesh(geo, effectiveSelection, weldQ)
+        openResult = {
+          openSelectedGeometry: selGeo,
+          openBodyGeometry: bodyGeo,
+          seamPoints: new Float32Array(0),
+          seamScore: 0, seamSegments: 0, iterations: 0, ok: true,
+        }
+      } else {
+        // Pipeline assíncrono — não bloqueia a UI nem o GC
+        openResult = await computeOpenCut(
+          geo,
+          effectiveSelection,
+          { strength: smoothStrength, weldQ, offset, relaxIterations },
+          (stage, _pct) => {
+            if (myVersion === computeVersionRef.current) setStatus('cutting', stage)
+          },
+        )
+      }
+
+      if (myVersion !== computeVersionRef.current) {
+        openResult.openSelectedGeometry.dispose()
+        openResult.openBodyGeometry.dispose()
+        return
+      }
+
+      if (!openResult.ok) {
+        setStatus('error', 'Seleção inválida para corte. Ajuste e tente novamente.')
+        return
+      }
+
+      disposeOpenCutGeos(useAppStore.getState().openCutData)
+      disposePreviewGeos(useAppStore.getState().cutPreview)
+      setCutPreview(null)
+
+      setOpenCutData(openResult)
+      setAutoCutPipelineStage('cut_done')
+      setAutoCutPreviewMode('shell')
+      setPhase('preview')
+
+      const scoreLabel = openResult.seamScore < 8 ? 'Excelente' : openResult.seamScore < 15 ? 'Boa' : 'Razoável'
+      setStatus('loaded', `Cascas calculadas — qualidade ${scoreLabel} · ${openResult.seamSegments} segmentos`)
+    } catch (err) {
+      setStatus('error', 'Erro ao calcular corte.')
+      console.error('[SmartCut V2] Cut error:', err)
+    } finally {
+      if (myVersion === computeVersionRef.current) setBusy(false)
+    }
   }, [
     modelMesh, analysis, contourMode, selectedFaceIndices, weldQ, smoothStrength,
     offset, relaxIterations, setStatus, setOpenCutData, setAutoCutPipelineStage,
@@ -220,53 +220,57 @@ export function SmartAutoCutPanel() {
   ])
 
   // ─── Etapa 4–6: Gerar Tampas ────────────────────────────────────────────────
-  const handleGenerateCaps = useCallback(() => {
+  const handleGenerateCaps = useCallback(async () => {
     const currentOpenData = useAppStore.getState().openCutData
     if (!currentOpenData) return
     const myVersion = ++computeVersionRef.current
     setBusy(true)
     setStatus('cutting', 'Gerando tampas — triangulação e validação...')
 
-    setTimeout(() => {
-      if (myVersion !== computeVersionRef.current) { setBusy(false); return }
-      try {
-        const capResult = generateCaps(currentOpenData, weldQ)
+    try {
+      // Pipeline assíncrono — não bloqueia a UI
+      const capResult = await generateCaps(
+        currentOpenData,
+        weldQ,
+        (stage, _pct) => {
+          if (myVersion === computeVersionRef.current) setStatus('cutting', stage)
+        },
+      )
 
-        if (myVersion !== computeVersionRef.current) {
-          capResult.cappedSelectedGeometry.dispose()
-          capResult.cappedBodyGeometry.dispose()
-          setBusy(false); return
-        }
-
-        if (!capResult.ok) {
-          setStatus('error', 'Falha ao gerar tampas. Tente aumentar a precisão.')
-          setBusy(false); return
-        }
-
-        disposePreviewGeos(useAppStore.getState().cutPreview)
-        setCutPreview({
-          selectedGeometry: capResult.cappedSelectedGeometry,
-          bodyGeometry: capResult.cappedBodyGeometry,
-          seamPoints: currentOpenData.seamPoints,
-          seamScore: currentOpenData.seamScore,
-          seamSegments: currentOpenData.seamSegments,
-          iterations: currentOpenData.iterations,
-          validationIssues: capResult.validationIssues,
-          params: { strength: smoothStrength, weldQ, offset, relaxIterations },
-        })
-        setAutoCutPipelineStage('caps_done')
-        setAutoCutPreviewMode('caps')
-        setCapsGenerated(true)
-
-        const issues = capResult.validationIssues.length
-        setStatus('loaded', `Tampas geradas${issues > 0 ? ` · ${issues} aviso(s)` : ' — malha fechada ✓'}`)
-      } catch (err) {
-        setStatus('error', 'Erro ao gerar tampas.')
-        console.error('[SmartCut V2] Caps error:', err)
-      } finally {
-        setBusy(false)
+      if (myVersion !== computeVersionRef.current) {
+        capResult.cappedSelectedGeometry.dispose()
+        capResult.cappedBodyGeometry.dispose()
+        return
       }
-    }, 60)
+
+      if (!capResult.ok) {
+        setStatus('error', 'Falha ao gerar tampas. Tente aumentar a precisão.')
+        return
+      }
+
+      disposePreviewGeos(useAppStore.getState().cutPreview)
+      setCutPreview({
+        selectedGeometry: capResult.cappedSelectedGeometry,
+        bodyGeometry: capResult.cappedBodyGeometry,
+        seamPoints: currentOpenData.seamPoints,
+        seamScore: currentOpenData.seamScore,
+        seamSegments: currentOpenData.seamSegments,
+        iterations: currentOpenData.iterations,
+        validationIssues: capResult.validationIssues,
+        params: { strength: smoothStrength, weldQ, offset, relaxIterations },
+      })
+      setAutoCutPipelineStage('caps_done')
+      setAutoCutPreviewMode('caps')
+      setCapsGenerated(true)
+
+      const issues = capResult.validationIssues.length
+      setStatus('loaded', `Tampas geradas${issues > 0 ? ` · ${issues} aviso(s)` : ' — malha fechada ✓'}`)
+    } catch (err) {
+      setStatus('error', 'Erro ao gerar tampas.')
+      console.error('[SmartCut V2] Caps error:', err)
+    } finally {
+      if (myVersion === computeVersionRef.current) setBusy(false)
+    }
   }, [weldQ, smoothStrength, offset, relaxIterations, setStatus, setCutPreview,
     setAutoCutPipelineStage, setAutoCutPreviewMode, disposePreviewGeos])
 

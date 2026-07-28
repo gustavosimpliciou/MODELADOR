@@ -1,92 +1,44 @@
-# Nativos Studio Pro — Lampshade & 3D Cut Tool
+# Nativos 3D — Multi-Service App
 
-## Project Overview
+## Project overview
 
-A professional 3D design platform with two tools:
+Three services that run together:
 
-1. **Modelador 3D** (`/`) — Parametric lampshade designer using Three.js. Design, customize, and export 3D lamp shades and luminaires.
-2. **Cortes 3D** (`/cortes`) — Smart 3D mesh cutting tool (STL/OBJ/PLY/GLB/GLTF). Uses SmartCut algorithm for intelligent model splitting.
-
-## Architecture — Three Services
-
-| Service | Directory | Port | Stack |
+| Service | Port | Tech | Description |
 |---|---|---|---|
-| Frontend (main) | `frontend/` | 5000 | React 18 + Vite + Three.js + Zustand |
-| Backend API | `backend/` | 8000 | FastAPI + Supabase + Python 3.12 |
-| Cortes 3D | `cortes/` | 3001 | Next.js 16 + React Three Fiber |
+| **Frontend** | 5000 | React + Vite | Lampshade design studio (3D mesh editor, auth via Supabase) |
+| **Backend API** | 8000 | FastAPI (Python) | REST API — auth helpers, project storage, Kiwify webhook |
+| **Cortes 3D** | 3001 | Next.js | 3D cutting tool — SmartCut + Placa de Limitação |
 
-The Vite frontend proxies `/api` → port 8000 and `/cortes` → port 3001, so users only ever access port **5000**.
+The Frontend Vite dev server proxies `/api` → `localhost:8000` and `/cortes` → `localhost:3001`, so the user sees everything through port 5000.
 
-## How to Run (All Three Services)
+## How to run
 
-Each service has its own Replit workflow. Start all three:
+All three workflows are configured and start automatically:
 
 - **Start application** — `cd frontend && yarn dev` (port 5000)
-- **Backend API** — `cd backend && python -m uvicorn server:app --host 0.0.0.0 --port 8000 --reload` (port 8000)
-- **Cortes 3D** — `cd cortes && pnpm exec next dev --webpack -p 3001` (port 3001)
+- **Backend API** — `cd backend && python -m uvicorn server:app --host 0.0.0.0 --port 8000 --reload`
+- **Cortes 3D** — `cd cortes && pnpm exec next dev --webpack -p 3001`
 
-## User Flow
+## Environment secrets needed
 
-1. Login / Register → Supabase Auth (handled directly on the frontend)
-2. Tool Selector → choose Modelador 3D or Cortes 3D
-3. Modelador 3D → design parametric lampshades, export STL/OBJ
-4. Cortes 3D → load any 3D file, use SmartCut to split into parts, export
+The backend reads these from environment variables — add them in the Secrets panel:
 
-## Authentication
+| Secret | Where to get it |
+|---|---|
+| `SUPABASE_URL` | Supabase project → Settings → API → Project URL |
+| `SUPABASE_KEY` | Supabase project → Settings → API → service_role key |
+| `MONGO_URL` | MongoDB Atlas connection string (or any MongoDB instance) |
 
-- Supabase Auth (client-side via `@supabase/supabase-js`)
-- Frontend anon key: hardcoded in `frontend/src/lib/supabase.js`
-- Backend reads `SUPABASE_URL` and `SUPABASE_KEY` from `backend/.env`
-- `SESSION_SECRET` — stored as a Replit Secret (already configured)
+The frontend has Supabase credentials hardcoded in `frontend/src/lib/supabase.js` (anon/publishable key — safe to commit).
 
-## Backend — Environment Variables Needed
+## Architecture notes
 
-| Variable | Required | Description |
-|---|---|---|
-| `SUPABASE_URL` | Yes | Supabase project URL |
-| `SUPABASE_KEY` | Yes | Supabase service-role key (for backend admin ops) |
-| `SESSION_SECRET` | Yes | JWT signing secret — set in Replit Secrets |
-| `KIWIFY_WEBHOOK_TOKEN` | Optional | Kiwify payment webhook token |
+- Frontend auth talks directly to Supabase (not through the Python backend).
+- The backend uses a **fresh Supabase client per `.auth.*` call** to avoid session mutation — see `new_auth_client()` in `backend/server.py`.
+- Cortes 3D must run in **Webpack mode** (`--webpack`) because the imported Turbopack cache can crash on startup.
+- The Cortes 3D app has `basePath: '/cortes'` — its pages are at `/cortes/`, not `/`.
 
-> ⚠️ The backend `.env` currently uses the anon key. Replace `SUPABASE_KEY` with the **service-role key** from your Supabase Dashboard → Settings → API for full functionality (user creation, RLS bypass for projects).
+## User preferences
 
-## Installing Dependencies
-
-```bash
-# Frontend
-cd frontend && yarn install
-
-# Backend (uses uv / pyproject.toml)
-uv sync
-
-# Cortes
-cd cortes && pnpm install --ignore-scripts
-```
-
-## Deploy no Netlify
-
-O Cortes 3D é pré-compilado e commitado em `cortes/out/`.
-O Netlify **não** executa o build do Cortes — apenas copia o output já gerado.
-
-**Fluxo para deploy:**
-1. Se alterou o Cortes 3D, rebuild localmente:
-   ```bash
-   cd cortes && npm run build -- --webpack
-   git add cortes/out/
-   ```
-2. Commit e push de tudo (incluindo `cortes/out/`)
-3. O Netlify executa apenas: `cd frontend && yarn install && yarn build && cp -r ../cortes/out/. dist/cortes/`
-
-Isso elimina o OOM que ocorria ao instalar 680+ pacotes pesados (Three.js, R3F, BVH) no Netlify.
-
-## Credits / Monetization
-
-- Free plan: 1 free export
-- Paid plans via Kiwify: Easy (200 credits), Medium (565), Premium (1500)
-- Each export costs 40 credits
-- Webhook endpoint: `POST /api/webhook/kiwify?token=YOUR_TOKEN`
-
-## User Preferences
-
-- Keep existing project structure and stack intact
-- Do not restructure or migrate to a different database or framework
+- Keep the Placa de Limitação as a SmartCut barrier (not a cutter) — the `plateCut` algorithm in `cortes/lib/plate-cut.ts` is retained for geometry math only.

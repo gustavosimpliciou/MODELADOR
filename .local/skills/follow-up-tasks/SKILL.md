@@ -50,10 +50,17 @@ If your current task already has downstream tasks depending on it (listed in you
 
 `proposeFollowUpTasks` is **one-shot per assigned project task** -- not per turn, not per subfeature, not per `markTaskComplete` cycle. The system rejects duplicate calls. If you're marking complete again after more work on the same assigned task, review your previously proposed follow-ups; if any are now stale, call `markFollowUpTaskObsolete` to retract them.
 
+## Standalone sessions (no assigned task)
+
+The title, category, prioritization, and duplicate-avoidance guidance above also applies when you are not working on an assigned project task, with these differences:
+
+- Call `proposeFollowUpTasks` only on turns where the system reminder explicitly offers it. If it is not offered, or nothing genuinely useful qualifies, do not call it.
+- One call per offer, up to 3 tasks. You cannot retract standalone suggestions -- `markFollowUpTaskObsolete` works only on follow-ups of an assigned task; the user dismisses standalone ones from the task list -- so propose only what you are confident is worth their attention.
+
 ## Examples
 
 ```javascript
-// Log the result so you have taskRefs for later use with markFollowUpTaskObsolete
+// Assigned-task sessions: log taskRefs for later use with markFollowUpTaskObsolete
 const { proposed: followUps } = await proposeFollowUpTasks({
     tasks: [
         {
@@ -92,6 +99,6 @@ Recipe data is hardcoded in a static file. Users who add or edit recipes will lo
 });
 console.log(followUps.map(t => ({ taskRef: t.taskRef, title: t.title })));
 
-// Remove an obsolete follow-up
+// Assigned-task sessions can remove an obsolete follow-up
 await markFollowUpTaskObsolete({ taskRef: "#12" });
 ```

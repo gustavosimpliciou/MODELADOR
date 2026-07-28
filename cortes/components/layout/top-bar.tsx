@@ -56,12 +56,17 @@ export function TopBar({ onExport }: TopBarProps) {
     try {
       // Lazy-import so loadModel (and Three.js loaders) are not in the initial bundle
       const { loadModel } = await import('@/lib/model-loader')
-      const { mesh, info, wasDecimated } = await loadModel(file)
+      const { setLoadProgress } = useAppStore.getState()
+      setLoadProgress(0, 'Iniciando...')
+      const { mesh, info } = await loadModel(file, (p) => {
+        setLoadProgress(p.percent, p.stage)
+        setStatus('loading', p.stage)
+      })
       registerModelAsPart(mesh, info.name)
       setModelInfo(info)
       setOriginalGeometry(mesh.geometry.clone())
-      const decimNote = wasDecimated ? t.decimated_note : ''
-      setStatus('loaded', t.loaded_file(info.name, decimNote))
+      setLoadProgress(-1)
+      setStatus('loaded', t.loaded_file(info.name, `${info.faces.toLocaleString()} faces`))
       // Lazy-import invalidate so @react-three/fiber is not in the initial bundle
       const { invalidate } = await import('@react-three/fiber')
       invalidate()
@@ -127,7 +132,7 @@ export function TopBar({ onExport }: TopBarProps) {
         <button
           onClick={() => { window.location.href = '/' }}
           className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-mono transition-all duration-150 text-muted-foreground hover:text-foreground hover:bg-secondary mr-3"
-          title="Voltar ao Nativos Studio"
+          title={t.back_to_studio}
         >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5M12 5l-7 7 7 7"/>
@@ -140,7 +145,7 @@ export function TopBar({ onExport }: TopBarProps) {
           <LogoMark />
           <div className="flex flex-col leading-none">
             <span className="text-sm font-bold tracking-tight text-foreground uppercase font-mono">
-              NATIVOS
+              MESH
             </span>
             <span className="text-[10px] font-mono tracking-widest" style={{ color: 'oklch(0.70 0.22 42)' }}>
               CUT
@@ -224,7 +229,7 @@ export function TopBar({ onExport }: TopBarProps) {
             label={allowCutPartSelection ? `${t.parts_toggle} ✓` : t.parts_toggle}
             active={allowCutPartSelection}
             onClick={toggleCutPartSelection}
-            title={allowCutPartSelection ? 'Seleção de peças: LIBERADA' : 'Seleção de peças: BLOQUEADA'}
+            title={allowCutPartSelection ? t.parts_unlocked_title : t.parts_locked_title}
           />
         </div>
 

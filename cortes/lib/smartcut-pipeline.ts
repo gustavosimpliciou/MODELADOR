@@ -20,6 +20,14 @@ import * as THREE from 'three'
 import { buildCap, computeSmoothNormalsByPosition } from './smart-cut'
 import { validateCutResult } from './quality-cut'
 
+// ─── Yield helper ─────────────────────────────────────────────────────────────
+/**
+ * Cede a thread principal por um frame.
+ * Permite que o browser renderize, processe eventos e execute o GC entre
+ * etapas pesadas, mantendo a UI totalmente responsiva.
+ */
+const yieldToMain = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 0))
+
 export type { ValidationIssue } from './quality-cut'
 import type { ValidationIssue } from './quality-cut'
 
@@ -127,7 +135,7 @@ function buildIndicatorField(w: Welded, selected: Set<number>): Float32Array {
   return phi
 }
 
-function diffuseField(phi0: Float32Array, w: Welded, iterations: number): Float32Array {
+async function diffuseField(phi0: Float32Array, w: Welded, iterations: number): Promise<Float32Array> {
   const LAMBDA = 0.6, MU = -0.62
   let cur = phi0.slice(), buf = new Float32Array(cur.length)
   for (let it = 0; it < iterations; it++) {
@@ -141,19 +149,21 @@ function diffuseField(phi0: Float32Array, w: Welded, iterations: number): Float3
       buf[u] = cur[u] + factor * (sum / n - cur[u])
     }
     const tmp = cur; cur = buf; buf = tmp
+    // Yield a cada 8 iterações → browser pode renderizar e GC pode rodar
+    if ((it & 7) === 7) await yieldToMain()
   }
   return cur
 }
 
 interface Corner { p: THREE.Vector3; u: THREE.Vector2 }
 
-function marchTriangles(
+async function marchTriangles(
   geometry: THREE.BufferGeometry,
   w: Welded,
   phi: Float32Array,
   hasUV: boolean,
   threshold: number,
-): { posA: number[]; uvA: number[]; posB: number[]; uvB: number[]; seam: number[] } {
+): Promise<{ posA: number[]; uvA: number[]; posB: number[]; uvB: number[]; seam: number[] }> {
   const posAttr = geometry.getAttribute('position') as THREE.BufferAttribute
   const uvAttr = hasUV ? (geometry.getAttribute('uv') as THREE.BufferAttribute) : null
   const out = { posA: [] as number[], uvA: [] as number[], posB: [] as number[], uvB: [] as number[], seam: [] as number[] }
@@ -213,6 +223,8 @@ function marchTriangles(
       }
       if (cross.length === 2) out.seam.push(cross[0].x, cross[0].y, cross[0].z, cross[1].x, cross[1].y, cross[1].z)
     }
+    // Yield a cada 40k faces para liberar o browser
+    if ((f & 0x9FFF) === 0x9FFF) await yieldToMain()
   }
   return out
 }
@@ -396,14 +408,22 @@ export function addCapsToShell(openGeo: THREE.BufferGeometry, weldQ: number): TH
  * Nenhuma triangulação definitiva de tampa é feita aqui.
  * O resultado são duas cascas abertas com bordas limpas prontas para tampa.
  */
-export function computeOpenCut(
+export async function computeOpenCut(
   geometry: THREE.BufferGeometry,
   selectedFaces: Set<number>,
   options: Partial<V2CutOptions> = {},
-): OpenCutResult {
+  onProgress?: (stage: string, pct: number) => void,
+): Promise<OpenCutResult> {
   const opts = { ...V2_DEFAULT_OPTIONS, ...options }
+
+  onProgress?.('Soldando malha...', 5)
+  await yieldToMain()
   const w = weldMesh(geometry, opts.weldQ)
+
+  onProgress?.('Construindo campo indicador...', 12)
+  await yieldToMain()
   const phi0 = buildIndicatorField(w, selectedFaces)
+
   const hasUV = !!geometry.getAttribute('uv')
   const strength = Math.max(0, Math.min(1, opts.strength))
   const threshold = THREE.MathUtils.clamp(-(opts.offset ?? 0), -0.4, 0.4)
@@ -419,23 +439,34 @@ export function computeOpenCut(
   } | null = null
 
   for (let attempt = 0; attempt < maxTries; attempt++) {
-    const phi = diffuseField(phi0, w, iterations)
-    const buf = marchTriangles(geometry, w, phi, hasUV, threshold)
+    const attPct = 15 + attempt * 18
+    onProgress?.(`Difusão Taubin (tentativa ${attempt + 1}/${maxTries})...`, attPct)
+    const phi = await diffuseField(phi0, w, iterations)
+
+    onProgress?.('Percorrendo triângulos...', attPct + 12)
+    const buf = await marchTriangles(geometry, w, phi, hasUV, threshold)
+
     const { score, segments } = scoreSeam(buf.seam, opts.weldQ)
     if (!best || score < best.score) best = { ...buf, score, segments, iters: iterations }
     if (score <= 12 || !opts.qualityFirst) break
     iterations = Math.round(iterations * 1.8)
   }
 
+  onProgress?.('Construindo cascas abertas...', 88)
+  await yieldToMain()
+
   const chosen = best!
   const relaxIters = Math.max(0, Math.min(8, opts.relaxIterations ?? 2))
 
   const openSelectedGeometry = buildOpenShell(chosen.posA.slice(), opts.weldQ, relaxIters)
+  await yieldToMain()
   const openBodyGeometry = buildOpenShell(chosen.posB.slice(), opts.weldQ, relaxIters)
 
   const ok =
     (openSelectedGeometry.getAttribute('position')?.count ?? 0) > 0 &&
     (openBodyGeometry.getAttribute('position')?.count ?? 0) > 0
+
+  onProgress?.('Cascas prontas.', 100)
 
   return {
     openSelectedGeometry,
@@ -458,18 +489,29 @@ export function computeOpenCut(
  * Se uma tampa falhar na validação, somente ela é reconstruída.
  * A malha externa original nunca é alterada.
  */
-export function generateCaps(
+export async function generateCaps(
   openResult: Pick<OpenCutResult, 'openSelectedGeometry' | 'openBodyGeometry'>,
   weldQ: number,
-): CappedCutResult {
+  onProgress?: (stage: string, pct: number) => void,
+): Promise<CappedCutResult> {
+  onProgress?.('Gerando tampa da peça selecionada...', 10)
+  await yieldToMain()
   const cappedSel = addCapsToShell(openResult.openSelectedGeometry, weldQ)
+
+  onProgress?.('Gerando tampa do corpo...', 55)
+  await yieldToMain()
   const cappedBody = addCapsToShell(openResult.openBodyGeometry, weldQ)
+
+  onProgress?.('Validando malha...', 90)
+  await yieldToMain()
 
   const ok =
     (cappedSel.getAttribute('position')?.count ?? 0) > 0 &&
     (cappedBody.getAttribute('position')?.count ?? 0) > 0
 
   const validationIssues = ok ? validateCutResult(cappedSel, cappedBody) : []
+
+  onProgress?.('Tampas prontas.', 100)
 
   return {
     cappedSelectedGeometry: cappedSel,

@@ -134,7 +134,7 @@ export function RightPanel() {
       <div className="px-3 py-2 border-t border-border flex items-center gap-2" style={{ background: 'oklch(0.08 0 0)' }}>
         <Layers className="w-3 h-3 text-muted-foreground/30" />
         <span className="text-[10px] font-mono text-muted-foreground/30 uppercase tracking-widest">
-          Nativos Cut v1.0
+          Mesh Cut v1.0
         </span>
       </div>
     </aside>

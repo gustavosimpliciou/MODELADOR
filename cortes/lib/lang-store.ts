@@ -9,17 +9,17 @@ interface LangState {
 }
 
 export const useLangStore = create<LangState>((set) => ({
-  language: 'pt',
+  language: 'en',
   setLanguage: (language) => set({ language }),
 }))
 
 /** React hook — returns a translator function that re-renders when language changes. */
 export function useT(): Translations {
   const language = useLangStore((s) => s.language)
-  return translations[language]
+  return translations[language] as unknown as Translations
 }
 
 /** Plain function — usable outside React (e.g. inside Zustand actions). */
 export function getT(): Translations {
-  return translations[useLangStore.getState().language]
+  return translations[useLangStore.getState().language] as unknown as Translations
 }

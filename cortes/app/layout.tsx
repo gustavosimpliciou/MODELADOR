@@ -13,7 +13,7 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Nativos Cut — Corte Inteligente de Modelos 3D',
+  title: 'Mesh Cut — Smart 3D Model Cutting',
   description: 'Software profissional de corte inteligente para modelos 3D com tecnologia SmartCut.',
   generator: 'v0.app',
 }
