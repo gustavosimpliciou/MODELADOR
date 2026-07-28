@@ -27,8 +27,8 @@ The backend reads these from environment variables — add them in the Secrets p
 | Secret | Where to get it |
 |---|---|
 | `SUPABASE_URL` | Supabase project → Settings → API → Project URL |
-| `SUPABASE_KEY` | Supabase project → Settings → API → service_role key |
-| `MONGO_URL` | MongoDB Atlas connection string (or any MongoDB instance) |
+| `SUPABASE_KEY` | Supabase project → Settings → API → **service_role** key |
+| `KIWIFY_WEBHOOK_TOKEN` | Kiwify dashboard → Webhooks → shared token |
 
 The frontend has Supabase credentials hardcoded in `frontend/src/lib/supabase.js` (anon/publishable key — safe to commit).
 

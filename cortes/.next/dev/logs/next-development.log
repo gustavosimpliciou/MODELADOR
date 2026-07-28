@@ -1,19 +1,13 @@
-{"timestamp":"00:00:07.002","source":"Server","level":"LOG","message":""}
-{"timestamp":"00:00:13.935","source":"Server","level":"LOG","message":"○ Compiling /_not-found ..."}
-{"timestamp":"00:00:37.803","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
-{"timestamp":"00:01:04.955","source":"Server","level":"LOG","message":"○ Compiling / ..."}
-{"timestamp":"00:01:18.382","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
-{"timestamp":"00:01:19.556","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
-{"timestamp":"00:09:03.187","source":"Browser","level":"WARN","message":"THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."}
-{"timestamp":"00:09:04.233","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\\u001b[39m\" \"\\u001b[2m(https://167a1b71-4dc4-413b-ab41-a6e7cb6dd024-00-259quyeh8vi8h.picard.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
-{"timestamp":"00:09:04.233","source":"Browser","level":"WARN","message":"\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\u001b[39m"}
-{"timestamp":"00:15:16.740","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
-{"timestamp":"00:15:18.021","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
-{"timestamp":"00:15:26.220","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
-{"timestamp":"00:18:37.822","source":"Browser","level":"WARN","message":"THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."}
-{"timestamp":"00:18:37.824","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\\u001b[39m\" \"\\u001b[2m(https://167a1b71-4dc4-413b-ab41-a6e7cb6dd024-00-259quyeh8vi8h.picard.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
-{"timestamp":"00:18:37.825","source":"Browser","level":"WARN","message":"\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\u001b[39m"}
-{"timestamp":"00:18:38.347","source":"Browser","level":"LOG","message":"THREE.WebGLRenderer: Context Lost."}
-{"timestamp":"00:18:38.348","source":"Browser","level":"WARN","message":"[Viewport3D] WebGL context lost"}
-{"timestamp":"00:18:38.940","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33m[Viewport3D] WebGL context lost\\u001b[39m\" \"\\u001b[2m(https://167a1b71-4dc4-413b-ab41-a6e7cb6dd024-00-259quyeh8vi8h.picard.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
-{"timestamp":"00:18:38.942","source":"Browser","level":"WARN","message":"\u001b[33m[Viewport3D] WebGL context lost\u001b[39m"}
+{"timestamp":"00:00:06.983","source":"Server","level":"LOG","message":""}
+{"timestamp":"00:02:07.767","source":"Server","level":"LOG","message":"○ Compiling / ..."}
+{"timestamp":"00:02:42.756","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
+{"timestamp":"00:02:43.108","source":"Browser","level":"WARN","message":"THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."}
+{"timestamp":"00:02:43.705","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\\u001b[39m\""}
+{"timestamp":"00:02:43.706","source":"Browser","level":"WARN","message":"\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\u001b[39m"}
+{"timestamp":"00:02:49.627","source":"Browser","level":"WARN","message":"THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."}
+{"timestamp":"00:02:49.742","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\\u001b[39m\" \"\\u001b[2m(https://171a1980-f593-4065-ae4c-ca90d46ce056-00-1tzrlma18riu9.spock.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
+{"timestamp":"00:02:49.742","source":"Browser","level":"WARN","message":"\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\u001b[39m"}
+{"timestamp":"00:17:11.379","source":"Browser","level":"WARN","message":"THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."}
+{"timestamp":"00:17:11.384","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\\u001b[39m\" \"\\u001b[2m(https://171a1980-f593-4065-ae4c-ca90d46ce056-00-1tzrlma18riu9.spock.replit.dev/__replco/static/devtools/injected.js:37:27)\\u001b[22m\""}
+{"timestamp":"00:17:11.385","source":"Browser","level":"WARN","message":"\u001b[33mTHREE.Clock: This module has been deprecated. Please use THREE.Timer instead.\u001b[39m"}
+{"timestamp":"00:17:19.929","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}

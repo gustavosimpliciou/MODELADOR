@@ -242,10 +242,16 @@ function Lampshade({
 function Scene({ showGrid, viewMode }) {
   return (
     <>
-      <ambientLight intensity={0.5} />
-      <directionalLight position={[4, 8, 4]} intensity={2} />
-      <directionalLight position={[-4, 4, -4]} intensity={0.8} color="#ffeedd" />
-      <directionalLight position={[0, -3, 5]} intensity={0.5} color="#aaddff" />
+      {/* Lower ambient so surface relief casts visible shadow contrast */}
+      <ambientLight intensity={0.28} />
+      {/* Key light — strong, high-angle to rake across mesh surface bumps */}
+      <directionalLight position={[3, 9, 3]} intensity={2.8} />
+      {/* Fill light — warm, from the opposite side to soften harsh shadows */}
+      <directionalLight position={[-4, 3, -4]} intensity={0.9} color="#ffeedd" />
+      {/* Rim light — cool, grazes the silhouette to separate from background */}
+      <directionalLight position={[0, -2, 6]} intensity={0.7} color="#cce8ff" />
+      {/* Low side light — rakes horizontally across relief to emphasise texture */}
+      <directionalLight position={[6, 1, 0]} intensity={1.0} color="#ffffff" />
 
       {viewMode === 'render' && (
         <>

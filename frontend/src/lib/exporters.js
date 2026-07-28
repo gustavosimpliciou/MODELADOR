@@ -44,10 +44,12 @@ function buildFilename(base, ext) {
 
 // Quality → resolution multipliers. Applied on top of user segments.
 function applyQuality(lampshade, quality) {
-  const q = { draft: 0.6, standard: 1.0, high: 1.5, ultra: 2.2 }[quality] || 1
+  // ultra intentionally pushes well past the viewer default (180) for premium
+  // print fidelity — slicers handle high-poly meshes without issue.
+  const q = { draft: 0.6, standard: 1.0, high: 1.8, ultra: 3.0 }[quality] || 1
   return {
     ...lampshade,
-    segments: Math.min(320, Math.max(48, Math.round(lampshade.segments * q))),
+    segments: Math.min(600, Math.max(48, Math.round(lampshade.segments * q))),
   }
 }
 
@@ -59,7 +61,9 @@ function applyQuality(lampshade, quality) {
 function buildExportGeometry(state) {
   const { lampshade, meshParams, activeMesh, activeTexture, textureParams, exportQuality, bottomCap } = state
   const lamp = applyQuality(lampshade, exportQuality)
-  const shadeGeo = buildLampshadeGeometry(lamp, meshParams, activeMesh, activeTexture, textureParams)
+  // exportMode=true: uses 220 vertical steps and closes the top rim,
+  // producing a watertight manifold suitable for layer-by-layer printing.
+  const shadeGeo = buildLampshadeGeometry(lamp, meshParams, activeMesh, activeTexture, textureParams, true)
   // "Modo Base" already yields a fully solid, sealed piece — skip the
   // fundo merge entirely (redundant, would just duplicate/overlap geometry).
   if (!bottomCap || !bottomCap.enabled || lampshade.solidFill) return shadeGeo
@@ -79,7 +83,12 @@ function buildExportGeometry(state) {
   }
   const merged = mergeGeometries([strip(shadeNI), strip(fundoNI)], false)
   if (!merged) return shadeGeo
+  // Recompute normals on the merged solid so every face has a consistent
+  // outward-pointing normal — critical for slicers that read winding order
+  // to determine inside vs. outside of the printed shell.
   merged.computeVertexNormals()
+  merged.computeBoundingBox()
+  merged.computeBoundingSphere()
   return merged
 }
 

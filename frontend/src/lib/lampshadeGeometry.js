@@ -130,7 +130,7 @@ function repairLatheSeam(geo, segs, numProfilePts) {
 }
 
 // ─── Geometry builder — SHELL (real wall thickness) ───────────────
-export function buildLampshadeGeometry(lampshade, meshParams, activeMesh, activeTexture = null, textureParams = null) {
+export function buildLampshadeGeometry(lampshade, meshParams, activeMesh, activeTexture = null, textureParams = null, exportMode = false) {
   const {
     profile, height, topDiameter, middleDiameter, bottomDiameter, bellCurve,
     segments, wallThickness, flareAngle, smoothing, solidFill,
@@ -149,9 +149,9 @@ export function buildLampshadeGeometry(lampshade, meshParams, activeMesh, active
   const flareRad = (flareAngle * Math.PI) / 180
 
   // Build outer profile (top → bottom).
-  // Also boost vertical resolution when a texture is active for the
-  // same reason (horizontal / diagonal / helicoidal patterns).
-  const steps = activeTexture ? 140 : 60
+  // exportMode forces premium vertical resolution for watertight print output.
+  // Texture active also boosts steps so high-freq patterns aren't aliased.
+  const steps = exportMode ? 220 : (activeTexture ? 140 : 60)
   const outerPts = []
   for (let i = 0; i <= steps; i++) {
     const t = i / steps
@@ -189,6 +189,15 @@ export function buildLampshadeGeometry(lampshade, meshParams, activeMesh, active
       const p = outerPts[i]
       profilePts.push(new THREE.Vector2(Math.max(0.015, p.x - wall), p.y))
     }
+    // ── Close the top rim ────────────────────────────────────────────
+    // Without this, the shell has a topologically open top edge (outer
+    // top circle and inner top circle are two separate, unconnected
+    // rings). The resulting STL is non-manifold, causing slicers to
+    // misread the model or fail mid-print. Adding the outer top point
+    // again creates a flat annular cap that seals the gap and makes the
+    // mesh watertight while preserving the intended light-fitting opening.
+    const topOuter = outerPts[0]
+    profilePts.push(new THREE.Vector2(topOuter.x, topOuter.y))
   }
 
   const geo = new THREE.LatheGeometry(profilePts, segs)
@@ -288,7 +297,7 @@ export function buildLampshadeGeometry(lampshade, meshParams, activeMesh, active
         // never blow the silhouette out into a spiky, self-intersecting
         // mess — the pattern still reads strongly, it just can't exceed
         // a sane fraction of the model's own size.
-        displacement = softClamp(displacement, baseR * 0.35)
+        displacement = softClamp(displacement, baseR * 0.50)
 
         // Never let the outer wall collapse past the inner shell wall —
         // that would puncture/self-intersect the mesh and look "broken".

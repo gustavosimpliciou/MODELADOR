@@ -79,3 +79,4 @@ externalPort = 8000
 [userenv.shared]
 SUPABASE_URL = "https://blqvsglspdayrznnbzzf.supabase.co"
 SUPABASE_KEY = "sb_publishable_fg_66namw-ZLUeYkyg365w_zwsGvCIR"
+CORS_ORIGINS = "*"
