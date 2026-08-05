@@ -20,7 +20,7 @@ import {
   SdmRenderContext,
 } from './render';
 import { resolveAssetSrc, paintToBackground } from './style';
-import { SDM_BASE_URL } from './sdmRuntime';
+import { SDM_BASE_URL, sdmWidgetModules } from './sdmRuntime';
 
 interface Props {
   slideId: string;
@@ -112,7 +112,7 @@ export function SdmSlide({ slideId, initialDocument }: Props) {
   }, []);
 
   const renderContext = useMemo(
-    () => ({ baseUrl: SDM_BASE_URL, widgets: {} }),
+    () => ({ baseUrl: SDM_BASE_URL, widgets: sdmWidgetModules }),
     [],
   );
 

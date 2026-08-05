@@ -1,13 +1,18 @@
 /// <reference types="node" />
-import { readdirSync, readFileSync } from 'fs';
+import { existsSync, readdirSync, readFileSync } from 'fs';
 import { access } from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 import {
-  safeParseSlidesManifest,
-  type SlideEntry,
-} from '../src/data/slidesManifestSchema';
+  validateSlidesManifest,
+  type SlideManifestEntry as SlideEntry,
+} from '../src/.sdm/core/slidesManifest';
+import {
+  findOrphanSdmFiles,
+  validateSdmEntries,
+  type SdmValidationIo,
+} from './sdmValidation';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,14 +33,25 @@ function relativeToProject(filePath: string): string {
   return path.relative(projectRoot, filePath).replaceAll(path.sep, '/');
 }
 
-function formatIssuePath(issuePath: PropertyKey[]): string {
-  if (issuePath.length === 0) {
+function formatIssuePath(issuePath: string): string {
+  if (issuePath === '') {
     return 'manifest';
   }
-  return issuePath.map((segment) => String(segment)).join('.');
+
+  return issuePath
+    .slice(1)
+    .split('/')
+    .map((segment) =>
+      segment.replaceAll('~1', '/').replaceAll('~0', '~'),
+    )
+    .join('.');
 }
 
 function getSlideFilenames(): string[] {
+  if (!existsSync(slidesDir)) {
+    return [];
+  }
+
   return readdirSync(slidesDir).filter((name) => name.endsWith('.tsx'));
 }
 
@@ -86,10 +102,14 @@ function validateContiguousPositions(issues: ValidationIssue[]) {
   }
 }
 
+function jsxSlides(): SlideEntry[] {
+  return slides.filter((slide) => slide.kind !== 'sdm');
+}
+
 function validateFilepaths(issues: ValidationIssue[]) {
   const knownSlideFiles = new Set(getSlideFilenames());
 
-  for (const slide of slides) {
+  for (const slide of jsxSlides()) {
     const filename = path.basename(slide.filepath);
     const expectedFilepath = `src/pages/slides/${filename}`;
 
@@ -119,7 +139,7 @@ function validateFilepaths(issues: ValidationIssue[]) {
 
 function validateOrphanedSlideFiles(issues: ValidationIssue[]) {
   const manifestSet = new Set(
-    slides.map((slide) =>
+    jsxSlides().map((slide) =>
       path.normalize(path.resolve(projectRoot, slide.filepath)),
     ),
   );
@@ -132,6 +152,42 @@ function validateOrphanedSlideFiles(issues: ValidationIssue[]) {
         message: `Orphaned slide file: ${relativeToProject(file)} (not referenced in manifest)`,
       });
     }
+  }
+}
+
+function validateSdmSlides(issues: ValidationIssue[]) {
+  const io: SdmValidationIo = {
+    readFile: (relativePath) => {
+      try {
+        return readFileSync(path.join(projectRoot, relativePath), 'utf8');
+      } catch {
+        return null;
+      }
+    },
+    listFiles: (relativeDir) => {
+      try {
+        return readdirSync(path.join(projectRoot, relativeDir), {
+          recursive: true,
+          withFileTypes: true,
+        })
+          .filter((entry) => entry.isFile())
+          .map((entry) =>
+            relativeToProject(path.join(entry.parentPath, entry.name)).slice(
+              `${relativeDir}/`.length,
+            ),
+          );
+      } catch {
+        return [];
+      }
+    },
+  };
+  const sdmEntries = slides.filter((slide) => slide.kind === 'sdm');
+  const messages = [
+    ...validateSdmEntries(sdmEntries, io),
+    ...findOrphanSdmFiles(slides, io),
+  ];
+  for (const message of messages) {
+    issues.push({ message });
   }
 }
 
@@ -164,12 +220,12 @@ async function main() {
     return;
   }
 
-  const parsedManifest = safeParseSlidesManifest(rawManifest);
-  if (!parsedManifest.success) {
+  const parsedManifest = validateSlidesManifest(rawManifest);
+  if (!parsedManifest.ok) {
     console.error(
-      `Slide manifest validation failed (${parsedManifest.error.issues.length} issue(s)):\n`,
+      `Slide manifest validation failed (${parsedManifest.issues.length} issue(s)):\n`,
     );
-    for (const issue of parsedManifest.error.issues) {
+    for (const issue of parsedManifest.issues) {
       const issuePath = formatIssuePath(issue.path);
       console.error(`- Invalid manifest at ${issuePath}: ${issue.message}`);
     }
@@ -177,13 +233,14 @@ async function main() {
     return;
   }
 
-  slides = parsedManifest.data;
+  slides = parsedManifest.entries;
 
   validateDuplicatePositions(issues);
   validateDuplicateIds(issues);
   validateContiguousPositions(issues);
   validateFilepaths(issues);
   validateOrphanedSlideFiles(issues);
+  validateSdmSlides(issues);
 
   if (issues.length > 0) {
     console.error(

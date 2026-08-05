@@ -1,12 +1,16 @@
 import { supabase } from '../lib/supabase'
 
+const ADMIN_EMAIL = 'nativos3d.adm@gmail.com'
+
 function toUser(row) {
+  const isAdmin = (row.email ?? '') === ADMIN_EMAIL
   return {
     id:                    row.id,
     name:                  row.name,
     email:                 row.email,
-    credits:               row.credits ?? 0,
-    freeDownloadUsed:      row.free_download_used ?? false,
+    is_admin:              isAdmin,
+    credits:               isAdmin ? 99999 : (row.credits ?? 0),
+    freeDownloadUsed:      isAdmin ? false  : (row.free_download_used ?? false),
     firstUpgradePurchased: row.first_upgrade_purchased ?? false,
     plan:                  row.plan ?? 'free',
   }

@@ -383,7 +383,7 @@ export default function Navbar({ onBackToSelector }) {
         <div style={{ flex: 1 }} />
 
         {/* Credits badge — oculto para admin */}
-        {user?.email === 'nativos3d.adm@gmail.com' ? (
+        {user?.is_admin ? (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 6,
             padding: '4px 10px', marginRight: 6,

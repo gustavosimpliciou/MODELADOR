@@ -22,15 +22,16 @@ All three workflows are configured and start automatically:
 
 ## Environment secrets needed
 
-The backend reads these from environment variables — add them in the Secrets panel:
+| Variable | Where | Where to get it |
+|---|---|---|
+| `SUPABASE_URL` | env var (shared) | Supabase → Settings → API → Project URL |
+| `SUPABASE_KEY` | **Secret** (service_role) | Supabase → Settings → API → **service_role** key (`eyJ…`) — **not** the anon/publishable key |
+| `SESSION_SECRET` | Secret | Any long random string |
+| `KIWIFY_WEBHOOK_TOKEN` | Secret | Kiwify dashboard → Webhooks → shared token |
 
-| Secret | Where to get it |
-|---|---|
-| `SUPABASE_URL` | Supabase project → Settings → API → Project URL |
-| `SUPABASE_KEY` | Supabase project → Settings → API → **service_role** key |
-| `KIWIFY_WEBHOOK_TOKEN` | Kiwify dashboard → Webhooks → shared token |
+> **Important:** `SUPABASE_KEY` must be the **service_role** key (a JWT starting with `eyJ…`), stored as a Replit Secret — never as a plain env var and never the anon/publishable key. The service_role key bypasses RLS so the backend can read all users and run admin operations.
 
-The frontend has Supabase credentials hardcoded in `frontend/src/lib/supabase.js` (anon/publishable key — safe to commit).
+The frontend has Supabase credentials in `frontend/src/lib/supabase.js` (anon key — safe to commit).
 
 ## Architecture notes
 

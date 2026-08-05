@@ -79,6 +79,20 @@ Keep `DESIGN_SYSTEM.title` and `DESIGN_SYSTEM.description` accurate. Update
 `NAV_GROUPS` whenever the system gains or loses a foundation, content guideline,
 chart, motion rule, or applied example.
 
+## Keep it template-ready
+
+This design system is a prime candidate to be saved to the workspace as a
+reusable template, and a template is packaged as this one directory alone. Keep
+it self-contained as you maintain it so that save works: use concrete dependency
+versions (never `catalog:`), keep `tsconfig.json` standalone (never `extends` a
+workspace-relative base), and never import from a sibling artifact or a shared
+`@workspace/*` lib. A saved template is consumed as a read-only style donor
+(re-authored from, not rebuilt), so keep the generated `src/index.css` and
+`src/generated/tokens.tsx` committed so the template carries a readable theme
+snapshot. If maintenance ever introduces a cross-artifact or workspace-lib
+dependency, load the `prepare-artifact-template` skill and follow it to pull the
+dependency back in before the user saves the template.
+
 ## Prototyping on the canvas
 
 Use the mockup-sandbox skill's "Design systems" flow. It creates a sandbox entry

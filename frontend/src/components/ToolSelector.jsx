@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useStore } from '../store/useStore'
 
-export default function ToolSelector({ onSelectModelador }) {
+export default function ToolSelector({ onSelectModelador, onSelectDashboard }) {
   const user = useStore((s) => s.user)
   const logout = useStore((s) => s.logout)
   const [hovering, setHovering] = useState(null)
@@ -9,6 +9,8 @@ export default function ToolSelector({ onSelectModelador }) {
   const handleCortes = () => {
     window.location.href = '/cortes'
   }
+
+  const isAdmin = !!user?.is_admin
 
   return (
     <div style={{
@@ -83,6 +85,21 @@ export default function ToolSelector({ onSelectModelador }) {
           onMouseLeave={() => setHovering(null)}
           onClick={handleCortes}
         />
+
+        {/* Dashboard ADM — visível SOMENTE para administradores */}
+        {isAdmin && (
+          <ToolCard
+            icon={<AdminIcon />}
+            title="Dashboard ADM"
+            subtitle="Usuários · Pagamentos · Créditos · Métricas"
+            badge="Admin"
+            badgeColor="#ff6a00"
+            active={hovering === 'dashboard-adm'}
+            onMouseEnter={() => setHovering('dashboard-adm')}
+            onMouseLeave={() => setHovering(null)}
+            onClick={onSelectDashboard}
+          />
+        )}
       </div>
 
       {/* Logout */}
@@ -104,7 +121,9 @@ export default function ToolSelector({ onSelectModelador }) {
   )
 }
 
-function ToolCard({ icon, title, subtitle, badge, active, onMouseEnter, onMouseLeave, onClick }) {
+function ToolCard({ icon, title, subtitle, badge, badgeColor, active, onMouseEnter, onMouseLeave, onClick }) {
+  const accent = badgeColor || 'var(--accent)'
+  const accentRgba = badgeColor ? `${badgeColor}26` : 'var(--accent-dim)'
   return (
     <button
       onClick={onClick}
@@ -113,7 +132,7 @@ function ToolCard({ icon, title, subtitle, badge, active, onMouseEnter, onMouseL
       style={{
         width: 260,
         background: active ? 'var(--card)' : 'var(--panel)',
-        border: `1.5px solid ${active ? 'var(--accent)' : 'var(--line)'}`,
+        border: `1.5px solid ${active ? accent : 'var(--line)'}`,
         borderRadius: 12,
         padding: '32px 28px',
         cursor: 'pointer',
@@ -121,19 +140,19 @@ function ToolCard({ icon, title, subtitle, badge, active, onMouseEnter, onMouseL
         alignItems: 'center', gap: 16,
         transition: 'all 0.18s ease',
         transform: active ? 'translateY(-3px)' : 'none',
-        boxShadow: active ? '0 8px 32px rgba(255,106,0,0.15)' : '0 2px 8px rgba(0,0,0,0.3)',
+        boxShadow: active ? `0 8px 32px ${accentRgba}` : '0 2px 8px rgba(0,0,0,0.3)',
         outline: 'none',
       }}
     >
       {/* Icon */}
       <div style={{
         width: 64, height: 64,
-        background: active ? 'var(--accent-dim)' : 'rgba(255,255,255,0.04)',
+        background: active ? accentRgba : 'rgba(255,255,255,0.04)',
         borderRadius: 16,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        border: `1px solid ${active ? 'rgba(255,106,0,0.3)' : 'var(--line)'}`,
+        border: `1px solid ${active ? `${accent}4d` : 'var(--line)'}`,
         transition: 'all 0.18s ease',
-        color: active ? 'var(--accent)' : 'var(--text-secondary)',
+        color: active ? accent : 'var(--text-secondary)',
       }}>
         {icon}
       </div>
@@ -142,9 +161,9 @@ function ToolCard({ icon, title, subtitle, badge, active, onMouseEnter, onMouseL
       <div style={{
         fontFamily: 'var(--font-mono)', fontSize: 9, fontWeight: 700,
         letterSpacing: '0.2em', textTransform: 'uppercase',
-        color: active ? 'var(--accent)' : 'var(--text-dim)',
-        background: active ? 'var(--accent-dim)' : 'rgba(255,255,255,0.04)',
-        border: `1px solid ${active ? 'rgba(255,106,0,0.25)' : 'var(--line)'}`,
+        color: active ? accent : 'var(--text-dim)',
+        background: active ? accentRgba : 'rgba(255,255,255,0.04)',
+        border: `1px solid ${active ? `${accent}40` : 'var(--line)'}`,
         padding: '3px 10px', borderRadius: 4,
         transition: 'all 0.18s ease',
       }}>
@@ -175,7 +194,7 @@ function ToolCard({ icon, title, subtitle, badge, active, onMouseEnter, onMouseL
         marginTop: 4,
         fontFamily: 'var(--font-mono)', fontSize: 10,
         letterSpacing: '0.14em', textTransform: 'uppercase',
-        color: active ? 'var(--accent)' : 'var(--text-dim)',
+        color: active ? accent : 'var(--text-dim)',
         display: 'flex', alignItems: 'center', gap: 6,
         transition: 'color 0.18s ease',
       }}>
@@ -204,6 +223,15 @@ function CortesIcon() {
       <line x1="20" y1="4" x2="8.12" y2="15.88"/>
       <line x1="14.47" y1="14.48" x2="20" y2="20"/>
       <line x1="8.12" y1="8.12" x2="12" y2="12"/>
+    </svg>
+  )
+}
+
+function AdminIcon() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      <path d="M9 12l2 2 4-4"/>
     </svg>
   )
 }

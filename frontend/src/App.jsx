@@ -11,6 +11,7 @@ import UpgradeModal from './components/UpgradeModal'
 import ProjectsModal from './components/ProjectsModal'
 import LoginScreen from './components/LoginScreen'
 import ToolSelector from './components/ToolSelector'
+import DashboardADM from './components/DashboardADM'
 import { useT } from './i18n/useT'
 import { supabase } from './lib/supabase'
 
@@ -42,12 +43,14 @@ export default function App() {
         const { data: row } = await supabase
           .from('users').select('*').eq('id', session.user.id).maybeSingle()
         if (row) {
+          const isAdmin = row.email === 'nativos3d.adm@gmail.com'
           const userData = {
             id:                    row.id,
             name:                  row.name,
             email:                 row.email,
-            credits:               row.credits ?? 0,
-            freeDownloadUsed:      row.free_download_used ?? false,
+            is_admin:              isAdmin,
+            credits:               isAdmin ? 99999 : (row.credits ?? 0),
+            freeDownloadUsed:      isAdmin ? false  : (row.free_download_used ?? false),
             firstUpgradePurchased: row.first_upgrade_purchased ?? false,
             plan:                  row.plan ?? 'free',
           }
@@ -105,7 +108,22 @@ export default function App() {
 
   // ── Tool selector ─────────────────────────────────────────────────
   if (!activeTool) {
-    return <ToolSelector onSelectModelador={() => setActiveTool('modelador')} />
+    return (
+      <ToolSelector
+        onSelectModelador={() => setActiveTool('modelador')}
+        onSelectDashboard={() => setActiveTool('dashboard-adm')}
+      />
+    )
+  }
+
+  // ── Dashboard ADM (admin only — double-checked here, not just in ToolSelector) ──
+  if (activeTool === 'dashboard-adm') {
+    if (!user?.is_admin) {
+      // Hard guard: non-admin cannot reach this state
+      setActiveTool(null)
+      return null
+    }
+    return <DashboardADM onBack={() => setActiveTool(null)} />
   }
 
   // ── Main app (Modelador 3D) ───────────────────────────────────────

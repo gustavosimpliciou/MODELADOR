@@ -98,9 +98,10 @@ def detect_plan_tier(product_name: str, product_id: str = '') -> Optional[str]:
 
 
 # ─── JWT helpers ─────────────────────────────────────────────────────
-SECRET_KEY = os.environ.get('SESSION_SECRET', 'dev-secret-change-in-production')
-ALGORITHM  = 'HS256'
-TOKEN_DAYS = 30
+SECRET_KEY   = os.environ.get('SESSION_SECRET', 'dev-secret-change-in-production')
+ALGORITHM    = 'HS256'
+TOKEN_DAYS   = 30
+ADMIN_EMAIL  = 'nativos3d.adm@gmail.com'
 
 bearer = HTTPBearer(auto_error=False)
 
@@ -119,12 +120,14 @@ def decode_token(token: str) -> Optional[str]:
 
 def safe_user(row: dict) -> dict:
     """Return only the fields the frontend needs (no password hash)."""
+    is_admin = row.get('email', '') == ADMIN_EMAIL
     return {
         'id':                    row.get('id', ''),
         'name':                  row.get('name', ''),
         'email':                 row.get('email', ''),
-        'credits':               row.get('credits', 0),
-        'freeDownloadUsed':      row.get('free_download_used', False),
+        'is_admin':              is_admin,
+        'credits':               99999 if is_admin else row.get('credits', 0),
+        'freeDownloadUsed':      False  if is_admin else row.get('free_download_used', False),
         'firstUpgradePurchased': row.get('first_upgrade_purchased', False),
         'plan':                  row.get('plan', 'free'),
     }
@@ -174,6 +177,67 @@ async def require_auth(creds: HTTPAuthorizationCredentials = Depends(bearer)):
     return res.data[0]
 
 
+async def require_admin(request: Request):
+    """
+    Accept Supabase JWTs (what the frontend sends) OR FastAPI JWTs.
+    Verify identity, then enforce ADMIN_EMAIL check.
+    Returns the admin's profile row from the users table, creating it
+    on first access if the admin exists in Supabase Auth but not yet
+    in the local users table.
+    """
+    auth = request.headers.get('Authorization', '')
+    if not auth.startswith('Bearer '):
+        raise HTTPException(401, 'Token não fornecido')
+    token = auth[7:]
+
+    email: Optional[str] = None
+    auth_user_id: Optional[str] = None
+
+    # ── Try Supabase JWT first (frontend sends Supabase access tokens) ──
+    try:
+        client = new_auth_client()
+        result = await srun(lambda: client.auth.get_user(token))
+        if result and result.user:
+            email = result.user.email
+            auth_user_id = str(result.user.id)
+    except Exception:
+        pass
+
+    # ── Fallback: try FastAPI JWT ──────────────────────────────────────
+    if not email:
+        fb_user_id = decode_token(token)
+        if fb_user_id and sb:
+            try:
+                res = await srun(lambda: sb.table('users').select('email').eq('id', fb_user_id).execute())
+                if res.data:
+                    email = res.data[0]['email']
+                    auth_user_id = fb_user_id
+            except Exception:
+                pass
+
+    if not email:
+        raise HTTPException(401, 'Sessão inválida ou expirada')
+    if email != ADMIN_EMAIL:
+        raise HTTPException(403, 'Acesso restrito a administradores')
+
+    require_db()
+    res = await srun(lambda: sb.table('users').select('*').eq('email', email).execute())
+    if res.data:
+        return res.data[0]
+
+    # Admin exists in Supabase Auth but not yet in the users table.
+    # Auto-create the profile so the dashboard works immediately.
+    if not auth_user_id:
+        raise HTTPException(
+            404,
+            'Perfil de administrador não encontrado e não foi possível criá-lo automaticamente. '
+            'Faça login novamente.',
+        )
+    logger.info(f"Criando perfil de administrador para {email} (id={auth_user_id})")
+    profile = await get_or_create_profile(auth_user_id, email, 'Admin')
+    return profile
+
+
 # ─── Pydantic models ─────────────────────────────────────────────────
 
 class RegisterInput(BaseModel):
@@ -197,6 +261,11 @@ class UpdateCreditsInput(BaseModel):
     credits: int
     freeDownloadUsed: bool
     firstUpgradePurchased: bool
+
+class AdminCreditInput(BaseModel):
+    operation: str          # 'add' | 'remove' | 'set'
+    amount: int
+    note: Optional[str] = None
 
 
 # ─── App & routers ────────────────────────────────────────────────────
@@ -363,6 +432,10 @@ async def consume_export(current_user=Depends(require_auth)):
     """
     require_db()
     now = datetime.now(timezone.utc).isoformat()
+
+    # Admin bypass — unlimited exports, never deduct credits
+    if current_user.get('email') == ADMIN_EMAIL:
+        return {'ok': True, 'freeDownload': False, 'credits': 99999, 'admin': True}
 
     if not current_user.get('free_download_used'):
         await srun(lambda: sb.table('users').update({
@@ -580,6 +653,156 @@ async def kiwify_webhook(request: Request):
     return {'ok': True}
 
 
+# ─── Admin routes ────────────────────────────────────────────────────
+
+admin_router = APIRouter(prefix='/api/admin', tags=['admin'])
+
+
+@admin_router.get('/stats')
+async def admin_stats(current_user: dict = Depends(require_admin)):
+    require_db()
+    users_res    = await srun(lambda: sb.table('users').select('id,email,credits').execute())
+    payments_res = await srun(
+        lambda: sb.table('payments')
+            .select('id,user_id,product,value,status,created_at')
+            .order('created_at', desc=True).limit(20).execute()
+    )
+    users    = users_res.data    or []
+    payments = payments_res.data or []
+
+    total_users         = len(users)
+    total_admins        = sum(1 for u in users if u.get('email') == ADMIN_EMAIL)
+    total_credits       = sum(u.get('credits') or 0 for u in users)
+    users_with_credits  = sum(1 for u in users if (u.get('credits') or 0) > 0)
+    users_no_credits    = total_users - users_with_credits
+
+    return {
+        'total_users':         total_users,
+        'total_admins':        total_admins,
+        'total_credits':       total_credits,
+        'users_with_credits':  users_with_credits,
+        'users_without_credits': users_no_credits,
+        'recent_payments':     payments,
+    }
+
+
+@admin_router.get('/users')
+async def admin_users(
+    current_user: dict = Depends(require_admin),
+    page:     int = 1,
+    limit:    int = 20,
+    search:   str = '',
+    sort_by:  str = 'created_at',
+    sort_dir: str = 'desc',
+):
+    require_db()
+    allowed_sort = {'name', 'created_at', 'credits', 'email'}
+    if sort_by not in allowed_sort:
+        sort_by = 'created_at'
+    desc_order = sort_dir != 'asc'
+    offset     = (page - 1) * limit
+    cols       = 'id,name,email,plan,credits,created_at'
+
+    if search:
+        sf  = search
+        res = await srun(
+            lambda: sb.table('users')
+                .select(cols, count='exact')
+                .or_(f'name.ilike.%{sf}%,email.ilike.%{sf}%')
+                .order(sort_by, desc=desc_order)
+                .range(offset, offset + limit - 1)
+                .execute()
+        )
+    else:
+        res = await srun(
+            lambda: sb.table('users')
+                .select(cols, count='exact')
+                .order(sort_by, desc=desc_order)
+                .range(offset, offset + limit - 1)
+                .execute()
+        )
+
+    total = res.count or 0
+    rows  = []
+    for u in (res.data or []):
+        u['is_admin'] = u.get('email') == ADMIN_EMAIL
+        rows.append(u)
+
+    return {
+        'users': rows,
+        'total': total,
+        'page':  page,
+        'limit': limit,
+        'pages': max(1, -(-total // limit)),
+    }
+
+
+@admin_router.patch('/users/{user_id}/credits')
+async def admin_update_user_credits(
+    user_id: str,
+    body:    AdminCreditInput,
+    current_user: dict = Depends(require_admin),
+):
+    require_db()
+    if body.operation not in ('add', 'remove', 'set'):
+        raise HTTPException(400, 'Operação inválida — use: add | remove | set')
+    if body.amount < 0:
+        raise HTTPException(400, 'O valor deve ser positivo')
+
+    res = await srun(lambda: sb.table('users').select('*').eq('id', user_id).execute())
+    if not res.data:
+        raise HTTPException(404, 'Usuário não encontrado')
+    target          = res.data[0]
+    current_credits = target.get('credits', 0)
+
+    if body.operation == 'add':
+        new_credits = current_credits + body.amount
+        change      = body.amount
+        op_type     = 'admin_add'
+        desc        = f'ADM +{body.amount} créditos'
+    elif body.operation == 'remove':
+        if body.amount > current_credits:
+            raise HTTPException(
+                400,
+                f'Saldo insuficiente: usuário tem {current_credits} créditos',
+            )
+        new_credits = current_credits - body.amount
+        change      = -body.amount
+        op_type     = 'admin_remove'
+        desc        = f'ADM -{body.amount} créditos'
+    else:  # set
+        new_credits = max(0, body.amount)
+        change      = new_credits - current_credits
+        op_type     = 'admin_set'
+        desc        = f'ADM definiu saldo para {new_credits}'
+
+    if body.note:
+        desc += f' ({body.note})'
+    desc += f' | admin: {current_user.get("email")}'
+    now = datetime.now(timezone.utc).isoformat()
+
+    await srun(lambda: sb.table('users').update({'credits': new_credits}).eq('id', user_id).execute())
+
+    try:
+        await srun(lambda: sb.table('credit_history').insert({
+            'id':          str(uuid.uuid4()),
+            'user_id':     user_id,
+            'type':        op_type,
+            'credits':     change,
+            'description': desc,
+            'created_at':  now,
+        }).execute())
+    except Exception as e:
+        logger.warning(f'credit_history insert failed: {e}')
+
+    return {
+        'ok':               True,
+        'previous_credits': current_credits,
+        'new_credits':      new_credits,
+        'change':           change,
+    }
+
+
 # ─── Health ───────────────────────────────────────────────────────────
 
 @api_router.get('/')
@@ -597,6 +820,7 @@ async def root():
 # ─── Mount ────────────────────────────────────────────────────────────
 app.include_router(auth_router)
 app.include_router(api_router)
+app.include_router(admin_router)
 
 app.add_middleware(
     CORSMiddleware,

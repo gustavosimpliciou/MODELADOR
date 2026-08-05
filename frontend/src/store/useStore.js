@@ -55,9 +55,9 @@ export const useStore = create((set, get) => ({
 
   // Called after successful login or register
   loginUser: (token, userData) => {
-    const isAdmin = userData?.email === 'nativos3d.adm@gmail.com'
-    const credits = isAdmin ? 99999 : userData.credits
-    const freeUsed = isAdmin ? false : userData.freeDownloadUsed
+    // is_admin and credits are already resolved server-side (or in toUser)
+    const credits  = userData.credits
+    const freeUsed = userData.freeDownloadUsed
     lsSet(TOKEN_KEY, token)
     lsSet(CREDITS_KEY, String(credits))
     lsSet(FREE_USED_KEY, String(freeUsed))
@@ -125,6 +125,7 @@ export const useStore = create((set, get) => ({
         id:                    row.id,
         name:                  row.name,
         email:                 row.email,
+        is_admin:              isAdmin,
         credits:               isAdmin ? 99999 : (row.credits ?? 0),
         freeDownloadUsed:      isAdmin ? false  : (row.free_download_used ?? false),
         firstUpgradePurchased: row.first_upgrade_purchased ?? false,
@@ -148,7 +149,7 @@ export const useStore = create((set, get) => ({
     const EXPORT_COST = 40
 
     // Admin bypass — acesso ilimitado sem consumir créditos
-    if (s.user?.email === 'nativos3d.adm@gmail.com') {
+    if (s.user?.is_admin) {
       return 'ok'
     }
 

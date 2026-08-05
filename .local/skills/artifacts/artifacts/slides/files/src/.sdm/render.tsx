@@ -1,11 +1,12 @@
 import {
+  Component,
   createContext,
   useContext,
   useId,
   useLayoutEffect,
   useRef,
-  type ComponentType,
   type CSSProperties,
+  type ElementType,
   type MouseEvent,
   type ReactNode,
   type RefObject,
@@ -34,9 +35,7 @@ import {
 } from './style';
 
 export type WidgetProps = Record<string, JsonValue>;
-export type WidgetModule = Record<string, ComponentType<WidgetProps>> & {
-  default?: ComponentType<WidgetProps>;
-};
+export type WidgetModule = Record<string, unknown>;
 
 export interface SdmRenderContextValue {
   baseUrl: string;
@@ -618,6 +617,171 @@ function CroppedImage({
   );
 }
 
+function WidgetView({
+  element,
+}: {
+  element: Extract<Element, { type: 'widget' }>;
+}) {
+  const { widgets } = useContext(SdmRenderContext);
+  const moduleKey = `..${element.widget.module.slice(1)}`;
+  const mod = Object.hasOwn(widgets, moduleKey) ? widgets[moduleKey] : undefined;
+  const exportName = element.widget.exportName ?? 'default';
+  const widgetTarget = `${element.widget.module}#${exportName}`;
+  if (!mod) {
+    return (
+      <WidgetFallback
+        message={`Widget module not found: ${element.widget.module}`}
+      />
+    );
+  }
+  if (!Object.hasOwn(mod, exportName)) {
+    return (
+      <WidgetFallback
+        message={`Widget export not found: ${widgetTarget}`}
+      />
+    );
+  }
+
+  const candidate = mod[exportName];
+  if (!isWidgetComponent(candidate)) {
+    return (
+      <WidgetFallback
+        message={`Widget export is not a component: ${widgetTarget}`}
+      />
+    );
+  }
+
+  const Widget = candidate;
+  const rendered = <Widget {...(element.widget.props ?? {})} />;
+  const fallback = (
+    <WidgetFallback message={`Widget failed to render: ${widgetTarget}`} />
+  );
+
+  return (
+    <WidgetErrorBoundary
+      key={JSON.stringify(element.widget)}
+      fallback={fallback}
+    >
+      {element.widget.sizing === 'fill' ? (
+        <div className="h-full w-full [&>*]:h-full [&>*]:w-full">
+          {rendered}
+        </div>
+      ) : (
+        rendered
+      )}
+    </WidgetErrorBoundary>
+  );
+}
+
+function WidgetFallback({ message }: { message: string }) {
+  return (
+    <div style={{ padding: 24, color: '#B91C1C', fontFamily: 'system-ui' }}>
+      {message}
+    </div>
+  );
+}
+
+class WidgetErrorBoundary extends Component<
+  { children: ReactNode; fallback: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
+
+function isWidgetComponent(
+  value: unknown,
+): value is ElementType<WidgetProps> {
+  if (typeof value === 'function') {
+    return true;
+  }
+
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    !('$$typeof' in value)
+  ) {
+    return false;
+  }
+  if (value.$$typeof === Symbol.for('react.forward_ref')) {
+    return 'render' in value && typeof value.render === 'function';
+  }
+  if (value.$$typeof === Symbol.for('react.memo')) {
+    return 'type' in value && isWidgetComponent(value.type);
+  }
+
+  return false;
+}
+
+function normalizedPercentages(weights: Array<number>): Array<string> {
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+
+  return weights.map((weight) => `${(weight / total) * 100}%`);
+}
+
+function placeTableCells(element: Extract<Element, { type: 'table' }>) {
+  const occupied = element.rows.map(() =>
+    element.columns.map(() => false),
+  );
+
+  return element.rows.map((row, rowIndex) => {
+    let columnIndex = 0;
+
+    return row.cells.flatMap((cell, cellIndex) => {
+      while (
+        columnIndex < element.columns.length &&
+        occupied[rowIndex][columnIndex]
+      ) {
+        columnIndex += 1;
+      }
+      if (columnIndex >= element.columns.length) {
+        return [];
+      }
+
+      let colSpan = 1;
+      while (
+        colSpan < (cell.colSpan ?? 1) &&
+        columnIndex + colSpan < element.columns.length &&
+        !occupied[rowIndex][columnIndex + colSpan]
+      ) {
+        colSpan += 1;
+      }
+      const rowIsFree = (row: number) => {
+        for (let offset = 0; offset < colSpan; offset += 1) {
+          if (occupied[row][columnIndex + offset]) {
+            return false;
+          }
+        }
+
+        return true;
+      };
+      let rowSpan = 1;
+      while (
+        rowSpan < (cell.rowSpan ?? 1) &&
+        rowIndex + rowSpan < element.rows.length &&
+        rowIsFree(rowIndex + rowSpan)
+      ) {
+        rowSpan += 1;
+      }
+      for (let rowOffset = 0; rowOffset < rowSpan; rowOffset += 1) {
+        for (let columnOffset = 0; columnOffset < colSpan; columnOffset += 1) {
+          occupied[rowIndex + rowOffset][columnIndex + columnOffset] = true;
+        }
+      }
+      columnIndex += colSpan;
+
+      return [{ cell, cellIndex, colSpan, rowSpan }];
+    });
+  });
+}
+
 function ElementInner({
   element,
   document,
@@ -731,10 +895,100 @@ function ElementInner({
     }
     case 'line':
       return <LineView element={element} theme={theme} />;
-    case 'group':
-    case 'table':
+    case 'group': {
+      const scaleX = element.frame.width / element.coordinateSpace.width;
+      const scaleY = element.frame.height / element.coordinateSpace.height;
+      return (
+        <div
+          style={{
+            width: element.coordinateSpace.width,
+            height: element.coordinateSpace.height,
+            transform: `scale(${scaleX}, ${scaleY})`,
+            transformOrigin: 'top left',
+            overflow: element.clip ? 'hidden' : 'visible',
+            position: 'relative',
+          }}
+        >
+          {element.children.map((child) => (
+            <SdmElementView
+              key={child.id}
+              element={child}
+              document={document}
+              onAction={onAction}
+            />
+          ))}
+        </div>
+      );
+    }
+    case 'table': {
+      const columnWidths = normalizedPercentages(
+        element.columns.map((column) => column.width),
+      );
+      const rowHeights = normalizedPercentages(
+        element.rows.map(
+          (row) => row.height ?? element.frame.height / element.rows.length,
+        ),
+      );
+      const placedRows = placeTableCells(element);
+
+      return (
+        <table
+          style={{
+            width: '100%',
+            height: '100%',
+            borderCollapse: 'collapse',
+            tableLayout: 'fixed',
+          }}
+        >
+          <colgroup>
+            {columnWidths.map((width, index) => (
+              <col key={index} style={{ width }} />
+            ))}
+          </colgroup>
+          <tbody>
+            {placedRows.map((cells, rowIndex) => (
+              <tr key={rowIndex} style={{ height: rowHeights[rowIndex] }}>
+                {cells.map(({ cell, cellIndex, colSpan, rowSpan }) => {
+                  const fill = cell.fill
+                    ? paintToBackground(cell.fill, theme, resolveAsset)
+                    : undefined;
+
+                  return (
+                    <td
+                      key={cellIndex}
+                      colSpan={colSpan}
+                      rowSpan={rowSpan}
+                      style={{
+                        position: 'relative',
+                        background: backgroundValue(fill),
+                        border: '1px solid #CBD5E1',
+                        padding: 0,
+                      }}
+                    >
+                      <PaintLayer resolved={fill} />
+                      <div
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                        }}
+                      >
+                        <TextBodyView
+                          body={cell.body}
+                          theme={theme}
+                          onAction={onAction}
+                        />
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      );
+    }
     case 'widget':
-      return null;
+      return <WidgetView element={element} />;
   }
 }
 
