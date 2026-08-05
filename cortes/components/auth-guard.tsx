@@ -1,26 +1,13 @@
 "use client"
 
 import { useEffect, useState } from 'react'
-
-/**
- * AuthGuard — client-side session check for the Cortes tool.
- *
- * Reads the Supabase session from localStorage (written there by the main
- * Studio app via @supabase/supabase-js). If no valid session is found the
- * user is redirected to the root of the main app (/) which handles login.
- *
- * Rules:
- *  • Presence of any key that starts with "sb-" containing an access_token
- *    → session is valid, render children.
- *  • Legacy key "nativos.token" also counts.
- *  • Anything else (or no localStorage access) → redirect to "/".
- */
+import { supabase } from '@/lib/supabase'
+import { useUserStore, ADMIN_EMAIL } from '@/lib/user-store'
 
 function hasValidSession(): boolean {
   try {
-    // Check for Supabase v2 session (key: sb-<project>-auth-token)
-    const supabaseKeys = Object.keys(localStorage).filter((k) =>
-      k.startsWith('sb-') && k.endsWith('-auth-token'),
+    const supabaseKeys = Object.keys(localStorage).filter(
+      (k) => k.startsWith('sb-') && k.endsWith('-auth-token'),
     )
     for (const key of supabaseKeys) {
       const raw = localStorage.getItem(key)
@@ -28,18 +15,12 @@ function hasValidSession(): boolean {
       try {
         const parsed = JSON.parse(raw)
         if (parsed?.access_token || parsed?.session?.access_token) return true
-      } catch {
-        // malformed — ignore
-      }
+      } catch {}
     }
-
-    // Legacy token written by the backend
     const legacy = localStorage.getItem('nativos.token')
     if (legacy && legacy.length > 10) return true
-
     return false
   } catch {
-    // localStorage not available (SSR or restrictive env) — block access
     return false
   }
 }
@@ -49,20 +30,59 @@ interface AuthGuardProps {
 }
 
 export function AuthGuard({ children }: AuthGuardProps) {
-  // null = still checking, false = no session, true = authenticated
   const [status, setStatus] = useState<null | boolean>(null)
 
   useEffect(() => {
-    const valid = hasValidSession()
-    if (!valid) {
-      // Redirect to main app login immediately
-      window.location.replace('/')
-    } else {
+    const init = async () => {
+      const valid = hasValidSession()
+      if (!valid) {
+        window.location.replace('/')
+        return
+      }
+
+      // Load user profile + credits from Supabase (non-blocking — app works even on error)
+      try {
+        const { data: { user: authUser } } = await supabase.auth.getUser()
+        if (authUser) {
+          const { data: row } = await supabase
+            .from('users')
+            .select('id, name, email, plan, credits, free_download_used, first_upgrade_purchased')
+            .eq('id', authUser.id)
+            .maybeSingle()
+
+          const isAdmin  = (authUser.email ?? '') === ADMIN_EMAIL
+          const credits  = isAdmin ? 99999 : (row?.credits ?? 0)
+          const freeUsed = isAdmin ? false  : (row?.free_download_used ?? false)
+          const firstPurchased = row?.first_upgrade_purchased ?? false
+
+          useUserStore.getState().setUser({
+            id:       authUser.id,
+            name:     row?.name ?? authUser.email?.split('@')[0] ?? 'Usuário',
+            email:    authUser.email ?? '',
+            is_admin: isAdmin,
+            plan:     row?.plan ?? 'free',
+          })
+          useUserStore.getState().setCredits(credits)
+          useUserStore.getState().setFreeDownloadUsed(freeUsed)
+          useUserStore.getState().setFirstUpgradePurchased(firstPurchased)
+
+          // Keep localStorage in sync with Supabase (shared with main Studio app)
+          try {
+            localStorage.setItem('nativos.credits',               String(credits))
+            localStorage.setItem('nativos.freeDownloadUsed',      String(freeUsed))
+            localStorage.setItem('nativos.firstUpgradePurchased', String(firstPurchased))
+          } catch {}
+        }
+      } catch {
+        // Non-fatal: credits from localStorage are used as fallback
+      }
+
       setStatus(true)
     }
+
+    init()
   }, [])
 
-  // While checking or redirecting, show a minimal dark loading screen
   if (status !== true) {
     return (
       <div

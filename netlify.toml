@@ -1,13 +1,15 @@
 [build]
-  # O Cortes 3D (Next.js) é pré-compilado e commitado em cortes/out/.
-  # O Netlify só precisa buildar o frontend React/Vite e copiar o output do Cortes.
-  command   = "cd frontend && yarn install && yarn build && mkdir -p dist/cortes && cp -r ../cortes/out/. dist/cortes/"
+  # 1. Build Cortes 3D (Next.js static export → cortes/out)
+  # 2. Build frontend (React/Vite → frontend/dist)
+  # 3. Copy Cortes output into frontend/dist/cortes so both are served from the same domain
+  command   = "cd cortes && pnpm install --ignore-scripts && pnpm run build && cd ../frontend && yarn install && yarn build && mkdir -p dist/cortes && cp -r ../cortes/out/. dist/cortes/"
   publish   = "frontend/dist"
   functions = "netlify/functions"
 
 [build.environment]
   NODE_VERSION    = "22"
   NODE_OPTIONS    = "--max-old-space-size=4096"
+  PNPM_VERSION    = "10"
 
 # Kiwify webhook → Netlify Function
 [[redirects]]

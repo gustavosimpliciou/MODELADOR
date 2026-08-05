@@ -11,6 +11,7 @@ import { AutoSplitPanel } from '@/components/layout/auto-split-panel'
 import { SmartAutoCutPanel } from '@/components/layout/smart-autocut-panel'
 import { EncaixePanel } from '@/components/layout/encaixe-panel'
 import { ExportPanel } from '@/components/layout/export-panel'
+import { UpgradeModal } from '@/components/upgrade-modal'
 import { Viewport3D } from '@/components/viewport/viewport-3d'
 import { AuthGuard } from '@/components/auth-guard'
 
@@ -55,6 +56,9 @@ export default function NativosCut() {
 
       {/* Modal de exportação */}
       <ExportPanel open={exportOpen} onClose={() => setExportOpen(false)} />
+
+      {/* Modal de upgrade de créditos — mesmo sistema do Modelador 3D */}
+      <UpgradeModal />
     </main>
     </AuthGuard>
   )

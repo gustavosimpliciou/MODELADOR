@@ -4,7 +4,7 @@
 //           PATCH /api/admin/users/:id/credits
 
 const SUPABASE_URL         = process.env.SUPABASE_URL         || 'https://blqvsglspdayrznnbzzf.supabase.co'
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_KEY         || 'sb_secret_Io0zkS3DyT3EDLwWPw673g_0C6o-JDu'
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_KEY         || ''
 const ADMIN_EMAIL          = 'nativos3d.adm@gmail.com'
 
 // ─── Supabase REST helpers ───────────────────────────────────────────────────
@@ -99,6 +99,9 @@ export const handler = async (event) => {
       body: '',
     }
   }
+
+  // Env guard
+  if (!SUPABASE_SERVICE_KEY) return json(503, { detail: 'SUPABASE_KEY não configurado no servidor' })
 
   // Auth guard
   const admin = await verifyAdmin(event.headers?.authorization || event.headers?.Authorization)

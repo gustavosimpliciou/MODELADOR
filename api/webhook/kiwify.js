@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 
 const SUPABASE_URL         = process.env.SUPABASE_URL         || 'https://blqvsglspdayrznnbzzf.supabase.co'
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_KEY         || 'sb_secret_Io0zkS3DyT3EDLwWPw673g_0C6o-JDu'
-const KIWIFY_TOKEN         = process.env.KIWIFY_WEBHOOK_TOKEN || 'abw1j1a77ay'
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_KEY         || ''
+const KIWIFY_TOKEN         = process.env.KIWIFY_WEBHOOK_TOKEN || ''
 
 const EXPORT_COST = 40
 

@@ -12,6 +12,7 @@ import {
   LogOut,
 } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
+import { useUserStore, ADMIN_EMAIL } from '@/lib/user-store'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/lang-store'
 import { ConfigModal } from './config-modal'
@@ -29,6 +30,11 @@ export function TopBar({ onExport }: TopBarProps) {
   const showWireframe          = useAppStore((s) => s.showWireframe)
   const allowCutPartSelection  = useAppStore((s) => s.allowCutPartSelection)
   const status                 = useAppStore((s) => s.status)
+
+  const credits                = useUserStore((s) => s.credits)
+  const user                   = useUserStore((s) => s.user)
+  const setShowUpgradeModal    = useUserStore((s) => s.setShowUpgradeModal)
+  const isAdmin                = user?.email === ADMIN_EMAIL
   // Actions are stable references in zustand — safe to grab from getState()
   const {
     setStatus,
@@ -242,6 +248,27 @@ export function TopBar({ onExport }: TopBarProps) {
             <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'oklch(0.70 0.22 42)' }} />
             <span className="text-xs font-mono text-muted-foreground">{t.loading_indicator}</span>
           </div>
+        )}
+
+        {/* Credits badge */}
+        {!isAdmin && (
+          <button
+            onClick={() => setShowUpgradeModal(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all mr-2"
+            style={{
+              borderColor: credits > 0 ? 'oklch(0.70 0.22 42 / 35%)' : 'oklch(0.65 0.18 28 / 35%)',
+              background:  credits > 0 ? 'oklch(0.70 0.22 42 / 8%)'  : 'oklch(0.65 0.18 28 / 8%)',
+              color:       credits > 0 ? 'oklch(0.70 0.22 42)'        : 'oklch(0.65 0.18 28)',
+            }}
+            title="Seus créditos — clique para recarregar"
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M13 3L4 14h7l-2 7 9-11h-7l2-7z"/>
+            </svg>
+            <span className="text-[11px] font-mono font-semibold tabular-nums">
+              {credits.toLocaleString('pt-BR')}
+            </span>
+          </button>
         )}
 
         {/* Config + Sair */}

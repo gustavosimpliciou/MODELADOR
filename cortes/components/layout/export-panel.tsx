@@ -1,8 +1,9 @@
 "use client"
 
 import { useState } from 'react'
-import { Download, X, FileDown, Layers, Package } from 'lucide-react'
+import { Download, X, FileDown, Layers, Package, Zap } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
+import { useUserStore } from '@/lib/user-store'
 import * as THREE from 'three'
 import { cn } from '@/lib/utils'
 
@@ -13,33 +14,59 @@ interface ExportPanelProps {
 
 type ExportFormat = 'stl' | 'obj'
 
+const ACCENT = 'oklch(0.70 0.22 42)'
+const EXPORT_COST = 40
+
 export function ExportPanel({ open, onClose }: ExportPanelProps) {
   const { parts, setStatus } = useAppStore()
+  const tryExport         = useUserStore((s) => s.tryExport)
+  const credits           = useUserStore((s) => s.credits)
+  const user              = useUserStore((s) => s.user)
+  const freeDownloadUsed  = useUserStore((s) => s.freeDownloadUsed)
+
   const [format, setFormat] = useState<ExportFormat>('stl')
   const [exporting, setExporting] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
 
   if (!open) return null
 
   const visibleParts = parts.filter((p) => p.mesh)
-  const printSize = computePrintSizeMM(visibleParts.map((p) => p.mesh))
-  const isScaled = printSize !== null && printSize.scale < 0.9999
+  const printSize    = computePrintSizeMM(visibleParts.map((p) => p.mesh))
+  const isScaled     = printSize !== null && printSize.scale < 0.9999
+
+  // What will this export cost / show to user
+  const isAdmin = user?.is_admin
+  const isFree  = !freeDownloadUsed  // first download is free
+  const hasEnoughCredits = isAdmin || isFree || credits >= EXPORT_COST
 
   const handleExport = async () => {
     if (visibleParts.length === 0) return
+
+    // ── Credit gate ────────────────────────────────────────────────
     setExporting(true)
+    const result = await tryExport()
+
+    if (result === 'upgrade_required') {
+      setExporting(false)
+      onClose()   // close export panel so upgrade modal is visible
+      return
+    }
+
+    // ── Proceed with export ────────────────────────────────────────
+    if (result === 'free') {
+      setNotice('Download gratuito utilizado! Próximos downloads: 40 créditos cada.')
+    }
+
     setStatus('exporting', 'Exportando todas as partes...')
 
     try {
       if (visibleParts.length === 1) {
-        // Single part — download directly (no ZIP needed)
         await exportSingleMesh(visibleParts[0].mesh, format, visibleParts[0].name)
       } else {
-        // Multiple parts — bundle into a ZIP
         await exportAllAsZip(visibleParts.map((p) => ({ mesh: p.mesh, name: p.name })), format)
       }
-
       setStatus('loaded', `Exportação concluída — ${visibleParts.length} parte(s).`)
-      onClose()
+      if (result !== 'free') onClose()
     } catch (err: any) {
       setStatus('error', `Erro ao exportar: ${err.message}`)
     } finally {
@@ -64,22 +91,58 @@ export function ExportPanel({ open, onClose }: ExportPanelProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2">
-            <FileDown className="w-4 h-4" style={{ color: 'oklch(0.70 0.22 42)' }} />
+            <FileDown className="w-4 h-4" style={{ color: ACCENT }} />
             <span className="font-mono text-sm font-medium text-foreground uppercase tracking-wider">
               Exportar
             </span>
           </div>
-          <button
-            onClick={onClose}
-            className="text-muted-foreground hover:text-foreground transition-colors"
-            aria-label="Fechar"
-          >
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors" aria-label="Fechar">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="p-5 flex flex-col gap-5">
-          {/* Formato */}
+        <div className="p-5 flex flex-col gap-4">
+          {/* Credits info */}
+          {!isAdmin && (
+            <div
+              className="flex items-center gap-2 px-3 py-2 rounded-lg border"
+              style={{
+                borderColor: hasEnoughCredits ? `${ACCENT}4d` : 'oklch(0.65 0.18 28 / 40%)',
+                background:  hasEnoughCredits ? `${ACCENT}0f` : 'oklch(0.65 0.18 28 / 8%)',
+              }}
+            >
+              <Zap className="w-3.5 h-3.5 shrink-0" style={{ color: hasEnoughCredits ? ACCENT : 'oklch(0.65 0.18 28)' }} />
+              <div className="flex-1 min-w-0">
+                {isFree ? (
+                  <p className="text-[11px] font-mono" style={{ color: ACCENT }}>
+                    ✦ 1º download gratuito disponível
+                  </p>
+                ) : hasEnoughCredits ? (
+                  <p className="text-[11px] font-mono text-muted-foreground">
+                    Saldo: <span style={{ color: ACCENT }} className="font-semibold">{credits.toLocaleString('pt-BR')} créditos</span>
+                    <span className="text-muted-foreground/50"> · custo: {EXPORT_COST}</span>
+                  </p>
+                ) : (
+                  <p className="text-[11px] font-mono" style={{ color: 'oklch(0.65 0.18 28)' }}>
+                    Créditos insuficientes ({credits}/{EXPORT_COST}) — escolha um plano
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Free download notice */}
+          {notice && (
+            <div
+              className="px-3 py-2 rounded-lg border text-[11px] font-mono"
+              style={{ borderColor: `${ACCENT}4d`, background: `${ACCENT}0f`, color: ACCENT }}
+            >
+              {notice}
+              <button className="ml-2 underline opacity-60" onClick={() => setNotice(null)}>×</button>
+            </div>
+          )}
+
+          {/* Format selector */}
           <div>
             <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">
               Formato
@@ -95,11 +158,7 @@ export function ExportPanel({ open, onClose }: ExportPanelProps) {
                       ? 'text-background border-transparent'
                       : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/20'
                   )}
-                  style={
-                    format === f
-                      ? { background: 'oklch(0.70 0.22 42)' }
-                      : undefined
-                  }
+                  style={format === f ? { background: ACCENT } : undefined}
                 >
                   .{f}
                 </button>
@@ -107,14 +166,14 @@ export function ExportPanel({ open, onClose }: ExportPanelProps) {
             </div>
           </div>
 
-          {/* Resumo */}
+          {/* Summary */}
           <div
             className="flex items-start gap-3 px-3 py-3 rounded-lg border border-border/50"
-            style={{ background: 'oklch(0.70 0.22 42 / 6%)' }}
+            style={{ background: `${ACCENT}0f` }}
           >
             {visibleParts.length > 1
-              ? <Package className="w-4 h-4 mt-0.5 shrink-0" style={{ color: 'oklch(0.70 0.22 42)' }} />
-              : <Layers className="w-4 h-4 mt-0.5 shrink-0" style={{ color: 'oklch(0.70 0.22 42)' }} />
+              ? <Package className="w-4 h-4 mt-0.5 shrink-0" style={{ color: ACCENT }} />
+              : <Layers   className="w-4 h-4 mt-0.5 shrink-0" style={{ color: ACCENT }} />
             }
             <div>
               <p className="text-xs font-mono font-medium text-foreground">
@@ -142,13 +201,13 @@ export function ExportPanel({ open, onClose }: ExportPanelProps) {
             </div>
           </div>
 
-          {/* Tamanho de impressão */}
+          {/* Print size */}
           {printSize && (
             <div
               className="px-3 py-3 rounded-lg border text-[11px] font-mono"
               style={{
-                borderColor: isScaled ? 'oklch(0.70 0.22 42 / 40%)' : 'oklch(0.5 0 0 / 30%)',
-                background: isScaled ? 'oklch(0.70 0.22 42 / 8%)' : 'oklch(0.5 0 0 / 8%)',
+                borderColor: isScaled ? `${ACCENT}66` : 'oklch(0.5 0 0 / 30%)',
+                background:  isScaled ? `${ACCENT}14` : 'oklch(0.5 0 0 / 8%)',
               }}
             >
               <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1.5">
@@ -162,29 +221,38 @@ export function ExportPanel({ open, onClose }: ExportPanelProps) {
                   ↓ Reduzido para caber em 20 cm · escala {(printSize.scale * 100).toFixed(1)}% · encaixes preservados
                 </p>
               ) : (
-                <p className="text-muted-foreground/70 mt-1">
-                  ✓ Dentro do limite de 20 cm · sem redução
-                </p>
+                <p className="text-muted-foreground/70 mt-1">✓ Dentro do limite de 20 cm · sem redução</p>
               )}
             </div>
           )}
 
-          {/* Botão exportar */}
+          {/* Export button */}
           <button
             onClick={handleExport}
             disabled={exporting || visibleParts.length === 0}
-            className="flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-mono font-medium text-background transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{ background: 'oklch(0.70 0.22 42)' }}
+            className="flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-mono font-medium transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              background: hasEnoughCredits ? ACCENT : 'oklch(0.65 0.18 28)',
+              color: '#000',
+            }}
           >
             {exporting ? (
               <>
-                <div className="w-3.5 h-3.5 border-2 border-background/30 border-t-background rounded-full animate-spin" />
+                <div className="w-3.5 h-3.5 border-2 border-black/30 border-t-black rounded-full animate-spin" />
                 Exportando...
+              </>
+            ) : !hasEnoughCredits ? (
+              <>
+                <Zap className="w-4 h-4" />
+                Recarregar créditos
               </>
             ) : (
               <>
                 <Download className="w-4 h-4" />
                 {visibleParts.length > 1 ? 'Exportar ZIP' : 'Exportar'}
+                {!isFree && !isAdmin && (
+                  <span className="text-[10px] opacity-60 ml-1">−{EXPORT_COST} créditos</span>
+                )}
               </>
             )}
           </button>
@@ -194,58 +262,34 @@ export function ExportPanel({ open, onClose }: ExportPanelProps) {
   )
 }
 
-// ─── Helpers de exportação ────────────────────────────────────────────────────
+// ─── Export helpers ────────────────────────────────────────────────────────────
 
-/** Tamanho máximo de impressão: 200 mm = 20 cm */
 const MAX_PRINT_MM = 200
 
 function sanitizeFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9_\-À-ÿ ]/g, '_').trim() || 'Parte'
 }
 
-/**
- * Calcula o fator de escala uniforme para que a maior dimensão de QUALQUER
- * peça não ultrapasse MAX_PRINT_MM (200 mm = 20 cm).
- *
- * TODAS as peças compartilham o mesmo fator → encaixe preservado.
- * Se o modelo já couber em 20 cm, fator = 1 (sem alteração).
- */
 function computeUniformScaleFactor(meshes: THREE.Mesh[]): number {
   let maxDim = 0
   for (const mesh of meshes) {
-    // Box3.setFromObject respeita position/rotation/scale do mesh
-    const box = new THREE.Box3().setFromObject(mesh)
+    const box  = new THREE.Box3().setFromObject(mesh)
     const size = new THREE.Vector3()
     box.getSize(size)
     maxDim = Math.max(maxDim, size.x, size.y, size.z)
   }
   if (maxDim <= 0) return 1
-  // Nunca escalar para cima — apenas reduzir se necessário
   return maxDim > MAX_PRINT_MM ? MAX_PRINT_MM / maxDim : 1
 }
 
-/**
- * Cria uma cópia temporária do mesh com:
- *  1. A transformação world (position/rotation/scale) aplicada na geometria
- *  2. O fator de escala de impressão aplicado
- *
- * O mesh original NÃO é modificado.
- */
 function buildExportMesh(mesh: THREE.Mesh, scaleFactor: number): THREE.Mesh {
-  // Garante que a matrix do objeto está atualizada
   mesh.updateWorldMatrix(true, false)
-
   const geo = mesh.geometry.clone()
-
-  // Aplica a transformação world + escala de impressão em uma única matrix
   const exportMatrix = new THREE.Matrix4()
     .makeScale(scaleFactor, scaleFactor, scaleFactor)
     .multiply(mesh.matrixWorld)
-
   geo.applyMatrix4(exportMatrix)
-
   const exportMesh = new THREE.Mesh(geo, mesh.material)
-  // Sem transform residual — tudo já está na geometria
   exportMesh.position.set(0, 0, 0)
   exportMesh.rotation.set(0, 0, 0)
   exportMesh.scale.set(1, 1, 1)
@@ -266,43 +310,34 @@ async function meshToBlob(exportMesh: THREE.Mesh, format: ExportFormat): Promise
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
+  const a   = document.createElement('a')
+  a.href     = url
   a.download = filename
   a.click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 async function exportSingleMesh(mesh: THREE.Mesh, format: ExportFormat, name: string) {
-  const scaleFactor = computeUniformScaleFactor([mesh])
-  const exportMesh = buildExportMesh(mesh, scaleFactor)
-  const blob = await meshToBlob(exportMesh, format)
+  const scaleFactor  = computeUniformScaleFactor([mesh])
+  const exportMesh   = buildExportMesh(mesh, scaleFactor)
+  const blob         = await meshToBlob(exportMesh, format)
   exportMesh.geometry.dispose()
   downloadBlob(blob, `${sanitizeFilename(name)}.${format}`)
 }
 
-async function exportAllAsZip(
-  parts: { mesh: THREE.Mesh; name: string }[],
-  format: ExportFormat,
-) {
-  const JSZip = (await import('jszip')).default
-  const zip = new JSZip()
-
-  // ── Escala uniforme: calculada sobre TODAS as peças juntas ───────────────
-  // Garante que os encaixes se mantenham corretos após impressão.
+async function exportAllAsZip(parts: { mesh: THREE.Mesh; name: string }[], format: ExportFormat) {
+  const JSZip       = (await import('jszip')).default
+  const zip         = new JSZip()
   const scaleFactor = computeUniformScaleFactor(parts.map((p) => p.mesh))
-
-  // Deduplicate filenames (e.g. two parts both named "Parte 1")
-  const usedNames = new Map<string, number>()
+  const usedNames   = new Map<string, number>()
 
   for (const { mesh, name } of parts) {
-    const base = sanitizeFilename(name)
-    const count = usedNames.get(base) ?? 0
+    const base     = sanitizeFilename(name)
+    const count    = usedNames.get(base) ?? 0
     usedNames.set(base, count + 1)
     const filename = count === 0 ? `${base}.${format}` : `${base} (${count + 1}).${format}`
-
     const exportMesh = buildExportMesh(mesh, scaleFactor)
-    const blob = await meshToBlob(exportMesh, format)
+    const blob       = await meshToBlob(exportMesh, format)
     exportMesh.geometry.dispose()
     zip.file(filename, blob)
   }
@@ -311,16 +346,11 @@ async function exportAllAsZip(
   downloadBlob(zipBlob, 'Projeto.zip')
 }
 
-/** Calcula o tamanho real que será exportado (em mm) para exibir na UI */
 function computePrintSizeMM(meshes: THREE.Mesh[]): { x: number; y: number; z: number; scale: number } | null {
   if (meshes.length === 0) return null
-  const scale = computeUniformScaleFactor(meshes)
-
-  // Bounding box combinada de todas as peças
+  const scale    = computeUniformScaleFactor(meshes)
   const combined = new THREE.Box3()
-  for (const mesh of meshes) {
-    combined.union(new THREE.Box3().setFromObject(mesh))
-  }
+  for (const mesh of meshes) combined.union(new THREE.Box3().setFromObject(mesh))
   const size = new THREE.Vector3()
   combined.getSize(size)
   return {
