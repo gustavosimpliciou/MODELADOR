@@ -18,7 +18,7 @@ All three workflows are configured and start automatically:
 
 - **Start application** — `cd frontend && yarn dev` (port 5000)
 - **Backend API** — `cd backend && python -m uvicorn server:app --host 0.0.0.0 --port 8000 --reload`
-- **Cortes 3D** — `cd cortes && pnpm exec next dev --webpack -p 3001`
+- **Cortes 3D** — `cd cortes && pnpm run dev` (dev script includes `--webpack` flag)
 
 ## Environment secrets needed
 

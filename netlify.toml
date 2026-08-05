@@ -15,6 +15,13 @@
   to     = "/.netlify/functions/kiwify"
   status = 200
 
+# Admin API → Netlify Function (must be before SPA fallback)
+# :splat preserves the subroute so event.path contains /stats, /users, etc.
+[[redirects]]
+  from   = "/api/admin/*"
+  to     = "/.netlify/functions/admin/:splat"
+  status = 200
+
 # ── Cortes 3D (Next.js static export) ────────────────────────────────────────
 #
 # REGRA CRÍTICA: NÃO usar force=true em /cortes/* pois impede o Netlify
