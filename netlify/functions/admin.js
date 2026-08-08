@@ -204,6 +204,126 @@ export const handler = async (event) => {
     })
   }
 
+  // ── GET /stats/charts ───────────────────────────────────────────────────────
+  // Série temporal de usuários cadastrados e pagamentos (receita + qtd) por dia
+  if (method === 'GET' && path === '/stats/charts') {
+    const qs = event.queryStringParameters || {}
+    const now = new Date()
+    let toDate = qs.to ? new Date(qs.to + 'T23:59:59.999Z') : now
+    let fromDate = qs.from
+      ? new Date(qs.from + 'T00:00:00.000Z')
+      : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+
+    if (Number.isNaN(fromDate.getTime())) fromDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+    if (Number.isNaN(toDate.getTime())) toDate = now
+    if (fromDate > toDate) { const t = fromDate; fromDate = toDate; toDate = t }
+
+    // Limite de 365 dias para não estourar memória
+    const maxSpan = 366 * 24 * 60 * 60 * 1000
+    if (toDate - fromDate > maxSpan) {
+      fromDate = new Date(toDate.getTime() - maxSpan)
+    }
+
+    const fromISO = fromDate.toISOString()
+    const toISO = toDate.toISOString()
+
+    function toReais(raw) {
+      if (raw == null || raw === '') return null
+      const asStr = String(raw).trim().replace(',', '.')
+      const n = Number(asStr)
+      if (!Number.isFinite(n)) return null
+      if (asStr.includes('.')) return n
+      return n / 100
+    }
+
+    function dayKey(iso) {
+      if (!iso) return null
+      const d = new Date(iso)
+      if (Number.isNaN(d.getTime())) return null
+      return d.toISOString().slice(0, 10) // YYYY-MM-DD UTC
+    }
+
+    const [usersRows, paymentsRows] = await Promise.all([
+      sbSelect('users', {
+        select: 'id,created_at',
+        created_at: `gte.${fromISO}`,
+        order: 'created_at.asc',
+      }),
+      sbSelect('payments', {
+        select: 'id,value,status,created_at',
+        created_at: `gte.${fromISO}`,
+        order: 'created_at.asc',
+      }),
+    ])
+
+    // Filtra até toISO no JS (PostgREST gte + lte com dois params no mesmo campo é chato via URLSearchParams)
+    const usersInRange = (usersRows || []).filter(u => {
+      const t = new Date(u.created_at).getTime()
+      return t >= fromDate.getTime() && t <= toDate.getTime()
+    })
+    const paysInRange = (paymentsRows || []).filter(p => {
+      const t = new Date(p.created_at).getTime()
+      return t >= fromDate.getTime() && t <= toDate.getTime()
+    })
+
+    // Preenche todos os dias do intervalo
+    const days = []
+    const cursor = new Date(Date.UTC(
+      fromDate.getUTCFullYear(), fromDate.getUTCMonth(), fromDate.getUTCDate(),
+    ))
+    const endDay = new Date(Date.UTC(
+      toDate.getUTCFullYear(), toDate.getUTCMonth(), toDate.getUTCDate(),
+    ))
+    while (cursor <= endDay) {
+      days.push(cursor.toISOString().slice(0, 10))
+      cursor.setUTCDate(cursor.getUTCDate() + 1)
+    }
+
+    const usersByDay = Object.fromEntries(days.map(d => [d, 0]))
+    const paymentsByDay = Object.fromEntries(days.map(d => [d, { count: 0, revenue: 0 }]))
+
+    for (const u of usersInRange) {
+      const k = dayKey(u.created_at)
+      if (k && usersByDay[k] != null) usersByDay[k] += 1
+    }
+
+    for (const p of paysInRange) {
+      const k = dayKey(p.created_at)
+      if (!k || !paymentsByDay[k]) continue
+      const s = (p.status || '').toLowerCase()
+      const isMoney =
+        (s.includes('paid') || s.includes('approved') || s.includes('user_not_found')) &&
+        !s.includes('unrecognized_product')
+      if (!isMoney) continue
+      const v = toReais(p.value)
+      paymentsByDay[k].count += 1
+      if (v != null && v > 0) paymentsByDay[k].revenue += v
+    }
+
+    const users_series = days.map(d => ({ date: d, count: usersByDay[d] }))
+    const payments_series = days.map(d => ({
+      date: d,
+      count: paymentsByDay[d].count,
+      revenue: Math.round(paymentsByDay[d].revenue * 100) / 100,
+    }))
+
+    const total_users_in_range = users_series.reduce((s, x) => s + x.count, 0)
+    const total_payments_in_range = payments_series.reduce((s, x) => s + x.count, 0)
+    const total_revenue_in_range = Math.round(
+      payments_series.reduce((s, x) => s + x.revenue, 0) * 100,
+    ) / 100
+
+    return json(200, {
+      from: days[0] || fromISO.slice(0, 10),
+      to: days[days.length - 1] || toISO.slice(0, 10),
+      users_series,
+      payments_series,
+      total_users_in_range,
+      total_payments_in_range,
+      total_revenue_in_range,
+    })
+  }
+
   // ── GET /users/:id ──────────────────────────────────────────────────────────
   const userByIdMatch = path.match(/^\/users\/([^/]+)$/)
   if (method === 'GET' && userByIdMatch) {

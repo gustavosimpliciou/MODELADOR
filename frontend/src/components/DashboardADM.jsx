@@ -220,6 +220,9 @@ function OverviewPage() {
         <StatCard label="Sem Créditos"           value={users_without_credits ?? '—'} icon="⭕" accent="#e05050" />
       </div>
 
+      {/* Gráficos de crescimento */}
+      <GrowthChartsSection />
+
       {/* Recent payments */}
       <Section title="Pagamentos Recentes">
         {recent_payments?.length > 0 ? (
@@ -241,6 +244,275 @@ function OverviewPage() {
           onSuccess={(newCredits) => handleCreditsUpdated(modalUser.id, newCredits)}
         />
       )}
+    </div>
+  )
+}
+
+// ─── Growth charts (SVG, zero deps) ───────────────────────────────────────────
+function toISODate(d) {
+  const x = new Date(d)
+  const y = x.getFullYear()
+  const m = String(x.getMonth() + 1).padStart(2, '0')
+  const day = String(x.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function GrowthChartsSection() {
+  const [preset, setPreset] = useState('30') // 7 | 30 | 90 | custom
+  const [from, setFrom] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() - 30); return toISODate(d)
+  })
+  const [to, setTo] = useState(() => toISODate(new Date()))
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  const applyPreset = (days) => {
+    setPreset(String(days))
+    const end = new Date()
+    const start = new Date()
+    start.setDate(end.getDate() - Number(days))
+    setFrom(toISODate(start))
+    setTo(toISODate(end))
+  }
+
+  const loadCharts = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const params = new URLSearchParams({ from, to })
+      const result = await adminFetch(`/stats/charts?${params}`)
+      setData(result)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }, [from, to])
+
+  useEffect(() => { loadCharts() }, [loadCharts])
+
+  const presets = [
+    { id: '7', label: '7 dias' },
+    { id: '30', label: '30 dias' },
+    { id: '90', label: '90 dias' },
+    { id: 'custom', label: 'Personalizado' },
+  ]
+
+  return (
+    <Section title="Crescimento">
+      {/* Filtro de data */}
+      <div style={{
+        display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center',
+        marginBottom: 16,
+      }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {presets.map(p => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => {
+                if (p.id === 'custom') setPreset('custom')
+                else applyPreset(p.id)
+              }}
+              style={{
+                ...btnStyle({ variant: preset === p.id ? 'primary' : 'ghost', size: 'sm' }),
+                fontSize: 11,
+              }}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <label style={{ fontSize: 11, color: 'var(--text-dim)', fontFamily: 'var(--font-body)' }}>De</label>
+          <input
+            type="date"
+            value={from}
+            onChange={e => { setFrom(e.target.value); setPreset('custom') }}
+            style={dateInputStyle}
+          />
+          <label style={{ fontSize: 11, color: 'var(--text-dim)', fontFamily: 'var(--font-body)' }}>Até</label>
+          <input
+            type="date"
+            value={to}
+            onChange={e => { setTo(e.target.value); setPreset('custom') }}
+            style={dateInputStyle}
+          />
+          <button type="button" onClick={loadCharts} style={btnStyle({ variant: 'ghost', size: 'sm' })}>
+            ↻ Atualizar
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div style={{ color: '#e05050', fontSize: 12, marginBottom: 12, fontFamily: 'var(--font-body)' }}>
+          {error}
+        </div>
+      )}
+
+      {loading && !data ? (
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-dim)' }}>Carregando gráficos…</div>
+      ) : data ? (
+        <>
+          <div style={{
+            display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 14, fontSize: 12,
+            fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)',
+          }}>
+            <span>Usuários no período: <strong style={{ color: '#4fc3f7' }}>{data.total_users_in_range}</strong></span>
+            <span>Pagamentos: <strong style={{ color: '#ff6a00' }}>{data.total_payments_in_range}</strong></span>
+            <span>Receita: <strong style={{ color: '#4caf50' }}>
+              {Number(data.total_revenue_in_range || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+            </strong></span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
+            <ChartCard
+              title="Usuários cadastrados"
+              subtitle="Novos cadastros por dia"
+              color="#4fc3f7"
+              series={(data.users_series || []).map(p => ({ date: p.date, value: p.count }))}
+              formatValue={v => String(v)}
+            />
+            <ChartCard
+              title="Pagamentos"
+              subtitle="Receita (R$) por dia"
+              color="#4caf50"
+              series={(data.payments_series || []).map(p => ({ date: p.date, value: p.revenue }))}
+              formatValue={v => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
+              secondarySeries={(data.payments_series || []).map(p => ({ date: p.date, value: p.count }))}
+              secondaryLabel="qtd. pagamentos"
+            />
+          </div>
+        </>
+      ) : null}
+    </Section>
+  )
+}
+
+const dateInputStyle = {
+  fontFamily: 'var(--font-mono)',
+  fontSize: 12,
+  padding: '5px 8px',
+  borderRadius: 6,
+  border: '1px solid var(--line)',
+  background: 'var(--panel)',
+  color: 'var(--text)',
+  outline: 'none',
+}
+
+function ChartCard({ title, subtitle, color, series, formatValue, secondarySeries, secondaryLabel }) {
+  const values = (series || []).map(s => s.value || 0)
+  const max = Math.max(1, ...values)
+  const w = 520
+  const h = 180
+  const pad = { top: 16, right: 12, bottom: 28, left: 44 }
+  const innerW = w - pad.left - pad.right
+  const innerH = h - pad.top - pad.bottom
+  const n = Math.max(1, series.length)
+
+  const xAt = (i) => pad.left + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW)
+  const yAt = (v) => pad.top + innerH - (v / max) * innerH
+
+  const points = series.map((s, i) => `${xAt(i)},${yAt(s.value || 0)}`).join(' ')
+  const areaPoints = series.length
+    ? `${xAt(0)},${pad.top + innerH} ${points} ${xAt(series.length - 1)},${pad.top + innerH}`
+    : ''
+
+  // Labels no eixo X (poucos para não poluir)
+  const labelIdx = []
+  if (n <= 7) {
+    for (let i = 0; i < n; i++) labelIdx.push(i)
+  } else {
+    labelIdx.push(0, Math.floor(n / 2), n - 1)
+  }
+
+  const total = values.reduce((a, b) => a + b, 0)
+  const peak = Math.max(0, ...values)
+
+  return (
+    <div style={{
+      background: 'var(--panel)',
+      border: '1px solid var(--line)',
+      borderRadius: 10,
+      padding: '14px 14px 10px',
+      overflow: 'hidden',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+        <div>
+          <div style={{
+            fontFamily: 'var(--font-condensed)', fontSize: 13, fontWeight: 800,
+            letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text)',
+          }}>
+            {title}
+          </div>
+          <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>
+            {subtitle}
+          </div>
+        </div>
+        <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-secondary)' }}>
+          <div>Total: <span style={{ color }}>{formatValue(total)}</span></div>
+          <div>Pico: <span style={{ color }}>{formatValue(peak)}</span></div>
+          {secondarySeries && (
+            <div style={{ marginTop: 2, color: 'var(--text-dim)' }}>
+              {secondaryLabel}: {secondarySeries.reduce((s, x) => s + (x.value || 0), 0)}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <svg viewBox={`0 0 ${w} ${h}`} width="100%" height={h} style={{ display: 'block' }}>
+        {/* grid lines */}
+        {[0, 0.25, 0.5, 0.75, 1].map((t, i) => {
+          const y = pad.top + innerH * (1 - t)
+          return (
+            <g key={i}>
+              <line x1={pad.left} y1={y} x2={w - pad.right} y2={y}
+                stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+              <text x={pad.left - 6} y={y + 3} textAnchor="end"
+                fill="var(--text-dim)" fontSize="9" fontFamily="var(--font-mono)">
+                {formatValue(Math.round(max * t * 100) / 100)}
+              </text>
+            </g>
+          )
+        })}
+
+        {areaPoints && (
+          <polygon points={areaPoints} fill={color} opacity="0.12" />
+        )}
+        {series.length > 1 && (
+          <polyline
+            points={points}
+            fill="none"
+            stroke={color}
+            strokeWidth="2.2"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        )}
+        {series.map((s, i) => (
+          <circle
+            key={s.date}
+            cx={xAt(i)}
+            cy={yAt(s.value || 0)}
+            r={series.length > 60 ? 1.5 : 3}
+            fill={color}
+          >
+            <title>{`${s.date}: ${formatValue(s.value || 0)}`}</title>
+          </circle>
+        ))}
+
+        {labelIdx.map(i => {
+          const s = series[i]
+          if (!s) return null
+          const label = s.date.slice(5).replace('-', '/') // MM/DD
+          return (
+            <text key={i} x={xAt(i)} y={h - 8} textAnchor="middle"
+              fill="var(--text-dim)" fontSize="9" fontFamily="var(--font-mono)">
+              {label}
+            </text>
+          )
+        })}
+      </svg>
     </div>
   )
 }
