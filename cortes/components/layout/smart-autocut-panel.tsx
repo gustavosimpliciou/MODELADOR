@@ -253,10 +253,34 @@ export function SmartAutoCutPanel() {
         return
       }
 
+      // ── ETAPA 4 (preview): refinação premium nas tampas ───────────────
+      let selGeo = capResult.cappedSelectedGeometry
+      let bodyGeo = capResult.cappedBodyGeometry
+      let refinedPreview = false
+      if (refinementIntensity > 0) {
+        setStatus('cutting', 'Refinando bordas do corte...')
+        const refined = refineCutPair(
+          selGeo,
+          bodyGeo,
+          {
+            seamPoints: currentOpenData.seamPoints,
+            seamScore: currentOpenData.seamScore,
+            seamSegments: currentOpenData.seamSegments,
+          },
+          { intensity: refinementIntensity, weldQ },
+        )
+        // descarta geometrias pré-refino se foram clonadas/substituídas
+        if (refined.selected !== selGeo) { try { selGeo.dispose() } catch {} }
+        if (refined.body !== bodyGeo) { try { bodyGeo.dispose() } catch {} }
+        selGeo = refined.selected
+        bodyGeo = refined.body
+        refinedPreview = refined.selectedResult.applied || refined.bodyResult.applied
+      }
+
       disposePreviewGeos(useAppStore.getState().cutPreview)
       setCutPreview({
-        selectedGeometry: capResult.cappedSelectedGeometry,
-        bodyGeometry: capResult.cappedBodyGeometry,
+        selectedGeometry: selGeo,
+        bodyGeometry: bodyGeo,
         seamPoints: currentOpenData.seamPoints,
         seamScore: currentOpenData.seamScore,
         seamSegments: currentOpenData.seamSegments,
@@ -264,19 +288,23 @@ export function SmartAutoCutPanel() {
         validationIssues: capResult.validationIssues,
         params: { strength: smoothStrength, weldQ, offset, relaxIterations },
       })
-      setAutoCutPipelineStage('caps_done')
+      setAutoCutPipelineStage(refinedPreview ? 'refined' : 'caps_done')
       setAutoCutPreviewMode('caps')
       setCapsGenerated(true)
 
       const issues = capResult.validationIssues.length
-      setStatus('loaded', `Tampas geradas${issues > 0 ? ` · ${issues} aviso(s)` : ' — malha fechada ✓'}`)
+      setStatus('loaded',
+        refinedPreview
+          ? `Tampas + refinação premium${issues > 0 ? ` · ${issues} aviso(s)` : ' ✓'}`
+          : `Tampas geradas${issues > 0 ? ` · ${issues} aviso(s)` : ' — malha fechada ✓'}`,
+      )
     } catch (err) {
       setStatus('error', 'Erro ao gerar tampas.')
       console.error('[SmartCut V2] Caps error:', err)
     } finally {
       if (myVersion === computeVersionRef.current) setBusy(false)
     }
-  }, [weldQ, smoothStrength, offset, relaxIterations, setStatus, setCutPreview,
+  }, [weldQ, smoothStrength, offset, relaxIterations, refinementIntensity, setStatus, setCutPreview,
     setAutoCutPipelineStage, setAutoCutPreviewMode, disposePreviewGeos])
 
   // ─── Recalcular quando parâmetros mudam no preview ─────────────────────────
@@ -678,7 +706,7 @@ export function SmartAutoCutPanel() {
                       <span>Alto</span>
                     </div>
                     <p className="text-[7px] font-mono text-muted-foreground/45 leading-tight">
-                      Acabamento sutil só nas bordas do corte. Não altera forma nem encaixes.
+                      Contorno suavizado + micro-fillet nas bordas. Seleção intacta. 0 = OFF.
                     </p>
                   </div>
                 </div>

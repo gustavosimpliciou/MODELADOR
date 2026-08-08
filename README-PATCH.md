@@ -1,49 +1,45 @@
-# Patch — AutoCut 4ª etapa: REFINAÇÃO DE CORTE
+# Patch — AutoCut PREMIUM Cut Refinement (4ª etapa)
 
-## Arquivos neste pacote
+## O que mudou
 
-| Arquivo | Tipo | Descrição |
-|---------|------|-----------|
-| `cortes/lib/cut-refinement.ts` | **NOVO** | Módulo isolado da etapa de refinação |
-| `cortes/components/layout/smart-autocut-panel.tsx` | modificado | Integração no painel + slider de intensidade |
-| `cortes/lib/store.ts` | modificado | Tipo `AutoCutPipelineStage` inclui `'refined'` |
-| `cortes/lib/smartcut-pipeline.ts` | modificado | Apenas comentário documentando a 4ª etapa |
+Refinação **premium** das bordas do corte:
+
+1. **Fairing + Catmull-Rom** no contorno → elimina dentes de serra
+2. **Micro-fillet real** (1–2 anéis de faces com perfil arredondado)
+3. **Taubin restrito** na faixa da borda → shading contínuo
+4. **safeRadius adaptativo** — nunca deforma encaixes/detalhes finos
+
+## Arquivos
+
+| Arquivo | Ação |
+|---------|------|
+| `cortes/lib/cut-refinement.ts` | **NOVO / reescrito** — algoritmo premium |
+| `cortes/components/layout/smart-autocut-panel.tsx` | Integração no preview + apply + slider |
+| `cortes/lib/store.ts` | Stage `'refined'` |
+| `cortes/lib/smartcut-pipeline.ts` | Só documentação |
 
 ## Como aplicar
 
-Na raiz do repositório:
+Na raiz do repo MODELADOR:
 
 ```bash
-# Opção 1 — copiar os arquivos
-cp -r path/to/patch/cortes/* cortes/
-
-# Opção 2 — a partir do tar.gz
-tar -xzf autocut-refinement-patch.tar.gz -C /caminho/do/seu/repo
+tar -xzf autocut-refinement-patch.tar.gz
 ```
 
-Depois:
+## Uso
 
-```bash
-cd cortes
-# se usar pnpm/npm/yarn no frontend Cortes
-pnpm install   # ou npm / yarn (não há deps novas)
-```
+Painel AutoCut → **Avançado** → **Refinação de Corte**
 
-## O que mudou no fluxo
+- **0** = OFF (comportamento antigo)
+- **~40** = padrão premium (recomendado)
+- **70+** = mais arredondado (sempre limitado pelo safeRadius)
 
-```
-Calcular Corte → Gerar Tampas → Aplicar Corte → [Refinação de Corte] → Resultado
-```
-
-- Intensidade **0** = OFF (comportamento idêntico ao anterior)
-- Padrão = **18** (micro-acabamento sutil)
-- Controle em: painel AutoCut → **Avançado** → **Refinação de Corte**
+A refinação roda:
+- Após **Gerar Tampas** (aparece no preview)
+- De novo no **Aplicar** (garante resultado final)
 
 ## O que NÃO foi alterado
 
-- `computeOpenCut`
-- `generateCaps`
-- `addCapsToShell`
-- Lógica principal de seleção / SmartCut / encaixes
-
-A refinação é um pós-processador isolado.
+- Seleção / SmartCut (continua fluida)
+- `computeOpenCut` / `generateCaps` / algoritmo de corte
+- Encaixes / lógica de planos
