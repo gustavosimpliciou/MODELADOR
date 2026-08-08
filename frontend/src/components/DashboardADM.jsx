@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useStore } from '../store/useStore'
 import { supabase } from '../lib/supabase'
+import { useIsMobile } from './MobileBlock'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const PAGE_SIZE = 20
@@ -38,15 +39,17 @@ async function adminFetch(path, options = {}) {
 }
 
 // ─── Root guard ───────────────────────────────────────────────────────────────
-export default function DashboardADM({ onBack }) {
+export default function DashboardADM({ onBack, mobileOnly = false }) {
   const user = useStore((s) => s.user)
   if (!user?.is_admin) return null
-  return <AdminShell onBack={onBack} user={user} />
+  return <AdminShell onBack={onBack} user={user} mobileOnly={mobileOnly} />
 }
 
-// ─── Shell: sidebar + page ────────────────────────────────────────────────────
-function AdminShell({ onBack, user }) {
+// ─── Shell: sidebar + page (responsivo no mobile) ─────────────────────────────
+function AdminShell({ onBack, user, mobileOnly }) {
   const [page, setPage] = useState('overview') // 'overview' | 'users'
+  const isMobile = useIsMobile() || mobileOnly
+  const logout = useStore((s) => s.logout)
 
   return (
     <div style={{
@@ -57,70 +60,164 @@ function AdminShell({ onBack, user }) {
     }}>
       {/* ── Top bar ─────────────────────────────────────────────── */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 16,
-        padding: '0 20px', height: 48,
+        display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 16,
+        padding: isMobile ? '0 12px' : '0 20px',
+        height: isMobile ? 52 : 48,
         borderBottom: '1px solid var(--line)',
         background: 'var(--panel)', flexShrink: 0,
       }}>
-        <button
-          onClick={onBack}
-          style={btnStyle({ variant: 'ghost' })}
-        >
-          ← Voltar
-        </button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {!isMobile && onBack && (
+          <button onClick={onBack} style={btnStyle({ variant: 'ghost' })}>
+            ← Voltar
+          </button>
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
           <ShieldIcon size={15} color="#ff6a00" />
-          <span style={{ fontFamily: 'var(--font-condensed)', fontSize: 14, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text)' }}>
-            Dashboard ADM
+          <span style={{
+            fontFamily: 'var(--font-condensed)',
+            fontSize: isMobile ? 12 : 14,
+            fontWeight: 800,
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+            color: 'var(--text)',
+            whiteSpace: 'nowrap',
+          }}>
+            {isMobile ? 'ADM' : 'Dashboard ADM'}
           </span>
           <Tag label="ADM" color="#ff6a00" />
         </div>
         <div style={{ flex: 1 }} />
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-dim)' }}>
-          {user.email}
-        </span>
+        {!isMobile && (
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-dim)' }}>
+            {user.email}
+          </span>
+        )}
+        {isMobile && (
+          <button
+            type="button"
+            onClick={() => logout()}
+            style={{
+              ...btnStyle({ variant: 'ghost', size: 'sm' }),
+              fontSize: 11,
+              color: 'var(--text-dim)',
+            }}
+            title="Sair"
+          >
+            Sair
+          </button>
+        )}
       </div>
 
-      {/* ── Body: sidebar + content ──────────────────────────────── */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        {/* Sidebar */}
-        <nav style={{
-          width: 200, flexShrink: 0,
-          background: 'var(--panel)',
-          borderRight: '1px solid var(--line)',
-          display: 'flex', flexDirection: 'column',
-          padding: '20px 0',
-          gap: 2,
-        }}>
-          <NavSection label="Módulos" />
-          <NavItem
-            label="Visão Geral"
-            icon={<ChartIcon size={14} />}
-            active={page === 'overview'}
-            onClick={() => setPage('overview')}
-          />
-          <NavItem
-            label="Usuários"
-            icon={<UsersIcon size={14} />}
-            active={page === 'users'}
-            onClick={() => setPage('users')}
-          />
-        </nav>
+      {/* ── Body ─────────────────────────────────────────────────── */}
+      <div style={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: isMobile ? 'column' : 'row',
+        overflow: 'hidden',
+        minHeight: 0,
+      }}>
+        {/* Sidebar desktop */}
+        {!isMobile && (
+          <nav style={{
+            width: 200, flexShrink: 0,
+            background: 'var(--panel)',
+            borderRight: '1px solid var(--line)',
+            display: 'flex', flexDirection: 'column',
+            padding: '20px 0',
+            gap: 2,
+          }}>
+            <NavSection label="Módulos" />
+            <NavItem
+              label="Visão Geral"
+              icon={<ChartIcon size={14} />}
+              active={page === 'overview'}
+              onClick={() => setPage('overview')}
+            />
+            <NavItem
+              label="Usuários"
+              icon={<UsersIcon size={14} />}
+              active={page === 'users'}
+              onClick={() => setPage('users')}
+            />
+          </nav>
+        )}
 
         {/* Main content */}
-        <main style={{ flex: 1, overflow: 'auto', padding: 28 }}>
-          {page === 'overview' && <OverviewPage />}
-          {page === 'users'    && <UsersPage />}
+        <main style={{
+          flex: 1,
+          overflow: 'auto',
+          padding: isMobile ? '14px 12px 72px' : 28,
+          WebkitOverflowScrolling: 'touch',
+        }}>
+          {page === 'overview' && <OverviewPage compact={isMobile} />}
+          {page === 'users'    && <UsersPage compact={isMobile} />}
         </main>
+
+        {/* Bottom tab bar mobile */}
+        {isMobile && (
+          <nav style={{
+            position: 'fixed',
+            left: 0, right: 0, bottom: 0,
+            height: 56,
+            background: 'var(--panel)',
+            borderTop: '1px solid var(--line)',
+            display: 'flex',
+            zIndex: 50,
+            paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+          }}>
+            <MobileTab
+              label="Visão Geral"
+              icon={<ChartIcon size={18} />}
+              active={page === 'overview'}
+              onClick={() => setPage('overview')}
+            />
+            <MobileTab
+              label="Usuários"
+              icon={<UsersIcon size={18} />}
+              active={page === 'users'}
+              onClick={() => setPage('users')}
+            />
+          </nav>
+        )}
       </div>
     </div>
+  )
+}
+
+function MobileTab({ label, icon, active, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 3,
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        color: active ? '#ff6a00' : 'var(--text-dim)',
+        fontFamily: 'var(--font-condensed)',
+        fontSize: 10,
+        fontWeight: 700,
+        letterSpacing: '0.06em',
+        textTransform: 'uppercase',
+        padding: '6px 4px',
+      }}
+    >
+      {icon}
+      {label}
+    </button>
   )
 }
 
 // ─── Overview page ───────────────────────────────────────────────────────────
 const OVERVIEW_POLL_MS = 30_000 // atualiza a cada 30 segundos
 
-function OverviewPage() {
+function OverviewPage({ compact = false }) {
   const [stats, setStats]     = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState(null)
@@ -190,7 +287,7 @@ function OverviewPage() {
   } = stats || {}
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? 16 : 28 }}>
       <PageTitle
         title="Visão Geral"
         subtitle={
@@ -198,10 +295,15 @@ function OverviewPage() {
             ? `Atualizado às ${lastUpdated.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} · atualiza a cada 30s`
             : 'Estatísticas da plataforma em tempo real'
         }
+        compact={compact}
       />
 
       {/* Stat cards */}
-      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: compact ? 'repeat(2, minmax(0, 1fr))' : 'repeat(auto-fill, minmax(140px, 1fr))',
+        gap: compact ? 8 : 14,
+      }}>
         <StatCard
           label="Total de Vendas"
           value={
@@ -518,7 +620,7 @@ function ChartCard({ title, subtitle, color, series, formatValue, secondarySerie
 }
 
 // ─── Users page ───────────────────────────────────────────────────────────────
-function UsersPage() {
+function UsersPage({ compact = false }) {
   const [data, setData]         = useState({ users: [], total: 0, pages: 1 })
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState(null)
@@ -611,15 +713,16 @@ function UsersPage() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? 12 : 20 }}>
       <PageTitle
         title="Usuários"
         subtitle={`${data.total.toLocaleString('pt-BR')} usuários cadastrados`}
+        compact={compact}
       />
 
       {/* Search bar */}
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-        <div style={{ position: 'relative', flex: 1, maxWidth: 380 }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: 0, maxWidth: compact ? '100%' : 380 }}>
           <SearchIcon size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)' }} />
           <input
             ref={searchRef}
@@ -655,18 +758,19 @@ function UsersPage() {
       {/* Table */}
       <div style={{
         background: 'var(--panel)', border: '1px solid var(--line)',
-        borderRadius: 8, overflow: 'hidden',
+        borderRadius: 8, overflow: 'auto',
+        WebkitOverflowScrolling: 'touch',
         opacity: loading ? 0.6 : 1, transition: 'opacity 0.2s',
       }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: compact ? 640 : undefined }}>
           <thead>
             <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--line)' }}>
               <Th><SortBtn col="name" label="Nome" /></Th>
               <Th><SortBtn col="email" label="E-mail" /></Th>
               <Th style={{ maxWidth: 120 }}>ID</Th>
-              <Th><SortBtn col="created_at" label="Cadastro" /></Th>
+              {!compact && <Th><SortBtn col="created_at" label="Cadastro" /></Th>}
               <Th><SortBtn col="credits" label="Créditos" /></Th>
-              <Th>Tipo</Th>
+              {!compact && <Th>Tipo</Th>}
               <Th>Ações</Th>
             </tr>
           </thead>
@@ -700,11 +804,13 @@ function UsersPage() {
                 <Td>
                   <CopyableId id={u.id} />
                 </Td>
-                <Td>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-dim)' }}>
-                    {u.created_at ? new Date(u.created_at).toLocaleDateString('pt-BR') : '—'}
-                  </span>
-                </Td>
+                {!compact && (
+                  <Td>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-dim)' }}>
+                      {u.created_at ? new Date(u.created_at).toLocaleDateString('pt-BR') : '—'}
+                    </span>
+                  </Td>
+                )}
                 <Td>
                   <span style={{
                     fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 700,
@@ -713,12 +819,14 @@ function UsersPage() {
                     {(u.credits || 0).toLocaleString('pt-BR')}
                   </span>
                 </Td>
-                <Td>
-                  {u.is_admin
-                    ? <Tag label="Admin" color="#ff6a00" />
-                    : <Tag label="Usuário" color="#666" />
-                  }
-                </Td>
+                {!compact && (
+                  <Td>
+                    {u.is_admin
+                      ? <Tag label="Admin" color="#ff6a00" />
+                      : <Tag label="Usuário" color="#666" />
+                    }
+                  </Td>
+                )}
                 <Td>
                   <button
                     onClick={() => setModalUser(u)}
@@ -1267,16 +1375,23 @@ function PgBtn({ children, onClick, active, disabled }) {
 function StatCard({ label, value, icon, accent = '#888' }) {
   return (
     <div style={{
-      flex: '1 1 150px', minWidth: 150,
+      minWidth: 0,
       background: 'var(--panel)', border: '1px solid var(--line)',
-      borderRadius: 10, padding: '18px 20px',
-      display: 'flex', flexDirection: 'column', gap: 8,
+      borderRadius: 10, padding: '14px 14px',
+      display: 'flex', flexDirection: 'column', gap: 6,
     }}>
-      <div style={{ fontSize: 20 }}>{icon}</div>
-      <div style={{ fontFamily: 'var(--font-condensed)', fontSize: 28, fontWeight: 900, color: accent, letterSpacing: '-0.01em', lineHeight: 1 }}>
+      <div style={{ fontSize: 18 }}>{icon}</div>
+      <div style={{
+        fontFamily: 'var(--font-condensed)', fontSize: 22, fontWeight: 900,
+        color: accent, letterSpacing: '-0.01em', lineHeight: 1.1,
+        wordBreak: 'break-word',
+      }}>
         {value}
       </div>
-      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>
+      <div style={{
+        fontFamily: 'var(--font-mono)', fontSize: 9, fontWeight: 600,
+        letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-dim)',
+      }}>
         {label}
       </div>
     </div>
@@ -1294,14 +1409,22 @@ function Section({ title, children }) {
   )
 }
 
-function PageTitle({ title, subtitle }) {
+function PageTitle({ title, subtitle, compact = false }) {
   return (
     <div>
-      <h1 style={{ margin: 0, fontFamily: 'var(--font-condensed)', fontSize: 22, fontWeight: 900, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text)' }}>
+      <h1 style={{
+        margin: 0, fontFamily: 'var(--font-condensed)',
+        fontSize: compact ? 18 : 22, fontWeight: 900,
+        letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text)',
+      }}>
         {title}
       </h1>
       {subtitle && (
-        <p style={{ margin: '4px 0 0', fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--text-secondary)' }}>
+        <p style={{
+          margin: '4px 0 0', fontFamily: 'var(--font-body)',
+          fontSize: compact ? 11 : 13, color: 'var(--text-secondary)',
+          lineHeight: 1.35,
+        }}>
           {subtitle}
         </p>
       )}

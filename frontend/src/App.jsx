@@ -99,7 +99,14 @@ export default function App() {
   if (!user) return <LoginScreen />
 
   // ── Mobile gate ───────────────────────────────────────────────────
-  if (isMobile) return <MobileBlock />
+  // Usuários comuns: bloqueio total (MobileBlock).
+  // ADM: libera APENAS o Dashboard ADM (responsivo), sem o modelador 3D.
+  if (isMobile) {
+    if (user?.is_admin) {
+      return <DashboardADM onBack={null} mobileOnly />
+    }
+    return <MobileBlock />
+  }
 
   // ── Loading screen ───────────────────────────────────────────────
   if (!loaded) {
