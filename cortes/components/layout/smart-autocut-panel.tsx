@@ -3,12 +3,14 @@
 /**
  * SmartAutoCutPanel V2 — Pipeline Modular de Corte
  *
- * Novo fluxo (SmartCut V2):
+ * Fluxo (SmartCut V2 + Refinação):
  *   Configurar → Calcular Corte (cascas abertas) →
- *   Gerar Tampas → [Gerar Encaixes] → Aplicar Corte Final
+ *   Gerar Tampas → [Gerar Encaixes] → Aplicar Corte →
+ *   Refinação de Corte (4ª etapa, opcional) → Resultado final
  *
  * REGRA ABSOLUTA: A seleção do SmartCut é inviolável.
  * O AutoCut age SOMENTE na superfície de separação.
+ * A Refinação é um pós-processador isolado (não altera o algoritmo de corte).
  */
 
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
@@ -22,6 +24,7 @@ import { useAppStore } from '@/lib/store'
 import { extractSubMesh, removeSubMesh, autoFillMicroFragments } from '@/lib/smart-cut'
 import { computeOpenCut, generateCaps, addCapsToShell } from '@/lib/smartcut-pipeline'
 import { analyzeSelection } from '@/lib/smart-autocut'
+import { refineCutPair, DEFAULT_REFINEMENT } from '@/lib/cut-refinement'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/lang-store'
 import { useDraggable } from '@/lib/use-draggable'
@@ -96,6 +99,8 @@ export function SmartAutoCutPanel() {
   const [noCap, setNoCap] = useState(false)
   const [busy, setBusy] = useState(false)
   const [capsGenerated, setCapsGenerated] = useState(false)
+  /** Intensidade da 4ª etapa — REFINAÇÃO DE CORTE (0 = desligado, 1–100). */
+  const [refinementIntensity, setRefinementIntensity] = useState(DEFAULT_REFINEMENT.intensity)
   const recalcTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const computeVersionRef = useRef(0)
 
@@ -248,10 +253,34 @@ export function SmartAutoCutPanel() {
         return
       }
 
+      // ── ETAPA 4 (preview): refinação premium nas tampas ───────────────
+      let selGeo = capResult.cappedSelectedGeometry
+      let bodyGeo = capResult.cappedBodyGeometry
+      let refinedPreview = false
+      if (refinementIntensity > 0) {
+        setStatus('cutting', 'Refinando bordas do corte...')
+        const refined = refineCutPair(
+          selGeo,
+          bodyGeo,
+          {
+            seamPoints: currentOpenData.seamPoints,
+            seamScore: currentOpenData.seamScore,
+            seamSegments: currentOpenData.seamSegments,
+          },
+          { intensity: refinementIntensity, weldQ },
+        )
+        // descarta geometrias pré-refino se foram clonadas/substituídas
+        if (refined.selected !== selGeo) { try { selGeo.dispose() } catch {} }
+        if (refined.body !== bodyGeo) { try { bodyGeo.dispose() } catch {} }
+        selGeo = refined.selected
+        bodyGeo = refined.body
+        refinedPreview = refined.selectedResult.applied || refined.bodyResult.applied
+      }
+
       disposePreviewGeos(useAppStore.getState().cutPreview)
       setCutPreview({
-        selectedGeometry: capResult.cappedSelectedGeometry,
-        bodyGeometry: capResult.cappedBodyGeometry,
+        selectedGeometry: selGeo,
+        bodyGeometry: bodyGeo,
         seamPoints: currentOpenData.seamPoints,
         seamScore: currentOpenData.seamScore,
         seamSegments: currentOpenData.seamSegments,
@@ -259,19 +288,23 @@ export function SmartAutoCutPanel() {
         validationIssues: capResult.validationIssues,
         params: { strength: smoothStrength, weldQ, offset, relaxIterations },
       })
-      setAutoCutPipelineStage('caps_done')
+      setAutoCutPipelineStage(refinedPreview ? 'refined' : 'caps_done')
       setAutoCutPreviewMode('caps')
       setCapsGenerated(true)
 
       const issues = capResult.validationIssues.length
-      setStatus('loaded', `Tampas geradas${issues > 0 ? ` · ${issues} aviso(s)` : ' — malha fechada ✓'}`)
+      setStatus('loaded',
+        refinedPreview
+          ? `Tampas + refinação premium${issues > 0 ? ` · ${issues} aviso(s)` : ' ✓'}`
+          : `Tampas geradas${issues > 0 ? ` · ${issues} aviso(s)` : ' — malha fechada ✓'}`,
+      )
     } catch (err) {
       setStatus('error', 'Erro ao gerar tampas.')
       console.error('[SmartCut V2] Caps error:', err)
     } finally {
       if (myVersion === computeVersionRef.current) setBusy(false)
     }
-  }, [weldQ, smoothStrength, offset, relaxIterations, setStatus, setCutPreview,
+  }, [weldQ, smoothStrength, offset, relaxIterations, refinementIntensity, setStatus, setCutPreview,
     setAutoCutPipelineStage, setAutoCutPreviewMode, disposePreviewGeos])
 
   // ─── Recalcular quando parâmetros mudam no preview ─────────────────────────
@@ -315,7 +348,9 @@ export function SmartAutoCutPanel() {
     }
     setBusy(true)
     pushHistory()
-    setStatus('cutting', 'Aplicando corte final...')
+    setStatus('cutting', refinementIntensity > 0
+      ? 'Aplicando corte + refinação de borda...'
+      : 'Aplicando corte final...')
 
     setTimeout(() => {
       try {
@@ -333,6 +368,31 @@ export function SmartAutoCutPanel() {
           selectedPiece = cutPreview!.selectedGeometry.clone()
           bodyPiece = cutPreview!.bodyGeometry.clone()
         }
+
+        // ── ETAPA 4: REFINAÇÃO DE CORTE ─────────────────────────────────────
+        // Pós-processador isolado. intensity = 0 → bypass (resultado idêntico).
+        // Não altera calculateCut / generateCaps / lógica de apply.
+        const seamPoints = noCap
+          ? currentOpenData?.seamPoints
+          : (cutPreview?.seamPoints ?? currentOpenData?.seamPoints)
+        if (refinementIntensity > 0) {
+          const refined = refineCutPair(
+            selectedPiece,
+            bodyPiece,
+            {
+              seamPoints: seamPoints ?? null,
+              seamScore: noCap ? currentOpenData?.seamScore : cutPreview?.seamScore,
+              seamSegments: noCap ? currentOpenData?.seamSegments : cutPreview?.seamSegments,
+            },
+            { intensity: refinementIntensity, weldQ },
+          )
+          selectedPiece = refined.selected
+          bodyPiece = refined.body
+          if (refined.selectedResult.applied || refined.bodyResult.applied) {
+            setAutoCutPipelineStage('refined')
+          }
+        }
+
         const cleanBody = bodyPiece.clone()
         const cleanSel = selectedPiece.clone()
 
@@ -396,7 +456,12 @@ export function SmartAutoCutPanel() {
         setAutoCutPreview(null)
         setAutoCutOpen(false)
         clearSelection()
-        setStatus('loaded', 'AutoCut V2 concluído')
+        setStatus(
+          'loaded',
+          refinementIntensity > 0
+            ? `AutoCut V2 + Refinação concluído (intensidade ${refinementIntensity})`
+            : 'AutoCut V2 concluído',
+        )
       } catch (err) {
         setStatus('error', 'Falha ao aplicar o AutoCut.')
         console.error('[AutoCut V2] Apply error:', err)
@@ -612,6 +677,37 @@ export function SmartAutoCutPanel() {
                         >{o.label}</button>
                       ))}
                     </div>
+                  </div>
+
+                  {/* ── Refinação de Corte (4ª etapa) ─────────────────────── */}
+                  <div className="flex flex-col gap-1 pt-0.5 border-t border-border/40">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[8px] font-mono uppercase tracking-wider text-muted-foreground/60">
+                        Refinação de Corte
+                      </span>
+                      <span className="text-[8px] font-mono text-muted-foreground/70">
+                        {refinementIntensity === 0 ? 'OFF' : refinementIntensity}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={refinementIntensity}
+                      onChange={(e) => setRefinementIntensity(Number(e.target.value))}
+                      className="w-full h-1.5 cursor-pointer"
+                      title="0 = desligado · 1–30 micro · 31–70 perceptível · 71–100 máximo (sempre limitado pelo safeRadius)"
+                    />
+                    <div className="flex justify-between text-[7px] font-mono text-muted-foreground/40">
+                      <span>OFF</span>
+                      <span>Micro</span>
+                      <span>Médio</span>
+                      <span>Alto</span>
+                    </div>
+                    <p className="text-[7px] font-mono text-muted-foreground/45 leading-tight">
+                      Contorno suavizado + micro-fillet nas bordas. Seleção intacta. 0 = OFF.
+                    </p>
                   </div>
                 </div>
               )}
