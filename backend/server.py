@@ -790,11 +790,11 @@ async def admin_users(
     cols       = 'id,name,email,plan,credits,created_at'
 
     if search:
-        sf  = search
+        sf = re.sub(r'[%(),]', ' ', search).strip()
         res = await srun(
             lambda: sb.table('users')
                 .select(cols, count='exact')
-                .or_(f'name.ilike.%{sf}%,email.ilike.%{sf}%')
+                .or_(f'name.ilike.%{sf}%,email.ilike.%{sf}%,id.ilike.%{sf}%')
                 .order(sort_by, desc=desc_order)
                 .range(offset, offset + limit - 1)
                 .execute()

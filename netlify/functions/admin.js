@@ -231,14 +231,24 @@ export const handler = async (event) => {
     const params = {
       select: cols,
       order:  `${sortBy}.${sortDir}`,
-      offset: offset,
-      limit:  limit,
+      offset: String(offset),
+      limit:  String(limit),
     }
-    if (search) params.or = `name.ilike.*${search}*,email.ilike.*${search}*`
+    if (search) {
+      // PostgREST exige parênteses no `or`. Remove chars que quebram o filtro.
+      const term = search
+        .replace(/[%(),]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+      if (term) {
+        // Busca por nome, e-mail OU id (útil para colar USER_ID)
+        params.or = `(name.ilike.*${term}*,email.ilike.*${term}*,id.ilike.*${term}*)`
+      }
+    }
 
     const { data, count } = await sbSelectCount('users', params)
 
-    const users = data.map(u => ({ ...u, is_admin: u.email === ADMIN_EMAIL }))
+    const users = (data || []).map(u => ({ ...u, is_admin: u.email === ADMIN_EMAIL }))
     const pages = Math.max(1, Math.ceil(count / limit))
 
     return json(200, { users, total: count, page, limit, pages })

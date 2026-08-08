@@ -353,7 +353,7 @@ function UsersPage() {
             ref={searchRef}
             value={search}
             onChange={e => handleSearch(e.target.value)}
-            placeholder="Buscar por nome ou e-mail..."
+            placeholder="Buscar por nome, e-mail ou USER_ID..."
             style={{
               width: '100%', boxSizing: 'border-box',
               padding: '7px 10px 7px 30px',
@@ -426,12 +426,7 @@ function UsersPage() {
                   </span>
                 </Td>
                 <Td>
-                  <span style={{
-                    fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-dim)',
-                    maxWidth: 110, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }} title={u.id}>
-                    {u.id?.slice(0, 8)}…
-                  </span>
+                  <CopyableId id={u.id} />
                 </Td>
                 <Td>
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-dim)' }}>
@@ -1039,6 +1034,57 @@ function PageTitle({ title, subtitle }) {
         </p>
       )}
     </div>
+  )
+}
+
+/** Clique no ID → copia o USER_ID completo para a área de transferência */
+function CopyableId({ id }) {
+  const [copied, setCopied] = useState(false)
+  if (!id) return <span style={{ color: 'var(--text-dim)' }}>—</span>
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(id)
+    } catch {
+      // Fallback para ambientes sem clipboard API
+      const ta = document.createElement('textarea')
+      ta.value = id
+      ta.style.position = 'fixed'
+      ta.style.left = '-9999px'
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+    }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      title={`Clique para copiar: ${id}`}
+      style={{
+        background: copied ? 'rgba(76,175,80,0.15)' : 'none',
+        border: copied ? '1px solid #4caf50' : '1px solid transparent',
+        borderRadius: 4,
+        padding: '2px 6px',
+        margin: 0,
+        cursor: 'pointer',
+        fontFamily: 'var(--font-mono)',
+        fontSize: 10,
+        color: copied ? '#4caf50' : 'var(--text-dim)',
+        maxWidth: 140,
+        display: 'block',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+        transition: 'all 0.15s',
+      }}
+    >
+      {copied ? '✓ Copiado!' : `${id.slice(0, 8)}…`}
+    </button>
   )
 }
 
