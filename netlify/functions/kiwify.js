@@ -137,17 +137,20 @@ export const handler = async (event) => {
   })
   if (existing?.length) return json(200, { ok: true, duplicate: true })
 
-  // ─── Buscar usuário ──────────────────────────────────────────────
+  // ─── Buscar usuário (sempre por e-mail normalizado; vínculo final via user_id) ─
+  // Nunca associar crédito só por nome. Se o usuário ainda não existe, registra
+  // o pagamento com status controlado paid_user_not_found e não quebra o fluxo.
   const users = await sbSelect('users', { select: '*', email: `eq.${email}` })
   if (!users?.length) {
     await sbInsert('payments', {
       id: crypto.randomUUID(), user_id: null,
       kiwify_transaction_id: orderId,
       product: productName || productId,
-      value, status: `${orderStatus || eventType}_user_not_found`,
+      value, // centavos (Kiwify envia INTEGER em centavos)
+      status: 'paid_user_not_found',
       created_at: now,
     })
-    return json(200, { ok: true, ignored: true, reason: 'usuário não encontrado' })
+    return json(200, { ok: true, ignored: true, reason: 'usuário não encontrado', email })
   }
 
   const user         = users[0]

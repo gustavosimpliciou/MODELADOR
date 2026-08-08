@@ -117,9 +117,9 @@ export const handler = async (event) => {
   // ── GET /stats ──────────────────────────────────────────────────────────────
   if (method === 'GET' && path === '/stats') {
     const [users, payments] = await Promise.all([
-      sbSelect('users', { select: 'id,email,credits' }),
+      sbSelect('users', { select: 'id,name,email,credits,plan' }),
       sbSelect('payments', {
-        select:  'id,user_id,product,value,status,created_at',
+        select:  'id,user_id,product,value,status,created_at,kiwify_transaction_id',
         order:   'created_at.desc',
         limit:   20,
       }),
@@ -130,14 +130,52 @@ export const handler = async (event) => {
     const total_credits      = users.reduce((s, u) => s + (u.credits || 0), 0)
     const users_with_credits = users.filter(u => (u.credits || 0) > 0).length
 
+    // Map user_id → user for enrichment. Values from Kiwify are stored in CENTS.
+    // Convert once here (cents → reais) so the dashboard never double-converts.
+    const userMap = Object.fromEntries((users || []).map(u => [u.id, u]))
+    const recent_payments = (payments || []).map(p => {
+      const raw = p.value
+      const cents = Number(raw)
+      const valueReais = Number.isFinite(cents) ? cents / 100 : null
+      const u = p.user_id ? userMap[p.user_id] : null
+      return {
+        id: p.id,
+        user_id: p.user_id || null,
+        product: p.product,
+        // value is now in REAIS (conversion happens only once, in this endpoint)
+        value: valueReais,
+        value_cents: Number.isFinite(cents) ? Math.round(cents) : null,
+        status: p.status,
+        created_at: p.created_at,
+        kiwify_transaction_id: p.kiwify_transaction_id || null,
+        user_name: u?.name || null,
+        user_email: u?.email || null,
+        user_credits: u != null ? (u.credits || 0) : null,
+        user_plan: u?.plan || null,
+      }
+    })
+
     return json(200, {
       total_users,
       total_admins,
       total_credits,
       users_with_credits,
       users_without_credits: total_users - users_with_credits,
-      recent_payments: payments,
+      recent_payments,
     })
+  }
+
+  // ── GET /users/:id ──────────────────────────────────────────────────────────
+  const userByIdMatch = path.match(/^\/users\/([^/]+)$/)
+  if (method === 'GET' && userByIdMatch) {
+    const userId = userByIdMatch[1]
+    const rows = await sbSelect('users', {
+      select: 'id,name,email,plan,credits,created_at',
+      id: `eq.${userId}`,
+    })
+    if (!rows?.length) return json(404, { detail: 'Usuário não encontrado' })
+    const u = rows[0]
+    return json(200, { ...u, is_admin: u.email === ADMIN_EMAIL })
   }
 
   // ── GET /users ──────────────────────────────────────────────────────────────

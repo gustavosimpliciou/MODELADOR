@@ -95,17 +95,18 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, duplicate: true })
   }
 
-  // ─── Buscar usuário ───────────────────────────────────────────────
+  // ─── Buscar usuário (sempre por e-mail; vínculo final via user_id) ──
   const { data: users } = await sb.from('users').select('*').eq('email', email)
   if (!users?.length) {
     await sb.from('payments').insert({
       id: crypto.randomUUID(), user_id: null,
       kiwify_transaction_id: orderId,
       product: productName || productId,
-      value, status: `${orderStatus || eventType}_user_not_found`,
+      value, // centavos (Kiwify envia INTEGER em centavos)
+      status: 'paid_user_not_found',
       created_at: now,
     }).catch(() => {})
-    return res.status(200).json({ ok: true, ignored: true, reason: 'usuário não encontrado' })
+    return res.status(200).json({ ok: true, ignored: true, reason: 'usuário não encontrado', email })
   }
 
   const user          = users[0]

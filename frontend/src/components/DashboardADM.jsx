@@ -125,6 +125,8 @@ function OverviewPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState(null)
   const [lastUpdated, setLastUpdated] = useState(null)
+  const [modalUser, setModalUser] = useState(null)
+  const [modalLoading, setModalLoading] = useState(false)
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
@@ -146,8 +148,30 @@ function OverviewPage() {
     return () => clearInterval(id)
   }, [load])
 
+  // Abre créditos do usuário pelo USER_ID (nunca por nome/e-mail)
+  const openUserCredits = async (userId) => {
+    if (!userId) return
+    setModalLoading(true)
+    try {
+      const user = await adminFetch(`/users/${userId}`)
+      setModalUser(user)
+    } catch (e) {
+      setError(e.message || 'Não foi possível carregar o usuário')
+    } finally {
+      setModalLoading(false)
+    }
+  }
+
+  const handleCreditsUpdated = (userId, newCredits) => {
+    if (modalUser?.id === userId) {
+      setModalUser(mu => ({ ...mu, credits: newCredits }))
+    }
+    // Atualiza stats em background para refletir créditos
+    load(true)
+  }
+
   if (loading) return <Spinner />
-  if (error)   return <ErrorBanner msg={error} onRetry={load} />
+  if (error && !stats) return <ErrorBanner msg={error} onRetry={load} />
 
   const {
     total_users, total_admins, total_credits,
@@ -176,16 +200,24 @@ function OverviewPage() {
       </div>
 
       {/* Recent payments */}
-      {recent_payments?.length > 0 && (
-        <Section title="Pagamentos Recentes">
-          <PaymentsTable payments={recent_payments} />
-        </Section>
-      )}
-
-      {(!recent_payments || recent_payments.length === 0) && (
-        <Section title="Pagamentos Recentes">
+      <Section title="Pagamentos Recentes">
+        {recent_payments?.length > 0 ? (
+          <PaymentsTable
+            payments={recent_payments}
+            onOpenUser={openUserCredits}
+            openingUser={modalLoading}
+          />
+        ) : (
           <Empty msg="Nenhum pagamento registrado ainda" />
-        </Section>
+        )}
+      </Section>
+
+      {modalUser && (
+        <CreditsModal
+          user={modalUser}
+          onClose={() => setModalUser(null)}
+          onSuccess={(newCredits) => handleCreditsUpdated(modalUser.id, newCredits)}
+        />
       )}
     </div>
   )
@@ -694,14 +726,40 @@ function creditsFromProduct(productName = '') {
   return null
 }
 
+/** Formata valor em reais no padrão brasileiro. value já deve estar em REAIS (não centavos). */
+function formatBRL(value) {
+  if (value == null || value === '' || Number.isNaN(Number(value))) return '—'
+  return Number(value).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
+
+/** Normaliza status para exibição legível e cor. */
+function paymentStatusMeta(status = '') {
+  const s = (status || '').toLowerCase()
+  if (s.includes('user_not_found')) {
+    return { label: 'PAID_USER_NOT_FOUND', color: '#e05050', hint: 'Usuário não localizado no momento do webhook' }
+  }
+  if (s.includes('unrecognized_product')) {
+    return { label: 'PRODUTO NÃO RECONHECIDO', color: '#ff9800', hint: 'Produto não mapeado para créditos' }
+  }
+  if (s.includes('paid') || s.includes('approved')) {
+    return { label: status || 'paid', color: '#4caf50', hint: null }
+  }
+  return { label: status || '—', color: '#888', hint: null }
+}
+
 // ─── Payments table ───────────────────────────────────────────────────────────
-function PaymentsTable({ payments }) {
+function PaymentsTable({ payments, onOpenUser, openingUser }) {
   return (
-    <div style={{ background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+    <div style={{ background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden', overflowX: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
         <thead>
           <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--line)' }}>
-            {['Produto', 'Valor', 'Créditos', 'Status', 'Data'].map(h => (
+            {['Nome', 'E-mail', 'Produto', 'Valor', 'Créditos', 'Status', 'Data'].map(h => (
               <Th key={h}>{h}</Th>
             ))}
           </tr>
@@ -709,17 +767,52 @@ function PaymentsTable({ payments }) {
         <tbody>
           {payments.map((p, i) => {
             const credits = creditsFromProduct(p.product)
-            const isPaid = (p.status || '').includes('paid') || (p.status || '').includes('approved')
+            const statusMeta = paymentStatusMeta(p.status)
+            const hasUser = Boolean(p.user_id)
             return (
               <tr key={p.id || i} style={{ borderBottom: i < payments.length - 1 ? '1px solid var(--line)' : 'none' }}>
+                <Td>
+                  {hasUser ? (
+                    <button
+                      type="button"
+                      onClick={() => onOpenUser?.(p.user_id)}
+                      disabled={openingUser}
+                      title="Abrir créditos deste usuário (via USER_ID)"
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        padding: 0,
+                        margin: 0,
+                        cursor: openingUser ? 'wait' : 'pointer',
+                        fontFamily: 'var(--font-body)',
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: '#ff6a00',
+                        textDecoration: 'underline',
+                        textUnderlineOffset: 2,
+                      }}
+                    >
+                      {p.user_name || 'Usuário'}
+                    </button>
+                  ) : (
+                    <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--text-dim)' }}>
+                      —
+                    </span>
+                  )}
+                </Td>
+                <Td>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-secondary)' }}>
+                    {p.user_email || '—'}
+                  </span>
+                </Td>
                 <Td>
                   <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--text)' }}>
                     {p.product || '—'}
                   </span>
                 </Td>
                 <Td>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: '#4caf50' }}>
-                    {p.value ? `R$ ${Number(p.value).toFixed(2)}` : '—'}
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: '#4caf50', fontWeight: 600 }}>
+                    {formatBRL(p.value)}
                   </span>
                 </Td>
                 <Td>
@@ -735,14 +828,18 @@ function PaymentsTable({ payments }) {
                   )}
                 </Td>
                 <Td>
-                  <Tag
-                    label={p.status || '—'}
-                    color={isPaid ? '#4caf50' : '#888'}
-                  />
+                  <span title={statusMeta.hint || undefined}>
+                    <Tag label={statusMeta.label} color={statusMeta.color} />
+                  </span>
                 </Td>
                 <Td>
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-dim)' }}>
-                    {p.created_at ? new Date(p.created_at).toLocaleDateString('pt-BR') : '—'}
+                    {p.created_at
+                      ? new Date(p.created_at).toLocaleString('pt-BR', {
+                          day: '2-digit', month: '2-digit', year: 'numeric',
+                          hour: '2-digit', minute: '2-digit',
+                        })
+                      : '—'}
                   </span>
                 </Td>
               </tr>

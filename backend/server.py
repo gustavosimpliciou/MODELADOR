@@ -620,10 +620,11 @@ async def kiwify_webhook(request: Request):
         await srun(lambda: sb.table('payments').insert({
             'id': str(uuid.uuid4()), 'user_id': None,
             'kiwify_transaction_id': order_id, 'product': product_name or product_id,
-            'value': value, 'status': f'{order_status or event_type}_user_not_found',
+            'value': value,  # centavos (Kiwify envia INTEGER em centavos)
+            'status': 'paid_user_not_found',
             'created_at': now,
         }).execute())
-        return {'ok': True, 'ignored': True, 'reason': 'usuário não encontrado'}
+        return {'ok': True, 'ignored': True, 'reason': 'usuário não encontrado', 'email': email}
 
     user = res.data[0]
     credits_to_add = PLAN_CREDITS[tier]
@@ -661,10 +662,10 @@ admin_router = APIRouter(prefix='/api/admin', tags=['admin'])
 @admin_router.get('/stats')
 async def admin_stats(current_user: dict = Depends(require_admin)):
     require_db()
-    users_res    = await srun(lambda: sb.table('users').select('id,email,credits').execute())
+    users_res    = await srun(lambda: sb.table('users').select('id,name,email,credits,plan').execute())
     payments_res = await srun(
         lambda: sb.table('payments')
-            .select('id,user_id,product,value,status,created_at')
+            .select('id,user_id,product,value,status,created_at,kiwify_transaction_id')
             .order('created_at', desc=True).limit(20).execute()
     )
     users    = users_res.data    or []
@@ -676,13 +677,39 @@ async def admin_stats(current_user: dict = Depends(require_admin)):
     users_with_credits  = sum(1 for u in users if (u.get('credits') or 0) > 0)
     users_no_credits    = total_users - users_with_credits
 
+    # Values from Kiwify are stored in CENTS. Convert once here (cents → reais).
+    user_map = {u['id']: u for u in users}
+    recent_payments = []
+    for p in payments:
+        raw = p.get('value')
+        try:
+            cents = float(raw) if raw is not None and raw != '' else None
+        except (TypeError, ValueError):
+            cents = None
+        value_reais = (cents / 100.0) if cents is not None else None
+        u = user_map.get(p.get('user_id')) if p.get('user_id') else None
+        recent_payments.append({
+            'id': p.get('id'),
+            'user_id': p.get('user_id'),
+            'product': p.get('product'),
+            'value': value_reais,
+            'value_cents': int(round(cents)) if cents is not None else None,
+            'status': p.get('status'),
+            'created_at': p.get('created_at'),
+            'kiwify_transaction_id': p.get('kiwify_transaction_id'),
+            'user_name': u.get('name') if u else None,
+            'user_email': u.get('email') if u else None,
+            'user_credits': (u.get('credits') or 0) if u else None,
+            'user_plan': u.get('plan') if u else None,
+        })
+
     return {
         'total_users':         total_users,
         'total_admins':        total_admins,
         'total_credits':       total_credits,
         'users_with_credits':  users_with_credits,
         'users_without_credits': users_no_credits,
-        'recent_payments':     payments,
+        'recent_payments':     recent_payments,
     }
 
 
@@ -735,6 +762,22 @@ async def admin_users(
         'limit': limit,
         'pages': max(1, -(-total // limit)),
     }
+
+
+@admin_router.get('/users/{user_id}')
+async def admin_get_user(user_id: str, current_user: dict = Depends(require_admin)):
+    require_db()
+    res = await srun(
+        lambda: sb.table('users')
+            .select('id,name,email,plan,credits,created_at')
+            .eq('id', user_id)
+            .execute()
+    )
+    if not res.data:
+        raise HTTPException(404, 'Usuário não encontrado')
+    u = res.data[0]
+    u['is_admin'] = u.get('email') == ADMIN_EMAIL
+    return u
 
 
 @admin_router.patch('/users/{user_id}/credits')
