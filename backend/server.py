@@ -581,9 +581,13 @@ async def kiwify_webhook(request: Request):
 
     customer = body.get('Customer') or {}
     email = (customer.get('email') or '').strip().lower()
-    if not email:
-        logger.warning(f"Webhook Kiwify sem e-mail do cliente (order {order_id})")
-        return {'ok': True, 'ignored': True, 'reason': 'sem e-mail'}
+    tracking = body.get('TrackingParameters') or body.get('tracking_parameters') or {}
+    tracked_user_id = (
+        (tracking.get('src') or tracking.get('sck') or
+         tracking.get('utm_content') or tracking.get('utm_term') or '')
+        or ''
+    )
+    tracked_user_id = str(tracked_user_id).strip() or None
 
     product      = body.get('Product') or {}
     product_name = product.get('product_name') or ''
@@ -614,19 +618,41 @@ async def kiwify_webhook(request: Request):
     if existing.data:
         return {'ok': True, 'duplicate': True}
 
-    res = await srun(lambda: sb.table('users').select('*').eq('email', email).execute())
-    if not res.data:
-        logger.warning(f"Webhook Kiwify: usuário não encontrado para {email} (order {order_id})")
+    # Resolver usuário: USER_ID (tracking do checkout) → e-mail
+    user = None
+    resolved_by = None
+    if tracked_user_id:
+        res_id = await srun(lambda: sb.table('users').select('*').eq('id', tracked_user_id).execute())
+        if res_id.data:
+            user = res_id.data[0]
+            resolved_by = 'tracking_user_id'
+    if user is None and email:
+        res_em = await srun(lambda: sb.table('users').select('*').eq('email', email).execute())
+        if res_em.data:
+            user = res_em.data[0]
+            resolved_by = 'email'
+
+    if user is None:
+        logger.warning(
+            f"Webhook Kiwify: usuário não encontrado "
+            f"(email={email}, tracked={tracked_user_id}, order={order_id})"
+        )
+        product_stored = (
+            f"{product_name or product_id}|||buyer:{email}" if email
+            else (product_name or product_id)
+        )
         await srun(lambda: sb.table('payments').insert({
             'id': str(uuid.uuid4()), 'user_id': None,
-            'kiwify_transaction_id': order_id, 'product': product_name or product_id,
-            'value': value,  # centavos (Kiwify envia INTEGER em centavos)
+            'kiwify_transaction_id': order_id, 'product': product_stored,
+            'value': value,
             'status': 'paid_user_not_found',
             'created_at': now,
         }).execute())
-        return {'ok': True, 'ignored': True, 'reason': 'usuário não encontrado', 'email': email}
+        return {
+            'ok': True, 'ignored': True, 'reason': 'usuário não encontrado',
+            'email': email or None, 'tracked_user_id': tracked_user_id,
+        }
 
-    user = res.data[0]
     credits_to_add = PLAN_CREDITS[tier]
     new_credits = user.get('credits', 0) + credits_to_add
 
@@ -639,7 +665,7 @@ async def kiwify_webhook(request: Request):
     await srun(lambda: sb.table('payments').insert({
         'id': str(uuid.uuid4()), 'user_id': user['id'],
         'kiwify_transaction_id': order_id, 'product': product_name or product_id,
-        'value': value, 'status': order_status or event_type,
+        'value': value, 'status': order_status or event_type or 'paid',
         'created_at': now,
     }).execute())
 
@@ -650,8 +676,14 @@ async def kiwify_webhook(request: Request):
         'created_at': now,
     }).execute())
 
-    logger.info(f"Kiwify: +{credits_to_add} créditos / plano {tier} para {email} (order {order_id})")
-    return {'ok': True}
+    logger.info(
+        f"Kiwify: +{credits_to_add} créditos / plano {tier} "
+        f"user={user['id']} via={resolved_by} (order {order_id})"
+    )
+    return {
+        'ok': True, 'credits_added': credits_to_add, 'plan': tier,
+        'resolved_by': resolved_by, 'user_id': user['id'],
+    }
 
 
 # ─── Admin routes ────────────────────────────────────────────────────
@@ -668,8 +700,12 @@ async def admin_stats(current_user: dict = Depends(require_admin)):
             .select('id,user_id,product,value,status,created_at,kiwify_transaction_id')
             .order('created_at', desc=True).limit(20).execute()
     )
+    all_vals_res = await srun(
+        lambda: sb.table('payments').select('value,status').execute()
+    )
     users    = users_res.data    or []
     payments = payments_res.data or []
+    all_vals = all_vals_res.data or []
 
     total_users         = len(users)
     total_admins        = sum(1 for u in users if u.get('email') == ADMIN_EMAIL)
@@ -677,23 +713,29 @@ async def admin_stats(current_user: dict = Depends(require_admin)):
     users_with_credits  = sum(1 for u in users if (u.get('credits') or 0) > 0)
     users_no_credits    = total_users - users_with_credits
 
-    # Values from Kiwify are stored in CENTS. Convert once here (cents → reais).
+    def to_reais(raw):
+        """Kiwify = centavos (inteiro). Registros com ponto decimal = já em reais."""
+        if raw is None or raw == '':
+            return None
+        as_str = str(raw).strip().replace(',', '.')
+        try:
+            n = float(as_str)
+        except (TypeError, ValueError):
+            return None
+        if '.' in as_str:
+            return n
+        return n / 100.0
+
     user_map = {u['id']: u for u in users}
     recent_payments = []
     for p in payments:
-        raw = p.get('value')
-        try:
-            cents = float(raw) if raw is not None and raw != '' else None
-        except (TypeError, ValueError):
-            cents = None
-        value_reais = (cents / 100.0) if cents is not None else None
+        value_reais = to_reais(p.get('value'))
         u = user_map.get(p.get('user_id')) if p.get('user_id') else None
         recent_payments.append({
             'id': p.get('id'),
             'user_id': p.get('user_id'),
             'product': p.get('product'),
             'value': value_reais,
-            'value_cents': int(round(cents)) if cents is not None else None,
             'status': p.get('status'),
             'created_at': p.get('created_at'),
             'kiwify_transaction_id': p.get('kiwify_transaction_id'),
@@ -703,12 +745,29 @@ async def admin_stats(current_user: dict = Depends(require_admin)):
             'user_plan': u.get('plan') if u else None,
         })
 
+    total_revenue = 0.0
+    total_paid_count = 0
+    for p in all_vals:
+        s = (p.get('status') or '').lower()
+        is_money = (
+            'paid' in s or 'approved' in s or 'user_not_found' in s
+        ) and 'unrecognized_product' not in s
+        if not is_money:
+            continue
+        v = to_reais(p.get('value'))
+        if v is not None and v > 0:
+            total_revenue += v
+            total_paid_count += 1
+    total_revenue = round(total_revenue, 2)
+
     return {
         'total_users':         total_users,
         'total_admins':        total_admins,
         'total_credits':       total_credits,
         'users_with_credits':  users_with_credits,
         'users_without_credits': users_no_credits,
+        'total_revenue':       total_revenue,
+        'total_paid_count':    total_paid_count,
         'recent_payments':     recent_payments,
     }
 

@@ -58,12 +58,13 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, ignored: true, order_status: orderStatus })
   }
 
-  // ─── Dados do cliente ─────────────────────────────────────────────
+  // ─── Dados do cliente + tracking (user_id do app) ─────────────────
   const customer = body.Customer || {}
   const email    = (customer.email || '').trim().toLowerCase()
-  if (!email) {
-    return res.status(200).json({ ok: true, ignored: true, reason: 'sem e-mail' })
-  }
+  const tracking = body.TrackingParameters || body.tracking_parameters || {}
+  const trackedUserId = (
+    tracking.src || tracking.sck || tracking.utm_content || tracking.utm_term || ''
+  ).toString().trim() || null
 
   // ─── Identificar plano ────────────────────────────────────────────
   const product     = body.Product || {}
@@ -77,7 +78,6 @@ export default async function handler(req, res) {
   const value = commissions.charge_amount || commissions.product_base_price || ''
 
   if (!tier) {
-    // Produto não reconhecido — registra e ignora
     await sb.from('payments').insert({
       id: crypto.randomUUID(), user_id: null,
       kiwify_transaction_id: orderId,
@@ -95,37 +95,51 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, duplicate: true })
   }
 
-  // ─── Buscar usuário (sempre por e-mail; vínculo final via user_id) ──
-  const { data: users } = await sb.from('users').select('*').eq('email', email)
-  if (!users?.length) {
+  // ─── Resolver usuário: USER_ID (tracking) → e-mail ─────────────────
+  let user = null
+  let resolvedBy = null
+
+  if (trackedUserId) {
+    const { data: byId } = await sb.from('users').select('*').eq('id', trackedUserId)
+    if (byId?.length) { user = byId[0]; resolvedBy = 'tracking_user_id' }
+  }
+  if (!user && email) {
+    const { data: byEmail } = await sb.from('users').select('*').eq('email', email)
+    if (byEmail?.length) { user = byEmail[0]; resolvedBy = 'email' }
+  }
+
+  if (!user) {
+    const productStored = email
+      ? `${productName || productId}|||buyer:${email}`
+      : (productName || productId)
     await sb.from('payments').insert({
       id: crypto.randomUUID(), user_id: null,
       kiwify_transaction_id: orderId,
-      product: productName || productId,
-      value, // centavos (Kiwify envia INTEGER em centavos)
+      product: productStored,
+      value,
       status: 'paid_user_not_found',
       created_at: now,
     }).catch(() => {})
-    return res.status(200).json({ ok: true, ignored: true, reason: 'usuário não encontrado', email })
+    return res.status(200).json({
+      ok: true, ignored: true, reason: 'usuário não encontrado',
+      email: email || null, tracked_user_id: trackedUserId,
+    })
   }
 
-  const user          = users[0]
   const creditsToAdd  = PLAN_CREDITS[tier]
   const newCredits    = (user.credits || 0) + creditsToAdd
 
-  // ─── Atualizar créditos ───────────────────────────────────────────
   await sb.from('users').update({
     credits:                 newCredits,
     plan:                    tier,
     first_upgrade_purchased: true,
   }).eq('id', user.id)
 
-  // ─── Registrar pagamento ──────────────────────────────────────────
   await sb.from('payments').insert({
     id: crypto.randomUUID(), user_id: user.id,
     kiwify_transaction_id: orderId,
     product: productName || productId,
-    value, status: orderStatus || eventType,
+    value, status: orderStatus || eventType || 'paid',
     created_at: now,
   }).catch(() => {})
 
@@ -136,5 +150,8 @@ export default async function handler(req, res) {
     created_at: now,
   }).catch(() => {})
 
-  return res.status(200).json({ ok: true, credits_added: creditsToAdd, plan: tier })
+  return res.status(200).json({
+    ok: true, credits_added: creditsToAdd, plan: tier,
+    resolved_by: resolvedBy, user_id: user.id,
+  })
 }

@@ -107,7 +107,12 @@ export const handler = async (event) => {
   // ─── Dados do cliente ────────────────────────────────────────────
   const customer = body.Customer || {}
   const email    = (customer.email || '').trim().toLowerCase()
-  if (!email) return json(200, { ok: true, ignored: true, reason: 'sem e-mail' })
+
+  // TrackingParameters: user_id enviado pelo app no checkout (?src=USER_ID)
+  const tracking = body.TrackingParameters || body.tracking_parameters || {}
+  const trackedUserId = (
+    tracking.src || tracking.sck || tracking.utm_content || tracking.utm_term || ''
+  ).toString().trim() || null
 
   // ─── Identificar plano ───────────────────────────────────────────
   const product     = body.Product || {}
@@ -137,39 +142,64 @@ export const handler = async (event) => {
   })
   if (existing?.length) return json(200, { ok: true, duplicate: true })
 
-  // ─── Buscar usuário (sempre por e-mail normalizado; vínculo final via user_id) ─
-  // Nunca associar crédito só por nome. Se o usuário ainda não existe, registra
-  // o pagamento com status controlado paid_user_not_found e não quebra o fluxo.
-  const users = await sbSelect('users', { select: '*', email: `eq.${email}` })
-  if (!users?.length) {
+  // ─── Resolver usuário (prioridade: USER_ID do tracking → e-mail) ─
+  // Nunca identificar só por nome. USER_ID é a referência canônica.
+  let user = null
+  let resolvedBy = null
+
+  if (trackedUserId) {
+    const byId = await sbSelect('users', { select: '*', id: `eq.${trackedUserId}` })
+    if (byId?.length) {
+      user = byId[0]
+      resolvedBy = 'tracking_user_id'
+    }
+  }
+
+  if (!user && email) {
+    const byEmail = await sbSelect('users', { select: '*', email: `eq.${email}` })
+    if (byEmail?.length) {
+      user = byEmail[0]
+      resolvedBy = 'email'
+    }
+  }
+
+  if (!user) {
+    // Guarda e-mail do comprador no product para recuperação automática no cadastro/login
+    // Formato: "Nome do Produto|||buyer:email@x.com"
+    const productStored = email
+      ? `${productName || productId}|||buyer:${email}`
+      : (productName || productId)
     await sbInsert('payments', {
       id: crypto.randomUUID(), user_id: null,
       kiwify_transaction_id: orderId,
-      product: productName || productId,
+      product: productStored,
       value, // centavos (Kiwify envia INTEGER em centavos)
       status: 'paid_user_not_found',
       created_at: now,
     })
-    return json(200, { ok: true, ignored: true, reason: 'usuário não encontrado', email })
+    return json(200, {
+      ok: true,
+      ignored: true,
+      reason: 'usuário não encontrado',
+      email: email || null,
+      tracked_user_id: trackedUserId,
+    })
   }
 
-  const user         = users[0]
   const creditsToAdd = PLAN_CREDITS[tier]
   const newCredits   = (user.credits || 0) + creditsToAdd
 
-  // ─── Atualizar créditos ──────────────────────────────────────────
   await sbUpdate('users', 'id', user.id, {
     credits:                 newCredits,
     plan:                    tier,
     first_upgrade_purchased: true,
   })
 
-  // ─── Registrar pagamento ─────────────────────────────────────────
   await sbInsert('payments', {
     id: crypto.randomUUID(), user_id: user.id,
     kiwify_transaction_id: orderId,
     product: productName || productId,
-    value, status: orderStatus || eventType,
+    value, status: orderStatus || eventType || 'paid',
     created_at: now,
   })
 
@@ -180,5 +210,11 @@ export const handler = async (event) => {
     created_at: now,
   })
 
-  return json(200, { ok: true, credits_added: creditsToAdd, plan: tier })
+  return json(200, {
+    ok: true,
+    credits_added: creditsToAdd,
+    plan: tier,
+    resolved_by: resolvedBy,
+    user_id: user.id,
+  })
 }

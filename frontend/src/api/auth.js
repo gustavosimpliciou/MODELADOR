@@ -16,6 +16,99 @@ function toUser(row) {
   }
 }
 
+const PLAN_CREDITS = { easy: 200, medium: 565, premium: 1500 }
+
+function detectPlanFromProduct(productName = '') {
+  const h = (productName || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+  if (h.includes('premium')) return 'premium'
+  if (/\bpro\b|\bmedium\b|\bmedio\b/.test(h)) return 'medium'
+  if (h.includes('easy')) return 'easy'
+  return null
+}
+
+/** Extrai e-mail guardado em product no formato "Nome|||buyer:email@x.com" */
+function buyerEmailFromProduct(product = '') {
+  const m = String(product || '').match(/\|\|\|buyer:([^\s|]+)/i)
+  return m ? m[1].trim().toLowerCase() : null
+}
+
+function cleanProductName(product = '') {
+  return String(product || '').split('|||')[0].trim()
+}
+
+/**
+ * Recupera pagamentos paid_user_not_found cujo e-mail do comprador
+ * coincide com o e-mail da conta e libera os créditos.
+ * Idempotente: só processa status paid_user_not_found.
+ */
+async function claimPendingPayments(userId, email) {
+  if (!userId || !email) return { claimed: 0 }
+  const emailNorm = email.trim().toLowerCase()
+
+  try {
+    const { data: pending, error } = await supabase
+      .from('payments')
+      .select('*')
+      .eq('status', 'paid_user_not_found')
+      .is('user_id', null)
+
+    if (error || !pending?.length) return { claimed: 0 }
+
+    const mine = pending.filter(p => buyerEmailFromProduct(p.product) === emailNorm)
+    if (!mine.length) return { claimed: 0 }
+
+    const { data: userRow } = await supabase
+      .from('users')
+      .select('credits,plan')
+      .eq('id', userId)
+      .maybeSingle()
+
+    let credits = userRow?.credits || 0
+    let plan = userRow?.plan || 'free'
+    let claimed = 0
+
+    for (const p of mine) {
+      const productClean = cleanProductName(p.product)
+      const tier = detectPlanFromProduct(productClean)
+      if (!tier) continue
+      const add = PLAN_CREDITS[tier]
+      credits += add
+      plan = tier
+      claimed += 1
+
+      await supabase.from('payments').update({
+        user_id: userId,
+        product: productClean,
+        status: 'paid',
+      }).eq('id', p.id)
+
+      await supabase.from('credit_history').insert({
+        id: crypto.randomUUID(),
+        user_id: userId,
+        type: 'purchase',
+        credits: add,
+        description: `Créditos recuperados: ${productClean} (pedido ${p.kiwify_transaction_id || p.id})`,
+        created_at: new Date().toISOString(),
+      })
+    }
+
+    if (claimed > 0) {
+      await supabase.from('users').update({
+        credits,
+        plan,
+        first_upgrade_purchased: true,
+      }).eq('id', userId)
+    }
+
+    return { claimed, credits, plan }
+  } catch {
+    return { claimed: 0 }
+  }
+}
+
 async function getOrCreateProfile(userId, email = '', name = '') {
   const { data, error } = await supabase
     .from('users')
@@ -25,7 +118,16 @@ async function getOrCreateProfile(userId, email = '', name = '') {
 
   if (error) throw new Error(error.message)
 
-  if (data) return toUser(data)
+  if (data) {
+    // Tenta recuperar compras feitas com este e-mail antes do cadastro
+    await claimPendingPayments(userId, data.email || email)
+    const { data: refreshed } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle()
+    return toUser(refreshed || data)
+  }
 
   // Profile row missing — create it
   const displayName = name || (email ? email.split('@')[0] : 'Usuário')
@@ -46,7 +148,14 @@ async function getOrCreateProfile(userId, email = '', name = '') {
     .single()
 
   if (insertError) throw new Error(insertError.message)
-  return toUser(inserted)
+
+  await claimPendingPayments(userId, email.toLowerCase())
+  const { data: afterClaim } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', userId)
+    .maybeSingle()
+  return toUser(afterClaim || inserted)
 }
 
 export const authApi = {

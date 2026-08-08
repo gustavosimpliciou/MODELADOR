@@ -93,7 +93,7 @@ export const handler = async (event) => {
       statusCode: 204,
       headers: {
         'Access-Control-Allow-Origin':  '*',
-        'Access-Control-Allow-Methods': 'GET,PATCH,OPTIONS',
+        'Access-Control-Allow-Methods': 'GET,PATCH,POST,OPTIONS',
         'Access-Control-Allow-Headers': 'Authorization,Content-Type',
       },
       body: '',
@@ -116,13 +116,15 @@ export const handler = async (event) => {
 
   // ── GET /stats ──────────────────────────────────────────────────────────────
   if (method === 'GET' && path === '/stats') {
-    const [users, payments] = await Promise.all([
+    const [users, payments, allPaymentValues] = await Promise.all([
       sbSelect('users', { select: 'id,name,email,credits,plan' }),
       sbSelect('payments', {
         select:  'id,user_id,product,value,status,created_at,kiwify_transaction_id',
         order:   'created_at.desc',
         limit:   20,
       }),
+      // Todos os pagamentos só com value+status (para total de vendas)
+      sbSelect('payments', { select: 'value,status' }),
     ])
 
     const total_users        = users.length
@@ -130,30 +132,65 @@ export const handler = async (event) => {
     const total_credits      = users.reduce((s, u) => s + (u.credits || 0), 0)
     const users_with_credits = users.filter(u => (u.credits || 0) > 0).length
 
-    // Map user_id → user for enrichment. Values from Kiwify are stored in CENTS.
-    // Convert once here (cents → reais) so the dashboard never double-converts.
+    /**
+     * Kiwify envia INTEGER em centavos (ex: 690 = R$ 6,90).
+     * Alguns registros antigos/manuais podem já estar em reais (ex: "6.90").
+     * Heurística:
+     * - string com ponto/vírgula → já está em reais
+     * - inteiro → centavos → divide por 100
+     */
+    function toReais(raw) {
+      if (raw == null || raw === '') return null
+      const asStr = String(raw).trim().replace(',', '.')
+      const n = Number(asStr)
+      if (!Number.isFinite(n)) return null
+      if (asStr.includes('.')) return n          // já em reais (ex: 6.90)
+      return n / 100                             // centavos Kiwify (ex: 690 → 6.90)
+    }
+
+    // Map user_id → user for enrichment
     const userMap = Object.fromEntries((users || []).map(u => [u.id, u]))
     const recent_payments = (payments || []).map(p => {
-      const raw = p.value
-      const cents = Number(raw)
-      const valueReais = Number.isFinite(cents) ? cents / 100 : null
+      const valueReais = toReais(p.value)
       const u = p.user_id ? userMap[p.user_id] : null
+      // product pode ter "Nome|||buyer:email" em pagamentos órfãos
+      const productRaw = p.product || ''
+      const buyerMatch = String(productRaw).match(/\|\|\|buyer:([^\s|]+)/i)
       return {
         id: p.id,
         user_id: p.user_id || null,
-        product: p.product,
-        // value is now in REAIS (conversion happens only once, in this endpoint)
-        value: valueReais,
-        value_cents: Number.isFinite(cents) ? Math.round(cents) : null,
+        product: productRaw,
+        value: valueReais, // sempre em REAIS
         status: p.status,
         created_at: p.created_at,
         kiwify_transaction_id: p.kiwify_transaction_id || null,
         user_name: u?.name || null,
-        user_email: u?.email || null,
+        user_email: u?.email || (buyerMatch ? buyerMatch[1].toLowerCase() : null),
         user_credits: u != null ? (u.credits || 0) : null,
         user_plan: u?.plan || null,
       }
     })
+
+    // Total de vendas em dinheiro (pagamentos que chegaram na Kiwify)
+    // Inclui paid / approved e também paid_user_not_found (o dinheiro caiu, só não linkou usuário)
+    let total_revenue = 0
+    let total_paid_count = 0
+    for (const p of (allPaymentValues || [])) {
+      const s = (p.status || '').toLowerCase()
+      const isMoneyIn =
+        s.includes('paid') ||
+        s.includes('approved') ||
+        s.includes('user_not_found') // dinheiro caiu, usuário não encontrado
+      if (!isMoneyIn) continue
+      if (s.includes('unrecognized_product')) continue
+      const v = toReais(p.value)
+      if (v != null && v > 0) {
+        total_revenue += v
+        total_paid_count += 1
+      }
+    }
+    // arredonda para 2 casas (evita 25.00000001)
+    total_revenue = Math.round(total_revenue * 100) / 100
 
     return json(200, {
       total_users,
@@ -161,6 +198,8 @@ export const handler = async (event) => {
       total_credits,
       users_with_credits,
       users_without_credits: total_users - users_with_credits,
+      total_revenue,
+      total_paid_count,
       recent_payments,
     })
   }
@@ -263,6 +302,73 @@ export const handler = async (event) => {
       previous_credits: current_credits,
       new_credits,
       change,
+    })
+  }
+
+  // ── POST /payments/:id/link  — vincular pagamento órfão a um USER_ID ──────
+  const linkMatch = path.match(/^\/payments\/([^/]+)\/link$/)
+  if (method === 'POST' && linkMatch) {
+    const paymentId = linkMatch[1]
+    let body = {}
+    try { body = JSON.parse(event.body || '{}') } catch { body = {} }
+    const targetUserId = (body.user_id || '').toString().trim()
+    if (!targetUserId) return json(400, { detail: 'Informe user_id' })
+
+    const payments = await sbSelect('payments', { select: '*', id: `eq.${paymentId}` })
+    if (!payments?.length) return json(404, { detail: 'Pagamento não encontrado' })
+    const payment = payments[0]
+
+    const users = await sbSelect('users', { select: '*', id: `eq.${targetUserId}` })
+    if (!users?.length) return json(404, { detail: 'Usuário não encontrado' })
+    const target = users[0]
+
+    // Já vinculado a este usuário → ok idempotente
+    if (payment.user_id === targetUserId && !(payment.status || '').includes('user_not_found')) {
+      return json(200, { ok: true, already_linked: true, user_id: targetUserId })
+    }
+
+    const PLAN_CREDITS = { easy: 200, medium: 565, premium: 1500 }
+    const productClean = String(payment.product || '').split('|||')[0].trim()
+    const hay = productClean.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    let tier = null
+    if (hay.includes('premium')) tier = 'premium'
+    else if (/\bpro\b|\bmedium\b|\bmedio\b/.test(hay)) tier = 'medium'
+    else if (hay.includes('easy')) tier = 'easy'
+
+    const creditsToAdd = tier ? PLAN_CREDITS[tier] : 0
+    const grantCredits = body.grant_credits !== false && creditsToAdd > 0
+      && (payment.status || '').includes('user_not_found')
+
+    let newCredits = target.credits || 0
+    if (grantCredits) {
+      newCredits = newCredits + creditsToAdd
+      await sbUpdate('users', 'id', targetUserId, {
+        credits: newCredits,
+        plan: tier || target.plan || 'free',
+        first_upgrade_purchased: true,
+      })
+      await sbInsert('credit_history', {
+        id: crypto.randomUUID(),
+        user_id: targetUserId,
+        type: 'purchase',
+        credits: creditsToAdd,
+        description: `ADM vinculou pagamento ${payment.kiwify_transaction_id || paymentId}: ${productClean}`,
+        created_at: new Date().toISOString(),
+      }).catch(() => {})
+    }
+
+    await sbUpdate('payments', 'id', paymentId, {
+      user_id: targetUserId,
+      product: productClean || payment.product,
+      status: 'paid',
+    })
+
+    return json(200, {
+      ok: true,
+      user_id: targetUserId,
+      credits_added: grantCredits ? creditsToAdd : 0,
+      new_credits: newCredits,
+      plan: tier || target.plan,
     })
   }
 

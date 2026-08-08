@@ -162,6 +162,15 @@ function OverviewPage() {
     }
   }
 
+  // Vincula pagamento órfão (PAID_USER_NOT_FOUND) a um USER_ID e libera créditos
+  const linkPayment = async (paymentId, userId) => {
+    await adminFetch(`/payments/${paymentId}/link`, {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId, grant_credits: true }),
+    })
+    await load(true)
+  }
+
   const handleCreditsUpdated = (userId, newCredits) => {
     if (modalUser?.id === userId) {
       setModalUser(mu => ({ ...mu, credits: newCredits }))
@@ -176,6 +185,7 @@ function OverviewPage() {
   const {
     total_users, total_admins, total_credits,
     users_with_credits, users_without_credits,
+    total_revenue, total_paid_count,
     recent_payments,
   } = stats || {}
 
@@ -192,6 +202,17 @@ function OverviewPage() {
 
       {/* Stat cards */}
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+        <StatCard
+          label="Total de Vendas"
+          value={
+            total_revenue != null
+              ? Number(total_revenue).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+              : '—'
+          }
+          icon="💰"
+          accent="#4caf50"
+        />
+        <StatCard label="Pagamentos"            value={total_paid_count ?? '—'}    icon="🧾" accent="#4caf50" />
         <StatCard label="Total de Usuários"     value={total_users ?? '—'}         icon="👤" />
         <StatCard label="Administradores"        value={total_admins ?? '—'}        icon="🛡" accent="#ff6a00" />
         <StatCard label="Total de Créditos"      value={(total_credits ?? 0).toLocaleString('pt-BR')} icon="⚡" accent="#ffd600" />
@@ -206,6 +227,7 @@ function OverviewPage() {
             payments={recent_payments}
             onOpenUser={openUserCredits}
             openingUser={modalLoading}
+            onLinkPayment={linkPayment}
           />
         ) : (
           <Empty msg="Nenhum pagamento registrado ainda" />
@@ -752,23 +774,58 @@ function paymentStatusMeta(status = '') {
   return { label: status || '—', color: '#888', hint: null }
 }
 
+function cleanProductLabel(product = '') {
+  return String(product || '').split('|||')[0].trim() || '—'
+}
+
+function buyerEmailFromProduct(product = '') {
+  const m = String(product || '').match(/\|\|\|buyer:([^\s|]+)/i)
+  return m ? m[1].trim().toLowerCase() : null
+}
+
 // ─── Payments table ───────────────────────────────────────────────────────────
-function PaymentsTable({ payments, onOpenUser, openingUser }) {
+function PaymentsTable({ payments, onOpenUser, openingUser, onLinkPayment }) {
+  const [linkingId, setLinkingId] = useState(null)
+  const [linkUserId, setLinkUserId] = useState('')
+  const [linkBusy, setLinkBusy] = useState(false)
+  const [linkError, setLinkError] = useState(null)
+
+  const submitLink = async (paymentId) => {
+    if (!linkUserId.trim()) {
+      setLinkError('Informe o USER_ID')
+      return
+    }
+    setLinkBusy(true)
+    setLinkError(null)
+    try {
+      await onLinkPayment?.(paymentId, linkUserId.trim())
+      setLinkingId(null)
+      setLinkUserId('')
+    } catch (e) {
+      setLinkError(e.message || 'Falha ao vincular')
+    } finally {
+      setLinkBusy(false)
+    }
+  }
+
   return (
     <div style={{ background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden', overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 800 }}>
         <thead>
           <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--line)' }}>
-            {['Nome', 'E-mail', 'Produto', 'Valor', 'Créditos', 'Status', 'Data'].map(h => (
+            {['Nome', 'E-mail', 'Produto', 'Valor', 'Créditos', 'Status', 'Data', 'Ação'].map(h => (
               <Th key={h}>{h}</Th>
             ))}
           </tr>
         </thead>
         <tbody>
           {payments.map((p, i) => {
-            const credits = creditsFromProduct(p.product)
+            const productLabel = cleanProductLabel(p.product)
+            const buyerEmail = buyerEmailFromProduct(p.product)
+            const credits = creditsFromProduct(productLabel)
             const statusMeta = paymentStatusMeta(p.status)
             const hasUser = Boolean(p.user_id)
+            const needsLink = (p.status || '').toLowerCase().includes('user_not_found')
             return (
               <tr key={p.id || i} style={{ borderBottom: i < payments.length - 1 ? '1px solid var(--line)' : 'none' }}>
                 <Td>
@@ -779,35 +836,26 @@ function PaymentsTable({ payments, onOpenUser, openingUser }) {
                       disabled={openingUser}
                       title="Abrir créditos deste usuário (via USER_ID)"
                       style={{
-                        background: 'none',
-                        border: 'none',
-                        padding: 0,
-                        margin: 0,
+                        background: 'none', border: 'none', padding: 0, margin: 0,
                         cursor: openingUser ? 'wait' : 'pointer',
-                        fontFamily: 'var(--font-body)',
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: '#ff6a00',
-                        textDecoration: 'underline',
-                        textUnderlineOffset: 2,
+                        fontFamily: 'var(--font-body)', fontSize: 13, fontWeight: 600,
+                        color: '#ff6a00', textDecoration: 'underline', textUnderlineOffset: 2,
                       }}
                     >
                       {p.user_name || 'Usuário'}
                     </button>
                   ) : (
-                    <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--text-dim)' }}>
-                      —
-                    </span>
+                    <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--text-dim)' }}>—</span>
                   )}
                 </Td>
                 <Td>
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-secondary)' }}>
-                    {p.user_email || '—'}
+                    {p.user_email || buyerEmail || '—'}
                   </span>
                 </Td>
                 <Td>
                   <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--text)' }}>
-                    {p.product || '—'}
+                    {productLabel}
                   </span>
                 </Td>
                 <Td>
@@ -817,10 +865,7 @@ function PaymentsTable({ payments, onOpenUser, openingUser }) {
                 </Td>
                 <Td>
                   {credits !== null ? (
-                    <span style={{
-                      fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 700,
-                      color: '#ffd600',
-                    }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 700, color: '#ffd600' }}>
                       ⚡ {credits.toLocaleString('pt-BR')}
                     </span>
                   ) : (
@@ -841,6 +886,59 @@ function PaymentsTable({ payments, onOpenUser, openingUser }) {
                         })
                       : '—'}
                   </span>
+                </Td>
+                <Td>
+                  {needsLink ? (
+                    linkingId === p.id ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 180 }}>
+                        <input
+                          value={linkUserId}
+                          onChange={e => setLinkUserId(e.target.value)}
+                          placeholder="USER_ID do usuário"
+                          style={{
+                            fontFamily: 'var(--font-mono)', fontSize: 11,
+                            padding: '4px 6px', borderRadius: 4,
+                            border: '1px solid var(--line)', background: 'var(--bg)', color: 'var(--text)',
+                          }}
+                        />
+                        {linkError && <span style={{ color: '#e05050', fontSize: 10 }}>{linkError}</span>}
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <button
+                            type="button"
+                            disabled={linkBusy}
+                            onClick={() => submitLink(p.id)}
+                            style={{
+                              ...btnStyle({ variant: 'primary', size: 'sm' }),
+                              fontSize: 11, padding: '3px 8px',
+                            }}
+                          >
+                            {linkBusy ? '…' : 'Vincular'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={linkBusy}
+                            onClick={() => { setLinkingId(null); setLinkError(null); setLinkUserId('') }}
+                            style={{ ...btnStyle({ variant: 'ghost', size: 'sm' }), fontSize: 11, padding: '3px 8px' }}
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => { setLinkingId(p.id); setLinkUserId(''); setLinkError(null) }}
+                        style={{
+                          ...btnStyle({ variant: 'ghost', size: 'sm' }),
+                          fontSize: 11, color: '#ff6a00', borderColor: '#ff6a00',
+                        }}
+                      >
+                        Vincular
+                      </button>
+                    )
+                  ) : (
+                    <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>—</span>
+                  )}
                 </Td>
               </tr>
             )

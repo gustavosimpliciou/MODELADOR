@@ -98,6 +98,8 @@ export const useStore = create((set, get) => ({
 
   // Opens the real Kiwify checkout in a new tab (payment happens on Kiwify;
   // credits/plan are only granted once the /api/webhook/kiwify call lands).
+  // Envia user_id em `src` (TrackingParameters) para o webhook vincular mesmo
+  // se o e-mail no checkout for diferente do cadastrado.
   goToCheckout: (checkoutUrl) => {
     const s = get()
     if (!checkoutUrl) return
@@ -105,6 +107,11 @@ export const useStore = create((set, get) => ({
       const url = new URL(checkoutUrl)
       if (s.user?.email) url.searchParams.set('email', s.user.email)
       if (s.user?.name) url.searchParams.set('name', s.user.name)
+      // user_id no parâmetro de tracking da Kiwify (volta no webhook)
+      if (s.user?.id) {
+        url.searchParams.set('src', s.user.id)
+        url.searchParams.set('sck', s.user.id)
+      }
       window.open(url.toString(), '_blank', 'noopener,noreferrer')
     } catch (e) {
       window.open(checkoutUrl, '_blank', 'noopener,noreferrer')
