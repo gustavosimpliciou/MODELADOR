@@ -706,7 +706,15 @@ export function SmartAutoCutPanel() {
                       <span>Alto</span>
                     </div>
                     <p className="text-[7px] font-mono text-muted-foreground/45 leading-tight">
+<<<<<<< HEAD
                       Contorno suavizado + micro-fillet nas bordas. Seleção intacta. 0 = OFF.
+=======
+<<<<<<< HEAD
+                      Contorno suavizado + micro-fillet nas bordas. Seleção intacta. 0 = OFF.
+=======
+                      Acabamento sutil só nas bordas do corte. Não altera forma nem encaixes.
+>>>>>>> dac8c4e552b506c127fc93d52c269da72dffa681
+>>>>>>> 742d4b244f3cd2cb134df30923ba6176fd21188a
                     </p>
                   </div>
                 </div>
