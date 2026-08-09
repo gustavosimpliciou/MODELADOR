@@ -80,9 +80,11 @@ export function EncaixeGizmo() {
 
   const visible = !!preview && !!modelMesh
 
+  // Direção do pino: sai da peça ativa ao longo da normal (+). O furo no modo
+  // fêmea desce para dentro da peça ativa (−).
   const dirLocal = useMemo(
     () => preview
-      ? new THREE.Vector3(...preview.normal).multiplyScalar(preview.inverted ? -1 : 1).normalize()
+      ? new THREE.Vector3(...preview.normal).normalize()
       : new THREE.Vector3(0, 0, 1),
     [preview],
   )
@@ -125,8 +127,11 @@ export function EncaixeGizmo() {
       const ray = getWorldRay(e.nativeEvent.clientX, e.nativeEvent.clientY)
       const groupWorld = groupRef.current?.matrixWorld.clone() ?? new THREE.Matrix4()
       const inv = groupWorld.clone().invert()
-      const dirLocal = new THREE.Vector3(...p.normal).multiplyScalar(p.inverted ? -1 : 1).normalize()
-      const axisWorld = dirLocal.clone().transformDirection(groupWorld)
+      const dirLocal = new THREE.Vector3(...p.normal).normalize()
+      // O arrasto de altura acompanha o sentido da peça: no modo fêmea o furo
+      // desce para dentro da peça ativa (eixo invertido).
+      const dragDir = p.mode === 'female' ? dirLocal.clone().negate() : dirLocal
+      const axisWorld = dragDir.clone().transformDirection(groupWorld)
       const centerWorld = new THREE.Vector3(...p.center).applyMatrix4(groupWorld)
 
       // Plano de arrasto:
@@ -230,14 +235,22 @@ export function EncaixeGizmo() {
   if (!visible) return null
 
   const s = handleScaleRef.current
-  const { radius, height, tolerance, maxRadius, maxHeight } = preview!
+  const { radius, height, tolerance, maxRadius, maxHeight, mode } = preview!
   const femaleDepth = Math.min(height + tolerance + 1, maxHeight + tolerance + 1)
   const atLimit = radius >= maxRadius * 0.98
   const quatY = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dirLocal)
   const quatZ = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), dirLocal)
 
+  // No modo fêmea o furo desce para dentro da peça ativa (sentido oposto ao pino);
+  // no modo ambos ele é cavado no complemento (mesmo sentido do pino).
+  const showMale = mode !== 'female'
+  const showFemale = mode !== 'male'
+  const femaleDir = mode === 'female' ? dirLocal.clone().negate() : dirLocal
+  const quatFemaleY = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), femaleDir)
+
   const radiusKnob = center.clone().addScaledVector(u, radius)
-  const heightKnob = center.clone().addScaledVector(dirLocal, height)
+  const heightDir = mode === 'female' ? femaleDir : dirLocal
+  const heightKnob = center.clone().addScaledVector(heightDir, height)
 
   return (
     <group
@@ -247,19 +260,23 @@ export function EncaixeGizmo() {
       scale={modelMesh!.scale.toArray()}
     >
       {/* ── Preview do MACHO (boss integrado) ─────────────────────────────── */}
-      <mesh position={center.clone().addScaledVector(dirLocal, height / 2).toArray()} quaternion={quatY.toArray() as [number, number, number, number]} renderOrder={5}>
-        <cylinderGeometry args={[radius, radius, height, CYL_SEG, 1, true]} />
-        <meshBasicMaterial color={COL.male} transparent opacity={0.72} side={THREE.DoubleSide} depthWrite={false} depthTest={false} />
-      </mesh>
+      {showMale ? (
+        <mesh position={center.clone().addScaledVector(dirLocal, height / 2).toArray()} quaternion={quatY.toArray() as [number, number, number, number]} renderOrder={5}>
+          <cylinderGeometry args={[radius, radius, height, CYL_SEG, 1, true]} />
+          <meshBasicMaterial color={COL.male} transparent opacity={0.72} side={THREE.DoubleSide} depthWrite={false} depthTest={false} />
+        </mesh>
+      ) : null}
 
       {/* ── Preview da FÊMEA (cavidade) ───────────────────────────────────── */}
-      <mesh position={center.clone().addScaledVector(dirLocal, femaleDepth / 2).toArray()} quaternion={quatY.toArray() as [number, number, number, number]} renderOrder={6}>
-        <cylinderGeometry args={[radius + tolerance, radius + tolerance, femaleDepth, CYL_SEG, 1, true]} />
-        <meshBasicMaterial color={COL.female} transparent opacity={0.55} side={THREE.DoubleSide} depthWrite={false} depthTest={false} />
-      </mesh>
+      {showFemale ? (
+        <mesh position={center.clone().addScaledVector(femaleDir, femaleDepth / 2).toArray()} quaternion={quatFemaleY.toArray() as [number, number, number, number]} renderOrder={6}>
+          <cylinderGeometry args={[radius + tolerance, radius + tolerance, femaleDepth, CYL_SEG, 1, true]} />
+          <meshBasicMaterial color={COL.female} transparent opacity={0.55} side={THREE.DoubleSide} depthWrite={false} depthTest={false} />
+        </mesh>
+      ) : null}
 
       {/* ── Eixo ──────────────────────────────────────────────────────────── */}
-      <mesh position={center.clone().addScaledVector(dirLocal, height / 2).toArray()} quaternion={quatY.toArray() as [number, number, number, number]} renderOrder={7}>
+      <mesh position={center.clone().addScaledVector(heightDir, height / 2).toArray()} quaternion={heightDir === dirLocal ? quatY.toArray() as [number, number, number, number] : quatFemaleY.toArray() as [number, number, number, number]} renderOrder={7}>
         <cylinderGeometry args={[s * 0.06, s * 0.06, height, 6, 1, true]} />
         <meshBasicMaterial color={COL.axis} transparent opacity={0.85} depthWrite={false} depthTest={false} />
       </mesh>
@@ -290,16 +307,20 @@ export function EncaixeGizmo() {
       </mesh>
 
       {/* ── Anel da boca da FÊMEA (contorno sólido) ───────────────────────── */}
-      <mesh position={center.toArray()} quaternion={quatZ.toArray() as [number, number, number, number]} renderOrder={10}>
-        <ringGeometry args={[radius + tolerance - s * 0.035, radius + tolerance + s * 0.035, CYL_SEG]} />
-        <meshBasicMaterial color={COL.femaleBright} transparent opacity={1} side={THREE.DoubleSide} depthWrite={false} depthTest={false} />
-      </mesh>
+      {showFemale ? (
+        <mesh position={center.toArray()} quaternion={quatZ.toArray() as [number, number, number, number]} renderOrder={10}>
+          <ringGeometry args={[radius + tolerance - s * 0.035, radius + tolerance + s * 0.035, CYL_SEG]} />
+          <meshBasicMaterial color={COL.femaleBright} transparent opacity={1} side={THREE.DoubleSide} depthWrite={false} depthTest={false} />
+        </mesh>
+      ) : null}
 
       {/* ── Anel do topo do MACHO (mostra a altura) ───────────────────────── */}
-      <mesh position={center.clone().addScaledVector(dirLocal, height).toArray()} quaternion={quatZ.toArray() as [number, number, number, number]} renderOrder={10}>
-        <ringGeometry args={[radius - s * 0.045, radius + s * 0.045, CYL_SEG]} />
-        <meshBasicMaterial color={COL.maleBright} transparent opacity={1} side={THREE.DoubleSide} depthWrite={false} depthTest={false} />
-      </mesh>
+      {showMale ? (
+        <mesh position={center.clone().addScaledVector(heightDir, height).toArray()} quaternion={quatZ.toArray() as [number, number, number, number]} renderOrder={10}>
+          <ringGeometry args={[radius - s * 0.045, radius + s * 0.045, CYL_SEG]} />
+          <meshBasicMaterial color={COL.maleBright} transparent opacity={1} side={THREE.DoubleSide} depthWrite={false} depthTest={false} />
+        </mesh>
+      ) : null}
 
       {/* ── Handles ───────────────────────────────────────────────────────── */}
       <mesh

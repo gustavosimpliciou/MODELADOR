@@ -21,7 +21,16 @@
 import * as THREE from 'three'
 import { Evaluator, Brush, ADDITION as UNION, SUBTRACTION } from 'three-bvh-csg'
 import { analyzeSelection } from './smart-autocut'
-import type { CutPart } from './store'
+
+/** O que gerar: pino (macho), furo (fêmea) ou os dois integrados. */
+export type EncaixeMode = 'male' | 'female' | 'both'
+
+/** Uma peça candidata a complemento do encaixe (Part ou CutPart). */
+export interface EncaixePart {
+  id: string
+  name: string
+  mesh: THREE.Mesh
+}
 
 // ─── Tipos públicos ────────────────────────────────────────────────────────────
 
@@ -49,11 +58,11 @@ export interface EncaixeLimits {
 
 /** Parâmetros finais para gerar as geometrias. */
 export interface EncaixeApplyParams {
-  /** Centro do encaixe (espaço local das peças). */
+  /** Centro do encaixe, no frame local da `sourceMesh` (peça ativa). */
   center: THREE.Vector3
   /**
-   * Direção do eixo APONTANDO da peça macho → peça fêmea. Macho e
-   * cavidade da fêmea se estendem ao longo dela a partir do plano.
+   * Direção do eixo APONTANDO da peça macho → peça fêmea (no frame da
+   * `sourceMesh`). O macho e a cavidade da fêmea se estendem ao longo dela.
    */
   direction: THREE.Vector3
   /** Raio do macho (mm). */
@@ -62,17 +71,21 @@ export interface EncaixeApplyParams {
   height: number
   /** Folga radial da cavidade da fêmea (mm). */
   tolerance: number
-  /** Malha da peça que recebe o MACHO (integrado por união). */
+  /** O que gerar: pino, furo ou ambos. */
+  mode: EncaixeMode
+  /** Malha cujo frame local expressa `center`/`direction` (a peça ativa). */
+  sourceMesh: THREE.Mesh
+  /** Malha que recebe o MACHO (união). Só usada nos modos male/both. */
   maleMesh: THREE.Mesh
-  /** Malha da peça que recebe a FÊMEA (cavidade por subtração). */
+  /** Malha que recebe a FÊMEA (subtração). Só usada nos modos female/both. */
   femaleMesh: THREE.Mesh
 }
 
 export interface EncaixeResult {
-  /** Geometria da peça com o macho integrado. */
-  maleGeo: THREE.BufferGeometry
-  /** Geometria da peça com a cavidade fêmea integrada. */
-  femaleGeo: THREE.BufferGeometry
+  /** Geometria da peça com o macho integrado (null nos modos que não o geram). */
+  maleGeo: THREE.BufferGeometry | null
+  /** Geometria da peça com a cavidade fêmea integrada (null quando não gerada). */
+  femaleGeo: THREE.BufferGeometry | null
   /** Profundidade efetiva da cavidade (≤ espessura da peça). */
   femaleDepth: number
 }
@@ -91,7 +104,7 @@ const FEMALE_WALL_MM = 0.5
 export function analyzeEncaixe(
   geometry: THREE.BufferGeometry,
   selectedFaces: Set<number>,
-  cutParts: CutPart[],
+  parts: EncaixePart[],
 ): EncaixeLimits | null {
   if (!selectedFaces || selectedFaces.size === 0) return null
 
@@ -110,11 +123,12 @@ export function analyzeEncaixe(
   const maxRadius = Math.min(ana.halfU, ana.halfV) * 0.95
   if (maxRadius < RADIUS_MM_MIN) return null
 
-  // Complemento: peça cortada no lado da normal e mais próxima do centro
+  // Complemento: peça cortada no lado da normal e mais próxima do centro.
+  // A própria peça ativa fica no lado negativo (penalizada).
   let complementIndex = -1
   let bestDist = Infinity
-  for (let i = 0; i < cutParts.length; i++) {
-    const geo = cutParts[i].mesh.geometry
+  for (let i = 0; i < parts.length; i++) {
+    const geo = parts[i].mesh.geometry
     if (!geo.boundingBox) geo.computeBoundingBox()
     const bbCenter = new THREE.Vector3()
     geo.boundingBox!.getCenter(bbCenter)
@@ -131,7 +145,7 @@ export function analyzeEncaixe(
   // Mantém a folga generosa para o usuário ajustar (apenas a parede de segurança).
   let maxHeight = HEIGHT_MAX
   if (complementIndex >= 0) {
-    const thickness = measureThickness(cutParts[complementIndex].mesh, center, normal)
+    const thickness = measureThickness(parts[complementIndex].mesh, center, normal)
     if (thickness > 0) {
       maxHeight = Math.min(HEIGHT_MAX, thickness - FEMALE_WALL_MM)
     }
@@ -146,38 +160,75 @@ export function analyzeEncaixe(
     maxRadius,
     maxHeight,
     complementIndex,
-    complementName: complementIndex >= 0 ? cutParts[complementIndex].name : '',
+    complementName: complementIndex >= 0 ? parts[complementIndex].name : '',
   }
 }
 
 // ─── Aplicação (CSG) ───────────────────────────────────────────────────────────
 
 /**
- * Gera as geometrias definitivas:
- *  - macho  = UNIÃO da peça com um cilindro (boss integrado);
- *  - fêmea  = SUBTRAÇÃO da peça com um cilindro maior (cavidade).
+ * Gera as geometrias definitivas conforme o `mode`:
+ *  - 'male'   → macho  = UNIÃO da peça com um cilindro (pino integrado);
+ *  - 'female' → fêmea  = SUBTRAÇÃO da peça com um cilindro maior (furo);
+ *  - 'both'   → macho na peça ativa + fêmea no complemento.
+ *
+ * `center`/`direction` estão no frame da `sourceMesh` (peça ativa). Cada
+ * operação é executada no frame local da malha alvo (conversão automática),
+ * então o encaixe alinha mesmo quando as peças estão deslocadas entre si.
  * Pode lançar — envolva em try/catch no chamador.
  */
 export function applyEncaixe(params: EncaixeApplyParams): EncaixeResult {
-  const { center, direction, radius, height, tolerance, maleMesh, femaleMesh } = params
+  const { center, direction, radius, height, tolerance, mode, sourceMesh, maleMesh, femaleMesh } = params
 
-  const maleBrush = makeCylinderBrush(radius, height, center, direction)
-  const femaleDepth = computeFemaleDepth(femaleMesh, center, direction, height, tolerance)
-  const femaleBrush = makeCylinderBrush(radius + tolerance, femaleDepth, center, direction)
+  let maleGeo: THREE.BufferGeometry | null = null
+  let femaleGeo: THREE.BufferGeometry | null = null
+  let femaleDepth = 0
 
-  const maleGeo = csgUnion(maleMesh.geometry, maleBrush)
-  const femaleGeo = csgSubtract(femaleMesh.geometry, femaleBrush)
+  if (mode === 'male' || mode === 'both') {
+    const f = toTargetFrame(maleMesh, sourceMesh, center, direction)
+    const brush = makeCylinderBrush(radius, height, f.center, f.direction)
+    maleGeo = csgUnion(maleMesh.geometry, brush)
+    disposeBrush(brush)
+  }
 
-  disposeBrush(maleBrush)
-  disposeBrush(femaleBrush)
+  if (mode === 'female' || mode === 'both') {
+    const f = toTargetFrame(femaleMesh, sourceMesh, center, direction)
+    femaleDepth = computeFemaleDepth(femaleMesh, f.center, f.direction, height, tolerance)
+    const brush = makeCylinderBrush(radius + tolerance, femaleDepth, f.center, f.direction)
+    femaleGeo = csgSubtract(femaleMesh.geometry, brush)
+    disposeBrush(brush)
+  }
 
   for (const g of [maleGeo, femaleGeo]) {
+    if (!g) continue
     g.computeVertexNormals()
     g.computeBoundingBox()
     g.computeBoundingSphere()
   }
 
   return { maleGeo, femaleGeo, femaleDepth }
+}
+
+/**
+ * Converte `center`/`direction` do frame da `source` para o frame da `target`.
+ * Quando `target === source` (mesma malha) não há conversão.
+ */
+function toTargetFrame(
+  target: THREE.Mesh,
+  source: THREE.Mesh,
+  center: THREE.Vector3,
+  direction: THREE.Vector3,
+): { center: THREE.Vector3; direction: THREE.Vector3 } {
+  if (target === source) {
+    return { center: center.clone(), direction: direction.clone().normalize() }
+  }
+  const srcM = new THREE.Matrix4().compose(source.position, source.quaternion, source.scale)
+  const tgtM = new THREE.Matrix4().compose(target.position, target.quaternion, target.scale)
+  const invTgt = tgtM.clone().invert()
+  return {
+    center: center.clone().applyMatrix4(srcM).applyMatrix4(invTgt),
+    direction: direction.clone().transformDirection(srcM).transformDirection(invTgt).normalize(),
+  }
 }
 
 /** Cilindro com base no plano da costura (local) estendendo ao longo de `dir`. */
@@ -199,7 +250,7 @@ function makeCylinderBrush(
 function csgUnion(a: THREE.BufferGeometry, b: Brush): THREE.BufferGeometry {
   const ev = new Evaluator()
   ev.attributes = ['position', 'normal']
-  const ba = new Brush(a.clone())
+  const ba = new Brush(ensureNormals(a.clone()))
   ba.updateMatrixWorld()
   return ev.evaluate(ba, b, UNION).geometry
 }
@@ -207,9 +258,22 @@ function csgUnion(a: THREE.BufferGeometry, b: Brush): THREE.BufferGeometry {
 function csgSubtract(a: THREE.BufferGeometry, b: Brush): THREE.BufferGeometry {
   const ev = new Evaluator()
   ev.attributes = ['position', 'normal']
-  const ba = new Brush(a.clone())
+  const ba = new Brush(ensureNormals(a.clone()))
   ba.updateMatrixWorld()
   return ev.evaluate(ba, b, SUBTRACTION).geometry
+}
+
+/**
+ * O three-bvh-csg exige atributo `normal` na geometria de entrada; sem ele,
+ * o Evaluator lança "Cannot read properties of undefined". Garante o atributo
+ * antes do CSG (necessário para malhas de corte que não tenham normais).
+ */
+function ensureNormals(geo: THREE.BufferGeometry): THREE.BufferGeometry {
+  if (!geo.getAttribute('normal')) {
+    if (!geo.boundingBox) geo.computeBoundingBox()
+    geo.computeVertexNormals()
+  }
+  return geo
 }
 
 function disposeBrush(b: Brush): void {
@@ -235,8 +299,8 @@ function computeFemaleDepth(
 
 /**
  * Mede a espessura da peça ao longo de `dir` a partir do centro do encaixe.
- * O centro/normal estão no espaço local da peça ativa; aqui são convertidos
- * para o frame da malha alvo (geralmente o mesmo frame das peças do corte).
+ * O centro/dir estão no frame local da própria `mesh`; o frame é derivado de
+ * position/quaternion/scale (robusto mesmo para malhas fora da cena).
  */
 export function measureThickness(
   mesh: THREE.Mesh,
@@ -244,7 +308,7 @@ export function measureThickness(
   dir: THREE.Vector3,
 ): number {
   try {
-    const inv = new THREE.Matrix4().copy(mesh.matrixWorld).invert()
+    const inv = new THREE.Matrix4().compose(mesh.position, mesh.quaternion, mesh.scale).invert()
     const origin = center.clone().applyMatrix4(inv)
     const axis = dir.clone().transformDirection(inv).normalize()
 

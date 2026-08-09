@@ -9,7 +9,7 @@
  */
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { Box, AlertTriangle, Loader2, X, GripHorizontal, ArrowLeftRight } from 'lucide-react'
+import { Box, AlertTriangle, Loader2, X, GripHorizontal } from 'lucide-react'
 import * as THREE from 'three'
 import { useAppStore } from '@/lib/store'
 import { analyzeEncaixe, applyEncaixe } from '@/lib/encaixe'
@@ -89,8 +89,9 @@ export function EncaixePanel() {
     encaixeOpen, setEncaixeOpen,
     encaixePreview, setEncaixePreview, patchEncaixePreview,
     modelMesh, selectedFaceIndices, selectionState,
-    cutParts, setCutParts,
-    setModelMesh, setStatus, pushHistory, clearSelection,
+    parts, cutParts, setCutParts,
+    setModelMesh, setActivePartId,
+    setStatus, pushHistory, clearSelection,
   } = useAppStore()
 
   const visible = encaixeOpen && !!modelMesh
@@ -100,17 +101,17 @@ export function EncaixePanel() {
   const limits = useMemo(() => {
     if (!visible || !modelMesh || !hasSelection) return null
     try {
-      return analyzeEncaixe(modelMesh.geometry as THREE.BufferGeometry, selectedFaceIndices, cutParts)
+      return analyzeEncaixe(modelMesh.geometry as THREE.BufferGeometry, selectedFaceIndices, parts)
     } catch {
       return null
     }
-  }, [visible, modelMesh, selectedFaceIndices, cutParts, hasSelection])
+  }, [visible, modelMesh, selectedFaceIndices, parts, hasSelection])
 
   // Inicializa (ou reinicializa) o preview quando abre / troca de seleção.
   // Mantém os ajustes do usuário enquanto a seleção não muda.
   const lastKeyRef = useRef('')
   useEffect(() => {
-    if (!visible || !limits || limits.complementIndex < 0) {
+    if (!visible || !limits) {
       setEncaixePreview(null)
       return
     }
@@ -135,6 +136,8 @@ export function EncaixePanel() {
       maxHeight: limits.maxHeight,
       complementIndex: limits.complementIndex,
       complementName: limits.complementName,
+      // Sem complemento (peça sem corte), o padrão é gerar um pino na peça.
+      mode: limits.complementIndex >= 0 ? 'both' : 'male',
       inverted: false,
     })
   }, [visible, limits, encaixePreview, setEncaixePreview])
@@ -144,9 +147,18 @@ export function EncaixePanel() {
 
   const handleApply = useCallback(() => {
     const p = encaixePreview
-    if (!modelMesh || !p || p.complementIndex < 0) return
-    const compPart = cutParts[p.complementIndex]
-    if (!compPart) return
+    if (!modelMesh || !p) return
+    if (p.mode === 'both' && (p.complementIndex < 0 || !parts[p.complementIndex])) {
+      setStatus('error', t.encaixe_error)
+      return
+    }
+
+    const mode = p.mode
+    const activeMesh = modelMesh
+
+    // Direção: pino sai da peça ativa (+normal); furo entra na peça ativa (−normal).
+    const normal = new THREE.Vector3(...p.normal).normalize()
+    const direction = mode === 'female' ? normal.clone().negate() : normal
 
     const myVersion = ++computeRef.current
     setBusy(true)
@@ -157,32 +169,47 @@ export function EncaixePanel() {
       try {
         pushHistory()
 
-        const direction = new THREE.Vector3(...p.normal)
-          .normalize()
-          .multiplyScalar(p.inverted ? -1 : 1)
+        // Resolve as malhas alvo por modo.
+        let maleMesh: THREE.Mesh | null = null
+        let femaleMesh: THREE.Mesh | null = null
+        let compPart: { id: string; name: string; mesh: THREE.Mesh } | null = null
 
-        // Macho = união na peça ativa; Fêmea = cavidade no complemento.
-        const maleMesh = p.inverted ? compPart.mesh : modelMesh
-        const femaleMesh = p.inverted ? modelMesh : compPart.mesh
+        if (mode === 'both') {
+          compPart = parts[p.complementIndex]
+          maleMesh = activeMesh
+          femaleMesh = compPart.mesh
+        } else if (mode === 'male') {
+          maleMesh = activeMesh
+        } else {
+          femaleMesh = activeMesh
+        }
 
-        const { maleGeo, femaleGeo } = applyEncaixe({
+        const result = applyEncaixe({
           center: new THREE.Vector3(...p.center),
           direction,
           radius: p.radius,
           height: p.height,
           tolerance: p.tolerance,
-          maleMesh,
-          femaleMesh,
+          mode,
+          sourceMesh: activeMesh,
+          maleMesh: maleMesh ?? activeMesh,
+          femaleMesh: femaleMesh ?? activeMesh,
         })
 
-        const newMaleMesh = cloneMeshTransform(maleMesh, maleGeo)
-        const newFemaleMesh = cloneMeshTransform(femaleMesh, femaleGeo)
-
-        // Atualiza a parte ativa (modelMesh) e sincroniza o complemento.
-        const activeMesh = p.inverted ? newFemaleMesh : newMaleMesh
-        const compMesh = p.inverted ? newMaleMesh : newFemaleMesh
-        setModelMesh(activeMesh)
-        setCutParts(cutParts.map((cp) => (cp.id === compPart.id ? { ...cp, mesh: compMesh } : cp)))
+        if (mode === 'both') {
+          if (!result.maleGeo || !result.femaleGeo || !compPart) throw new Error('encaixe vazio')
+          // setModelMesh sincroniza a peça ativa em parts; setCutParts
+          // sincroniza a malha do complemento em parts.
+          const newActive = cloneMeshTransform(activeMesh, result.maleGeo)
+          const newComp = cloneMeshTransform(compPart.mesh, result.femaleGeo)
+          setModelMesh(newActive)
+          setCutParts(cutParts.map((cp) => (cp.id === compPart.id ? { ...cp, mesh: newComp } : cp)))
+          setActivePartId(null) // sai do isolamento e mostra as duas peças
+        } else {
+          const geo = mode === 'male' ? result.maleGeo : result.femaleGeo
+          if (!geo) throw new Error('encaixe vazio')
+          setModelMesh(cloneMeshTransform(activeMesh, geo))
+        }
 
         clearSelection()
         setEncaixePreview(null)
@@ -196,16 +223,16 @@ export function EncaixePanel() {
       }
     }, 60)
   }, [
-    encaixePreview, modelMesh, cutParts,
-    pushHistory, setModelMesh, setCutParts,
+    encaixePreview, modelMesh, parts, cutParts,
+    pushHistory, setModelMesh, setActivePartId, setCutParts,
     setStatus, clearSelection, setEncaixePreview, setEncaixeOpen, t,
   ])
 
   if (!visible) return null
 
   const p = encaixePreview
-  const canApply = !!p && p.complementIndex >= 0
-  const needsCut = hasSelection && !!limits && limits.complementIndex < 0
+  const canApply = !!p && (p.mode !== 'both' || p.complementIndex >= 0)
+  const needsCut = !!p && p.mode === 'both' && p.complementIndex < 0
 
   return (
     <div
@@ -243,25 +270,70 @@ export function EncaixePanel() {
           </button>
         </div>
 
-        {/* Macho / Fêmea */}
-        {p && canApply ? (
-          <div className="flex flex-col gap-0.5 rounded-lg px-2 py-1.5" style={{ background: 'oklch(0.55 0.15 260 / 10%)' }}>
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1 text-[8px] font-mono uppercase tracking-wider text-muted-foreground/60">
-                <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#2fd6b0' }} />
-                {t.male_label}
-              </span>
-              <span className="text-[8px] font-mono text-foreground/70">{p.inverted ? p.complementName : t.piece_current}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1 text-[8px] font-mono uppercase tracking-wider text-muted-foreground/60">
-                <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#ff8a3d' }} />
-                {t.female_label}
-              </span>
-              <span className="text-[8px] font-mono text-foreground/70">{p.inverted ? t.piece_current : p.complementName}</span>
-            </div>
+        {/* Tipo: Macho / Fêmea / Ambos */}
+        <div className="flex flex-col gap-1">
+          <span className="text-[8px] font-mono uppercase tracking-wider text-muted-foreground/60">{t.mode_label}</span>
+          <div className="flex gap-0.5 rounded-lg p-0.5" style={{ background: 'oklch(1 0 0 / 4%)', border: '1px solid oklch(1 0 0 / 6%)' }}>
+            {(['both', 'male', 'female'] as const).map((m) => {
+              const active = p?.mode === m
+              const disabled = m === 'both' && !!p && p.complementIndex < 0
+              return (
+                <button
+                  key={m}
+                  onClick={() => patchEncaixePreview({ mode: m })}
+                  disabled={disabled}
+                  title={
+                    m === 'both' ? t.encaixe_both_hint
+                      : m === 'male' ? t.encaixe_male_hint
+                        : t.encaixe_female_hint
+                  }
+                  className="flex-1 rounded-md py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
+                  style={{
+                    background: active ? 'oklch(0.55 0.15 260 / 30%)' : 'transparent',
+                    color: active ? 'oklch(0.80 0.14 260)' : 'var(--text-secondary)',
+                    border: active ? '1px solid oklch(0.55 0.15 260 / 45%)' : '1px solid transparent',
+                    opacity: disabled ? 0.35 : 1,
+                    cursor: disabled ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {m === 'both' ? t.mode_both : m === 'male' ? t.male_label : t.female_label}
+                </button>
+              )
+            })}
           </div>
-        ) : null}
+          {/* Onde cada um será criado */}
+          <p className="m-0 text-[8px] font-mono text-muted-foreground/60 leading-relaxed">
+            {p?.mode === 'both'
+              ? `${t.male_label}: ${t.piece_current} · ${t.female_label}: ${p.complementName || '?'}`
+              : p?.mode === 'male'
+                ? `${t.male_label}: ${t.piece_current}`
+                : `${t.female_label}: ${t.piece_current}`}
+          </p>
+        </div>
+
+        {/* Preview resumido do que será gerado */}
+        {p && canApply && (
+          <div className="flex flex-col gap-0.5 rounded-lg px-2 py-1.5" style={{ background: 'oklch(0.55 0.15 260 / 10%)' }}>
+            {p.mode !== 'female' && (
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1 text-[8px] font-mono uppercase tracking-wider text-muted-foreground/60">
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#2fd6b0' }} />
+                  {t.male_label}
+                </span>
+                <span className="text-[8px] font-mono text-foreground/70">{t.piece_current}</span>
+              </div>
+            )}
+            {p.mode !== 'male' && (
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1 text-[8px] font-mono uppercase tracking-wider text-muted-foreground/60">
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#ff8a3d' }} />
+                  {t.female_label}
+                </span>
+                <span className="text-[8px] font-mono text-foreground/70">{p.mode === 'both' ? p.complementName : t.piece_current}</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Parâmetros */}
         {p && canApply ? (
@@ -297,18 +369,6 @@ export function EncaixePanel() {
               onChange={(tol) => patchEncaixePreview({ tolerance: round(clamp(tol, TOL_MIN, TOL_MAX), 2) })}
             />
           </div>
-        ) : null}
-
-        {/* Inverter */}
-        {p && canApply ? (
-          <button
-            onClick={() => patchEncaixePreview({ inverted: !p.inverted })}
-            title={t.invert_hint}
-            className="flex items-center justify-center gap-1.5 w-full px-2 py-1.5 rounded-lg border border-border/60 text-[9px] font-mono uppercase tracking-wider text-muted-foreground hover:text-foreground hover:bg-secondary/40 transition-colors"
-          >
-            <ArrowLeftRight className="w-3 h-3" />
-            {t.invert_label}
-          </button>
         ) : null}
 
         {/* Avisos */}

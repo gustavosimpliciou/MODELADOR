@@ -59,11 +59,13 @@ export interface EncaixePreview {
   maxRadius: number
   /** Maior altura permitida pela peça receptora. */
   maxHeight: number
-  /** Índice em cutParts[] da peça complementar. */
+  /** Índice em parts[] da peça complementar. */
   complementIndex: number
   /** Nome da peça complementar (para exibição na UI). */
   complementName: string
-  /** true → macho no complemento, fêmea na peça ativa. */
+  /** Modo do encaixe: macho, fêmea ou ambos. */
+  mode: 'male' | 'female' | 'both'
+  /** true → macho no complemento, fêmea na peça ativa. (mantido por compatibilidade) */
   inverted: boolean
 }
 
