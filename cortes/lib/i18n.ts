@@ -194,10 +194,11 @@ export const translations = {
     needs_cut_hint: 'Faça o corte primeiro para criar macho e fêmea.',
     encaixe_male_hint: 'Pino (macho) na peça selecionada',
     encaixe_female_hint: 'Furo (fêmea) na peça selecionada',
-    encaixe_both_hint: 'Pino na peça atual + furo na peça removida',
+    encaixe_both_hint: 'Cria macho nesta peça e fêmea na peça cortada, simultaneamente',
     encaixe_generating: 'Gerando encaixe integrado...',
     encaixe_generated: (d: string, h: string) => `Encaixe integrado · ∅${d} × ${h} mm`,
     encaixe_error: 'Falha ao gerar o encaixe.',
+    female_bore_plus: '(furo maior que o pino)',
   },
 
   en: {
@@ -382,10 +383,11 @@ export const translations = {
     needs_cut_hint: 'Make the cut first to create male and female.',
     encaixe_male_hint: 'Pin (male) on the selected part',
     encaixe_female_hint: 'Hole (female) on the selected part',
-    encaixe_both_hint: 'Pin on current part + hole on removed part',
+    encaixe_both_hint: 'Creates male on this part and female on the cut part, at the same time',
     encaixe_generating: 'Generating integrated connector...',
     encaixe_generated: (d: string, h: string) => `Integrated connector · Ø${d} × ${h} mm`,
     encaixe_error: 'Failed to generate the connector.',
+    female_bore_plus: '(bore larger than the pin)',
   },
 
   es: {
@@ -570,10 +572,11 @@ export const translations = {
     needs_cut_hint: 'Haz el corte primero para crear macho y hembra.',
     encaixe_male_hint: 'Pasador (macho) en la pieza seleccionada',
     encaixe_female_hint: 'Agujero (hembra) en la pieza seleccionada',
-    encaixe_both_hint: 'Pasador en la pieza actual + agujero en la pieza retirada',
+    encaixe_both_hint: 'Crea macho en esta pieza y hembra en la pieza cortada, al mismo tiempo',
     encaixe_generating: 'Generando conector integrado...',
     encaixe_generated: (d: string, h: string) => `Conector integrado · Ø${d} × ${h} mm`,
     encaixe_error: 'Error al generar el conector.',
+    female_bore_plus: '(agujero mayor que el pasador)',
   },
 } as const
 

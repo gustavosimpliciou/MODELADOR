@@ -1159,17 +1159,25 @@ function formatBRL(value) {
   })
 }
 
-/** Dias restantes até a expiração do crédito, com cor por urgência. */
+/**
+ * Informações da expiração do crédito. O texto principal é o DIA/MÊS em que
+ * os créditos finalizam (ex.: "05/12"); a cor sinaliza a urgência pelos dias
+ * restantes e o título completo fica disponível no tooltip.
+ */
 function expiryInfo(iso) {
-  if (!iso) return { text: '—', color: 'var(--text-dim)' }
-  const exp = new Date(iso).getTime()
-  if (Number.isNaN(exp)) return { text: '—', color: 'var(--text-dim)' }
-  const diff = exp - Date.now()
-  if (diff <= 0) return { text: 'Expirado', color: '#e05050' }
+  if (!iso) return { text: '—', color: 'var(--text-dim)', days: null, full: null }
+  const exp = new Date(iso)
+  if (Number.isNaN(exp.getTime())) return { text: '—', color: 'var(--text-dim)', days: null, full: null }
+  const diff = exp.getTime() - Date.now()
   const days = Math.ceil(diff / 86_400_000)
-  if (days <= 7)  return { text: `${days} dia${days === 1 ? '' : 's'}`, color: '#ff9800' }
-  if (days <= 30) return { text: `${days} dias`, color: '#ffd600' }
-  return { text: `${days} dias`, color: '#4caf50' }
+  const full = exp.toLocaleDateString('pt-BR', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+  })
+  const dayMonth = exp.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+  if (diff <= 0) return { text: 'Expirado', color: '#e05050', days, full }
+  if (days <= 7)  return { text: dayMonth, color: '#ff9800', days, full }
+  if (days <= 30) return { text: dayMonth, color: '#ffd600', days, full }
+  return { text: dayMonth, color: '#4caf50', days, full }
 }
 
 /** Normaliza status para exibição legível e cor. */

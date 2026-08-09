@@ -150,12 +150,14 @@ export function EncaixePanel() {
   const handleApply = useCallback(() => {
     const p = encaixePreview
     if (!modelMesh || !p) return
-    if (p.mode === 'both' && (p.complementIndex < 0 || !parts[p.complementIndex])) {
+    // Sempre que houver peça cortada (complemento), o encaixe é criado nas DUAS
+    // peças ao mesmo tempo: macho na atual + fêmea na peça oposta do corte.
+    const mode = p.complementIndex >= 0 ? 'both' : p.mode
+    if (mode === 'both' && (p.complementIndex < 0 || !parts[p.complementIndex])) {
       setStatus('error', t.encaixe_error)
       return
     }
 
-    const mode = p.mode
     const activeMesh = modelMesh
 
     // Direção: pino sai da peça ativa (+normal); furo entra na peça ativa (−normal).
@@ -225,7 +227,12 @@ export function EncaixePanel() {
         clearSelection()
         setEncaixePreview(null)
         setEncaixeOpen(false)
-        setStatus('loaded', t.encaixe_generated((p.radius * 2).toFixed(1), p.height.toFixed(1)))
+        setStatus(
+          'loaded',
+          mode === 'both'
+            ? `${t.encaixe_generated((p.radius * 2).toFixed(1), p.height.toFixed(1))} · ${t.male_label}: ${t.piece_current} + ${t.female_label}: ${p.complementName || '?'}`
+            : t.encaixe_generated((p.radius * 2).toFixed(1), p.height.toFixed(1)),
+        )
       } catch (err) {
         const msg = err instanceof Error ? err.message : ''
         setStatus('error', msg ? `${t.encaixe_error} — ${msg}` : t.encaixe_error)
@@ -243,8 +250,10 @@ export function EncaixePanel() {
   if (!visible) return null
 
   const p = encaixePreview
-  const canApply = !!p && (p.mode !== 'both' || p.complementIndex >= 0)
-  const needsCut = !!p && p.mode === 'both' && p.complementIndex < 0
+  const forcedBoth = !!p && p.complementIndex >= 0
+  const effMode = forcedBoth ? 'both' : p?.mode
+  const canApply = !!p && (effMode !== 'both' || p.complementIndex >= 0)
+  const needsCut = !!p && effMode === 'both' && p.complementIndex < 0
 
   return (
     <div
@@ -287,8 +296,8 @@ export function EncaixePanel() {
           <span className="text-[8px] font-mono uppercase tracking-wider text-muted-foreground/60">{t.mode_label}</span>
           <div className="flex gap-0.5 rounded-lg p-0.5" style={{ background: 'oklch(1 0 0 / 4%)', border: '1px solid oklch(1 0 0 / 6%)' }}>
             {(['both', 'male', 'female'] as const).map((m) => {
-              const active = p?.mode === m
-              const disabled = m === 'both' && !!p && p.complementIndex < 0
+              const active = effMode === m
+              const disabled = !!p && (forcedBoth ? m !== 'both' : m === 'both')
               return (
                 <button
                   key={m}
@@ -315,9 +324,9 @@ export function EncaixePanel() {
           </div>
           {/* Onde cada um será criado */}
           <p className="m-0 text-[8px] font-mono text-muted-foreground/60 leading-relaxed">
-            {p?.mode === 'both'
-              ? `${t.male_label}: ${t.piece_current} · ${t.female_label}: ${p.complementName || '?'}`
-              : p?.mode === 'male'
+            {effMode === 'both'
+              ? `${t.male_label}: ${t.piece_current} · ${t.female_label}: ${p?.complementName || '?'}`
+              : effMode === 'male'
                 ? `${t.male_label}: ${t.piece_current}`
                 : `${t.female_label}: ${t.piece_current}`}
           </p>
@@ -326,7 +335,7 @@ export function EncaixePanel() {
         {/* Preview resumido do que será gerado */}
         {p && canApply && (
           <div className="flex flex-col gap-0.5 rounded-lg px-2 py-1.5" style={{ background: 'oklch(0.55 0.15 260 / 10%)' }}>
-            {p.mode !== 'female' && (
+            {effMode !== 'female' && (
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-1 text-[8px] font-mono uppercase tracking-wider text-muted-foreground/60">
                   <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#2fd6b0' }} />
@@ -335,13 +344,18 @@ export function EncaixePanel() {
                 <span className="text-[8px] font-mono text-foreground/70">{t.piece_current}</span>
               </div>
             )}
-            {p.mode !== 'male' && (
+            {effMode !== 'male' && (
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-1 text-[8px] font-mono uppercase tracking-wider text-muted-foreground/60">
                   <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#ff8a3d' }} />
                   {t.female_label}
                 </span>
-                <span className="text-[8px] font-mono text-foreground/70">{p.mode === 'both' ? p.complementName : t.piece_current}</span>
+                <span className="text-[8px] font-mono text-foreground/70">{effMode === 'both' ? p.complementName : t.piece_current}</span>
+              </div>
+            )}
+            {effMode === 'both' && (
+              <div className="text-[8px] font-mono text-muted-foreground/50">
+                {t.female_label}: ∅{((p.radius + p.tolerance) * 2).toFixed(1)}mm {t.female_bore_plus}
               </div>
             )}
           </div>
