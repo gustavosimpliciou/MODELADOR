@@ -78,6 +78,10 @@ PLAN_CREDITS = {
     'premium': 1500,
 }
 
+# Expiração de créditos comprados
+CREDIT_EXPIRY_DAYS   = 90   # 3 meses
+EXPIRED_CREDIT_BALANCE = 100  # saldo após expirar (independente do valor anterior)
+
 
 def _normalize(text: str) -> str:
     text = unicodedata.normalize('NFKD', text or '').encode('ascii', 'ignore').decode('ascii')
@@ -130,6 +134,7 @@ def safe_user(row: dict) -> dict:
         'freeDownloadUsed':      False  if is_admin else row.get('free_download_used', False),
         'firstUpgradePurchased': row.get('first_upgrade_purchased', False),
         'plan':                  row.get('plan', 'free'),
+        'creditsExpiresAt':      row.get('credits_expires_at'),
     }
 
 
@@ -437,6 +442,30 @@ async def consume_export(current_user=Depends(require_auth)):
     if current_user.get('email') == ADMIN_EMAIL:
         return {'ok': True, 'freeDownload': False, 'credits': 99999, 'admin': True}
 
+    # Crédito expirado → saldo cai para EXPIRED_CREDIT_BALANCE (uma vez)
+    expires_at = current_user.get('credits_expires_at')
+    if expires_at:
+        try:
+            exp = datetime.fromisoformat(str(expires_at).replace('Z', '+00:00'))
+        except (ValueError, TypeError):
+            exp = None
+        if exp and exp <= datetime.now(timezone.utc):
+            now = datetime.now(timezone.utc).isoformat()
+            await srun(lambda: sb.table('users').update({
+                'credits': EXPIRED_CREDIT_BALANCE,
+                'credits_expires_at': None,
+            }).eq('id', current_user['id']).execute())
+            current_user['credits'] = EXPIRED_CREDIT_BALANCE
+            try:
+                await srun(lambda: sb.table('credit_history').insert({
+                    'id': str(uuid.uuid4()), 'user_id': current_user['id'],
+                    'type': 'expiry_reset', 'credits': EXPIRED_CREDIT_BALANCE,
+                    'description': 'Crédito expirado — saldo ajustado para '
+                                   f'{EXPIRED_CREDIT_BALANCE}', 'created_at': now,
+                }).execute())
+            except Exception:
+                logger.warning('credit_history insert failed on expiry_reset')
+
     if not current_user.get('free_download_used'):
         await srun(lambda: sb.table('users').update({
             'free_download_used': True,
@@ -656,10 +685,14 @@ async def kiwify_webhook(request: Request):
     credits_to_add = PLAN_CREDITS[tier]
     new_credits = user.get('credits', 0) + credits_to_add
 
+    # Créditos comprados expiram 3 meses após a compra (cronômetro na carteira).
+    expires_at = (datetime.now(timezone.utc) + timedelta(days=90)).isoformat()
+
     await srun(lambda: sb.table('users').update({
         'credits':                 new_credits,
         'plan':                    tier,
         'first_upgrade_purchased': True,
+        'credits_expires_at':      expires_at,
     }).eq('id', user['id']).execute())
 
     await srun(lambda: sb.table('payments').insert({
@@ -787,7 +820,7 @@ async def admin_users(
         sort_by = 'created_at'
     desc_order = sort_dir != 'asc'
     offset     = (page - 1) * limit
-    cols       = 'id,name,email,plan,credits,created_at'
+    cols       = 'id,name,email,plan,credits,created_at,credits_expires_at'
 
     if search:
         sf = re.sub(r'[%(),]', ' ', search).strip()
@@ -828,7 +861,7 @@ async def admin_get_user(user_id: str, current_user: dict = Depends(require_admi
     require_db()
     res = await srun(
         lambda: sb.table('users')
-            .select('id,name,email,plan,credits,created_at')
+            .select('id,name,email,plan,credits,created_at,credits_expires_at')
             .eq('id', user_id)
             .execute()
     )

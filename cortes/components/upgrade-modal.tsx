@@ -1,6 +1,7 @@
 "use client"
 
 import { useUserStore, ADMIN_EMAIL } from '@/lib/user-store'
+import { CreditCountdown } from './layout/credit-countdown'
 
 // ─── Planos — mesmos valores e links do Modelador 3D ──────────────────────────
 const PLANS = [
@@ -145,6 +146,10 @@ export function UpgradeModal() {
           <p style={{ fontFamily: 'sans-serif', fontSize: 13, color: 'oklch(0.45 0 0)', marginTop: 8, marginBottom: 0 }}>
             Créditos compartilhados entre o Modelador 3D e a Ferramenta de Corte
           </p>
+          {/* Mini cronômetro de expiração do crédito comprado (se houver) */}
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 14 }}>
+            <CreditCountdown />
+          </div>
         </div>
 
         {/* Plan cards */}

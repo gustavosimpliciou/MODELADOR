@@ -46,7 +46,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
         if (authUser) {
           const { data: row } = await supabase
             .from('users')
-            .select('id, name, email, plan, credits, free_download_used, first_upgrade_purchased')
+            .select('id, name, email, plan, credits, free_download_used, first_upgrade_purchased, credits_expires_at')
             .eq('id', authUser.id)
             .maybeSingle()
 
@@ -72,6 +72,9 @@ export function AuthGuard({ children }: AuthGuardProps) {
             localStorage.setItem('nativos.freeDownloadUsed',      String(freeUsed))
             localStorage.setItem('nativos.firstUpgradePurchased', String(firstPurchased))
           } catch {}
+
+          // Sincroniza o cronômetro de expiração (reseta para 100 se venceu)
+          await useUserStore.getState().syncCreditExpiry(row, authUser.email)
         }
       } catch {
         // Non-fatal: credits from localStorage are used as fallback

@@ -4,11 +4,32 @@ import { create } from 'zustand'
 import { supabase } from './supabase'
 
 export const ADMIN_EMAIL = 'nativos3d.adm@gmail.com'
+/** Conta de teste do proprietário — mostra o cronômetro mesmo sem pagamento. */
+export const TEST_ACCOUNT_EMAIL = 'simpliciou@icloud.com'
+/** Créditos comprados expiram após este período (3 meses). */
+export const CREDIT_EXPIRY_DAYS = 90
+/** Saldo ao qual o crédito cai quando expira (independente do valor anterior). */
+export const EXPIRED_CREDIT_BALANCE = 100
 const EXPORT_COST = 40
+
+const DAY_MS = 86400000
 
 // localStorage helpers — same keys as the main Studio app so credits stay in sync
 const ls    = (key: string, fb: string) => { try { const v = localStorage.getItem(key); return v !== null ? v : fb } catch { return fb } }
 const lsSet = (key: string, v: string)  => { try { localStorage.setItem(key, v) } catch {} }
+
+/** Lê um timestamp (ms) do localStorage; retorna null se ausente/inválido. */
+function lsExpiry(key: string): number | null {
+  const n = parseInt(ls(key, ''), 10)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+/** Extrai o timestamp (ms) de expiração de uma linha do Supabase. */
+export function creditExpiryMs(row: { credits_expires_at?: string | null } | null | undefined): number | null {
+  if (!row || !row.credits_expires_at) return null
+  const t = Date.parse(row.credits_expires_at)
+  return Number.isFinite(t) ? t : null
+}
 
 export interface UserInfo {
   id: string
@@ -21,12 +42,15 @@ export interface UserInfo {
 interface UserState {
   user: UserInfo | null
   credits: number
+  /** Timestamp (ms) de expiração dos créditos comprados; null = sem cronômetro. */
+  creditsExpiresAt: number | null
   freeDownloadUsed: boolean
   firstUpgradePurchased: boolean
   showUpgradeModal: boolean
 
   setUser:                  (user: UserInfo | null) => void
   setCredits:               (credits: number)       => void
+  setCreditsExpiresAt:      (ms: number | null)     => void
   setFreeDownloadUsed:      (v: boolean)            => void
   setFirstUpgradePurchased: (v: boolean)            => void
   setShowUpgradeModal:      (v: boolean)            => void
@@ -36,6 +60,16 @@ interface UserState {
 
   /** Re-fetch credits/plan from Supabase (call after returning from checkout). */
   refreshCredits: () => Promise<void>
+
+  /**
+   * Sincroniza a expiração a partir da linha do usuário. Se o prazo já
+   * venceu, reseta o saldo para EXPIRED_CREDIT_BALANCE. Garante o
+   * cronômetro da conta de teste do proprietário.
+   */
+  syncCreditExpiry: (row: { credits_expires_at?: string | null } | null | undefined, email?: string) => Promise<void>
+
+  /** Zera o prazo vencido: saldo vai para EXPIRED_CREDIT_BALANCE. */
+  resetExpiredCredits: () => Promise<void>
 
   /**
    * Gate an export action behind the credit system.
@@ -48,12 +82,14 @@ interface UserState {
 export const useUserStore = create<UserState>((set, get) => ({
   user:                  null,
   credits:               parseInt(ls('nativos.credits', '0'), 10),
+  creditsExpiresAt:      lsExpiry('nativos.creditsExpiresAt'),
   freeDownloadUsed:      ls('nativos.freeDownloadUsed', 'false') === 'true',
   firstUpgradePurchased: ls('nativos.firstUpgradePurchased', 'false') === 'true',
   showUpgradeModal:      false,
 
   setUser:                  (user)                  => set({ user }),
   setCredits:               (credits)               => set({ credits }),
+  setCreditsExpiresAt:      (creditsExpiresAt)      => set({ creditsExpiresAt }),
   setFreeDownloadUsed:      (freeDownloadUsed)      => set({ freeDownloadUsed }),
   setFirstUpgradePurchased: (firstUpgradePurchased) => set({ firstUpgradePurchased }),
   setShowUpgradeModal:      (showUpgradeModal)      => set({ showUpgradeModal }),
@@ -69,7 +105,7 @@ export const useUserStore = create<UserState>((set, get) => ({
       if (!authUser) return
       const { data: row } = await supabase
         .from('users')
-        .select('credits, free_download_used, first_upgrade_purchased, plan')
+        .select('credits, free_download_used, first_upgrade_purchased, plan, credits_expires_at')
         .eq('id', authUser.id)
         .single()
       if (!row) return
@@ -84,7 +120,75 @@ export const useUserStore = create<UserState>((set, get) => ({
         freeDownloadUsed:      freeUsed,
         firstUpgradePurchased: row.first_upgrade_purchased ?? false,
       })
+      await get().syncCreditExpiry(row, authUser.email)
     } catch { /* non-blocking */ }
+  },
+
+  syncCreditExpiry: async (row, email) => {
+    let expiry = creditExpiryMs(row)
+
+    // Conta de teste do proprietário — garante um cronômetro a partir de hoje
+    // (uma única vez por navegador) mesmo sem pagamento real.
+    const isTest =
+      email === TEST_ACCOUNT_EMAIL &&
+      ls('nativos.testExpiryGranted', 'false') !== 'true'
+    if (expiry == null && isTest) {
+      expiry = Date.now() + CREDIT_EXPIRY_DAYS * DAY_MS
+      lsSet('nativos.testExpiryGranted', 'true')
+      try {
+        const { data: { user: authUser } } = await supabase.auth.getUser()
+        if (authUser) {
+          await supabase
+            .from('users')
+            .update({ credits_expires_at: new Date(expiry).toISOString() })
+            .eq('id', authUser.id)
+        }
+      } catch { /* coluna pode ainda não existir — estado local já basta */ }
+    }
+
+    if (expiry != null && expiry <= Date.now()) {
+      await get().resetExpiredCredits()
+      return
+    }
+
+    if (expiry != null) {
+      lsSet('nativos.creditsExpiresAt', String(expiry))
+    } else {
+      lsSet('nativos.creditsExpiresAt', '')
+    }
+    set({ creditsExpiresAt: expiry })
+  },
+
+  resetExpiredCredits: async () => {
+    const s = get()
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      if (authUser) {
+        await supabase
+          .from('users')
+          .update({
+            credits: EXPIRED_CREDIT_BALANCE,
+            credits_expires_at: null,
+          })
+          .eq('id', authUser.id)
+        try {
+          await supabase
+            .from('credit_history')
+            .insert({
+              id: globalThis.crypto?.randomUUID?.() ?? `exp-${Date.now()}`,
+              user_id: authUser.id,
+              type: 'expiry_reset',
+              credits: EXPIRED_CREDIT_BALANCE - s.credits,
+              description: `Crédito expirado — saldo ajustado para ${EXPIRED_CREDIT_BALANCE}`,
+              created_at: new Date().toISOString(),
+            })
+        } catch { /* não bloqueia o reset */ }
+      }
+    } catch { /* não bloqueia o reset */ }
+
+    lsSet('nativos.credits', String(EXPIRED_CREDIT_BALANCE))
+    lsSet('nativos.creditsExpiresAt', '')
+    set({ credits: EXPIRED_CREDIT_BALANCE, creditsExpiresAt: null })
   },
 
   tryExport: async () => {
