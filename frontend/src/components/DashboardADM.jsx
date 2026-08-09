@@ -770,6 +770,7 @@ function UsersPage({ compact = false }) {
               <Th style={{ maxWidth: 120 }}>ID</Th>
               {!compact && <Th><SortBtn col="created_at" label="Cadastro" /></Th>}
               <Th><SortBtn col="credits" label="Créditos" /></Th>
+              <Th><SortBtn col="credits_expires_at" label="Expira em" /></Th>
               {!compact && <Th>Tipo</Th>}
               <Th>Ações</Th>
             </tr>
@@ -777,7 +778,7 @@ function UsersPage({ compact = false }) {
           <tbody>
             {!loading && data.users.length === 0 ? (
               <tr>
-                <td colSpan={7} style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-dim)', fontFamily: 'var(--font-body)', fontSize: 13 }}>
+                <td colSpan={8} style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-dim)', fontFamily: 'var(--font-body)', fontSize: 13 }}>
                   {search ? 'Nenhum usuário encontrado para esta busca' : 'Nenhum usuário cadastrado'}
                 </td>
               </tr>
@@ -818,6 +819,24 @@ function UsersPage({ compact = false }) {
                   }}>
                     {(u.credits || 0).toLocaleString('pt-BR')}
                   </span>
+                </Td>
+                <Td>
+                  {(() => {
+                    const info = expiryInfo(u.credits_expires_at)
+                    return (
+                      <span
+                        title={u.credits_expires_at
+                          ? `Expira em ${new Date(u.credits_expires_at).toLocaleString('pt-BR')}`
+                          : undefined}
+                        style={{
+                          fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 600,
+                          color: info.color, whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {info.text}
+                      </span>
+                    )
+                  })()}
                 </Td>
                 {!compact && (
                   <Td>
@@ -975,6 +994,12 @@ function CreditsModal({ user, onClose, onSuccess }) {
           <InfoItem label="E-mail"     value={user.email} mono />
           <InfoItem label="Saldo Atual" value={`${currentCredits.toLocaleString('pt-BR')} créditos`} accent />
           <InfoItem label="Plano"      value={PLAN_LABEL[user.plan] || user.plan || 'Free'} />
+          <InfoItem
+            label="Expira em"
+            value={user.credits_expires_at
+              ? new Date(user.credits_expires_at).toLocaleDateString('pt-BR')
+              : '—'}
+          />
         </div>
 
         {/* Operation tabs */}
@@ -1132,6 +1157,19 @@ function formatBRL(value) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })
+}
+
+/** Dias restantes até a expiração do crédito, com cor por urgência. */
+function expiryInfo(iso) {
+  if (!iso) return { text: '—', color: 'var(--text-dim)' }
+  const exp = new Date(iso).getTime()
+  if (Number.isNaN(exp)) return { text: '—', color: 'var(--text-dim)' }
+  const diff = exp - Date.now()
+  if (diff <= 0) return { text: 'Expirado', color: '#e05050' }
+  const days = Math.ceil(diff / 86_400_000)
+  if (days <= 7)  return { text: `${days} dia${days === 1 ? '' : 's'}`, color: '#ff9800' }
+  if (days <= 30) return { text: `${days} dias`, color: '#ffd600' }
+  return { text: `${days} dias`, color: '#4caf50' }
 }
 
 /** Normaliza status para exibição legível e cor. */

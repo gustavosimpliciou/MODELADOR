@@ -815,7 +815,7 @@ async def admin_users(
     sort_dir: str = 'desc',
 ):
     require_db()
-    allowed_sort = {'name', 'created_at', 'credits', 'email'}
+    allowed_sort = {'name', 'created_at', 'credits', 'email', 'credits_expires_at'}
     if sort_by not in allowed_sort:
         sort_by = 'created_at'
     desc_order = sort_dir != 'asc'
