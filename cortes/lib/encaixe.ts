@@ -282,7 +282,16 @@ export function applyEncaixe(params: EncaixeApplyParams): EncaixeResult {
     // A cavidade nasce na superfície da malha alvo e entra no material.
     const base = snapCenterToSurface(femaleMesh, f.center, f.direction)
     femaleDepth = computeFemaleDepth(femaleMesh, base, f.direction, height, tolerance)
-    const brush = makeCylinderBrush(radius + tolerance, femaleDepth, base, f.direction)
+    // O cilindro deve PROJETAR claramente PARA FORA da superfície (outset)
+    // antes de entrar no material. Se ele mal atravessa a face (ex: 0,1mm),
+    // o three-bvh-csg produz topologia degenerada e o furo sai cego/fragmentado
+    // (boca selada ~3mm abaixo da superfície). Com o outset, a subtração corta
+    // limpo a face e a boca do furo fica aberta na superfície.
+    const cavityRadius = radius + tolerance
+    const outset = Math.max(cavityRadius * 1.5, 3)
+    const brushLength = femaleDepth + outset
+    const brushStart = base.clone().addScaledVector(f.direction, -outset)
+    const brush = makeCylinderBrush(cavityRadius, brushLength, brushStart, f.direction)
     femaleGeo = csgSubtract(femaleMesh.geometry, brush)
     disposeBrush(brush)
   }
