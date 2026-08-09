@@ -12,10 +12,6 @@
  *   ETAPA 8:    Geração de Encaixes (opcional, só se habilitado)
  *   ETAPA 9–10: União Final + Otimização
  *
- *   ETAPA EXTRA (pós-apply, módulo isolado):
- *     REFINAÇÃO DE CORTE — ver `cut-refinement.ts`
- *     Micro-acabamento de borda (não altera o algoritmo de corte).
- *
  * Cada etapa é independente: falha em uma não destrói resultados anteriores.
  * A superfície externa original é SEMPRE preservada intacta.
  */

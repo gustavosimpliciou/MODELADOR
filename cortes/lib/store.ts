@@ -14,7 +14,7 @@ export type CutMode = 'island' | 'curvature'
 /** Modo de visualização do Preview interativo do corte (renderização 3D) */
 export type PreviewViewMode = 'solid' | 'wireframe' | 'xray'
 /** Estágio atual do pipeline V2 do SmartCut */
-export type AutoCutPipelineStage = 'idle' | 'cut_done' | 'caps_done' | 'refined'
+export type AutoCutPipelineStage = 'idle' | 'cut_done' | 'caps_done'
 /** Modo de visualização semântico do AutoCut V2 (qual etapa está sendo exibida) */
 export type AutoCutPreviewMode = 'plane' | 'shell' | 'caps' | 'connectors' | 'final'
 
