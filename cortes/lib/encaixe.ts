@@ -92,7 +92,7 @@ export interface EncaixeResult {
 
 // ─── Planejamento / limites inteligentes ───────────────────────────────────────
 
-const HEIGHT_MIN = 3
+const HEIGHT_MIN = 0.5
 const HEIGHT_MAX = 8
 const RADIUS_MM_MIN = 0.8
 const FEMALE_WALL_MM = 0.5

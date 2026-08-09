@@ -29,7 +29,7 @@ const COL = {
   seam: 'rgba(255,255,255,0.95)',
 }
 
-const HEIGHT_MIN = 3
+const HEIGHT_MIN = 0.5
 const RADIUS_MIN = 0.8
 const CYL_SEG = 48
 

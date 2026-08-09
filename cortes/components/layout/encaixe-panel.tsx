@@ -17,7 +17,7 @@ import { cloneMeshTransform } from '@/lib/parts-manager'
 import { useT } from '@/lib/lang-store'
 import { useDraggable } from '@/lib/use-draggable'
 
-const HEIGHT_MIN = 3
+const HEIGHT_MIN = 0.5
 const HEIGHT_MAX = 8
 const RADIUS_MIN = 0.8
 // Folga radial da fêmea (cavidade maior que o pino): 0,15–0,2 mm é o ideal
@@ -92,22 +92,49 @@ export function EncaixePanel() {
     encaixePreview, setEncaixePreview, patchEncaixePreview,
     modelMesh, selectedFaceIndices, selectionState,
     parts, cutParts, setCutParts,
-    setModelMesh, setActivePartId, updatePart,
+    setModelMesh, setActivePartId, updatePart, addPart,
     setStatus, pushHistory, clearSelection,
   } = useAppStore()
 
   const visible = encaixeOpen && !!modelMesh
   const hasSelection = selectedFaceIndices.size > 0 && selectionState === 'selected'
 
+  // Peças opostas do corte: todas as partes + peças cortadas, EXCETO a ativa.
+  // Garante que a fêmea/macho sempre tenha uma peça-alvo no mesmo corte.
+  const candidates = useMemo(() => {
+    const byId = new Map<string, { id: string; name: string; mesh: THREE.Mesh }>()
+    for (const p of parts) {
+      if (p.mesh && p.mesh !== modelMesh) byId.set(p.id, { id: p.id, name: p.name, mesh: p.mesh })
+    }
+    for (const cp of cutParts) {
+      if (cp.mesh && cp.mesh !== modelMesh && !byId.has(cp.id)) {
+        byId.set(cp.id, { id: cp.id, name: cp.name, mesh: cp.mesh })
+      }
+    }
+    return [...byId.values()]
+  }, [parts, cutParts, modelMesh])
+
   // Limites inteligentes da seleção (costura + complemento).
   const limits = useMemo(() => {
     if (!visible || !modelMesh || !hasSelection) return null
     try {
-      return analyzeEncaixe(modelMesh.geometry as THREE.BufferGeometry, selectedFaceIndices, parts)
+      return analyzeEncaixe(modelMesh.geometry as THREE.BufferGeometry, selectedFaceIndices, candidates)
     } catch {
       return null
     }
-  }, [visible, modelMesh, selectedFaceIndices, parts, hasSelection])
+  }, [visible, modelMesh, selectedFaceIndices, candidates, hasSelection])
+
+  // Complemento GARANTIDO: a peça oposta do MESMO corte. Se a análise não a
+  // encontrou por proximidade, usa a peça cortada mais recente (regra máxima:
+  // macho numa peça + fêmea na outra, simultâneos e vinculados).
+  const compPart = useMemo(() => {
+    if (!limits) return null
+    if (limits.complementIndex >= 0 && candidates[limits.complementIndex]) {
+      return candidates[limits.complementIndex]
+    }
+    const fallback = [...cutParts].reverse().find((cp) => cp.mesh && cp.mesh !== modelMesh)
+    return fallback ? { id: fallback.id, name: fallback.name, mesh: fallback.mesh } : null
+  }, [limits, candidates, cutParts, modelMesh])
 
   // Inicializa (ou reinicializa) o preview quando abre / troca de seleção.
   // Mantém os ajustes do usuário enquanto a seleção não muda.
@@ -119,7 +146,7 @@ export function EncaixePanel() {
     }
     const key = [
       limits.center.x.toFixed(2), limits.center.y.toFixed(2), limits.center.z.toFixed(2),
-      limits.complementIndex,
+      compPart ? compPart.id : 'none',
     ].join('|')
     if (key === lastKeyRef.current && encaixePreview) return
     lastKeyRef.current = key
@@ -136,13 +163,13 @@ export function EncaixePanel() {
       tolerance: 0.2,
       maxRadius: limits.maxRadius,
       maxHeight: limits.maxHeight,
-      complementIndex: limits.complementIndex,
-      complementName: limits.complementName,
+      complementIndex: compPart ? candidates.indexOf(compPart) : -1,
+      complementName: compPart ? compPart.name : '',
       // Sem complemento (peça sem corte), o padrão é gerar um pino na peça.
-      mode: limits.complementIndex >= 0 ? 'both' : 'male',
+      mode: compPart ? 'both' : 'male',
       inverted: false,
     })
-  }, [visible, limits, encaixePreview, setEncaixePreview])
+  }, [visible, limits, encaixePreview, setEncaixePreview, compPart, candidates])
 
   const [busy, setBusy] = useState(false)
   const computeRef = useRef(0)
@@ -156,7 +183,7 @@ export function EncaixePanel() {
     // conectores ao mesmo tempo e vinculados pelo mesmo diâmetro:
     //   · Macho / Ambos → pino na peça atual + furo na peça cortada.
     //   · Fêmea         → furo na peça atual + pino na peça cortada.
-    const hasComp = p.complementIndex >= 0 && !!parts[p.complementIndex]
+    const hasComp = !!compPart
     const activeMesh = modelMesh
     const normal = new THREE.Vector3(...p.normal).normalize()
 
@@ -164,10 +191,8 @@ export function EncaixePanel() {
     let direction: THREE.Vector3
     let maleMesh: THREE.Mesh
     let femaleMesh: THREE.Mesh
-    let compPart: { id: string; name: string; mesh: THREE.Mesh } | null = null
 
-    if (hasComp) {
-      compPart = parts[p.complementIndex]
+    if (hasComp && compPart) {
       if (p.mode === 'female') {
         mode = 'both'
         direction = normal.clone().negate()
@@ -221,7 +246,22 @@ export function EncaixePanel() {
           // setModelMesh sincroniza a peça ativa em parts; setCutParts +
           // updatePart sincronizam a malha da peça cortada em parts.
           setCutParts(cutParts.map((cp) => (cp.id === compPart!.id ? { ...cp, mesh: newComp } : cp)))
-          updatePart(compPart!.id, { mesh: newComp })
+          // Rede de segurança: se a peça oposta estiver apenas em cutParts,
+          // registra também em parts para que ela seja renderizada.
+          if (!parts.some((pt) => pt.id === compPart!.id)) {
+            addPart({
+              id: compPart!.id,
+              name: compPart!.name,
+              mesh: newComp,
+              visible: true,
+              selected: false,
+              locked: false,
+              parentId: null,
+              cutHistory: [],
+            })
+          } else {
+            updatePart(compPart!.id, { mesh: newComp })
+          }
           setActivePartId(null) // sai do isolamento e mostra as duas peças
           setStatus(
             'loaded',
@@ -253,15 +293,15 @@ export function EncaixePanel() {
       }
     }, 60)
   }, [
-    encaixePreview, modelMesh, parts, cutParts,
-    pushHistory, setModelMesh, setActivePartId, setCutParts, updatePart,
+    encaixePreview, modelMesh, parts, cutParts, compPart,
+    pushHistory, setModelMesh, setActivePartId, setCutParts, updatePart, addPart,
     setStatus, clearSelection, setEncaixePreview, setEncaixeOpen, t,
   ])
 
   if (!visible) return null
 
   const p = encaixePreview
-  const hasComp = !!p && p.complementIndex >= 0
+  const hasComp = !!compPart
   const effMode = p?.mode ?? 'male'
   const canApply = !!p && (effMode !== 'both' || hasComp)
   const needsCut = !!p && effMode === 'both' && !hasComp
@@ -337,8 +377,8 @@ export function EncaixePanel() {
           <p className="m-0 text-[8px] font-mono text-muted-foreground/60 leading-relaxed">
             {hasComp
               ? effMode === 'female'
-                ? `${t.female_label}: ${t.piece_current} · ${t.male_label}: ${p?.complementName || '?'}`
-                : `${t.male_label}: ${t.piece_current} · ${t.female_label}: ${p?.complementName || '?'}`
+                ? `${t.female_label}: ${t.piece_current} · ${t.male_label}: ${compPart?.name || '?'}`
+                : `${t.male_label}: ${t.piece_current} · ${t.female_label}: ${compPart?.name || '?'}`
               : effMode === 'female'
                 ? `${t.female_label}: ${t.piece_current}`
                 : `${t.male_label}: ${t.piece_current}`}
@@ -359,7 +399,7 @@ export function EncaixePanel() {
                   <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#2fd6b0' }} />
                   {t.male_label}
                 </span>
-                <span className="text-[8px] font-mono text-foreground/70">{hasComp && effMode === 'female' ? p.complementName : t.piece_current}</span>
+                <span className="text-[8px] font-mono text-foreground/70">{hasComp && effMode === 'female' ? compPart?.name : t.piece_current}</span>
               </div>
             ) : null}
             {hasComp || effMode !== 'male' ? (
@@ -368,7 +408,7 @@ export function EncaixePanel() {
                   <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#ff8a3d' }} />
                   {t.female_label}
                 </span>
-                <span className="text-[8px] font-mono text-foreground/70">{hasComp ? (effMode === 'female' ? t.piece_current : p.complementName) : t.piece_current}</span>
+                <span className="text-[8px] font-mono text-foreground/70">{hasComp ? (effMode === 'female' ? t.piece_current : compPart?.name) : t.piece_current}</span>
               </div>
             ) : null}
             {hasComp && (
