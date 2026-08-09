@@ -10,6 +10,7 @@ import { PlaneCutPanel } from '@/components/layout/plane-cut-panel'
 import { AutoSplitPanel } from '@/components/layout/auto-split-panel'
 import { SmartAutoCutPanel } from '@/components/layout/smart-autocut-panel'
 import { EncaixePanel } from '@/components/layout/encaixe-panel'
+import { AcabPanel } from '@/components/layout/acab-panel'
 import { ExportPanel } from '@/components/layout/export-panel'
 import { UpgradeModal } from '@/components/upgrade-modal'
 import { Viewport3D } from '@/components/viewport/viewport-3d'
@@ -45,6 +46,8 @@ export default function NativosCut() {
           <PlaneCutPanel />
           {/* Painel de divisão automática por geometria */}
           <AutoSplitPanel />
+          {/* Painel de acabamento localizado na região do corte */}
+          <AcabPanel />
         </div>
 
         {/* Painel de informações - direita */}

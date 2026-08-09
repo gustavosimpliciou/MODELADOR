@@ -5,7 +5,7 @@ import * as THREE from 'three'
 import type { AutoSplitPlan } from './auto-split'
 import { type Part, createPart } from './parts-manager'
 
-export type Tool = 'select' | 'erase' | 'cut' | 'autosplit' | 'measure' | 'reset'
+export type Tool = 'select' | 'erase' | 'cut' | 'acab' | 'autosplit' | 'measure' | 'reset'
 export type SelectionState = 'idle' | 'hovering' | 'selected' | 'cutting'
 export type AppStatus = 'idle' | 'loading' | 'loaded' | 'selecting' | 'cutting' | 'exporting' | 'error'
 export type SelectionMode = 'new' | 'add' | 'subtract'
