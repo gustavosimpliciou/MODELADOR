@@ -111,10 +111,11 @@ export function analyzeEncaixe(
   const ana = analyzeSelection(geometry, selectedFaces)
   if (!ana || !ana.hasSeam) return null
 
-  // Normal orientada da peça ativa em direção ao complemento
-  const normal = ana.fitNormal.clone().normalize()
-  const sourceOffset = ana.selectionCenter.clone().sub(ana.seamCenter).dot(normal)
-  if (sourceOffset > 0) normal.negate()
+  // Normal orientada PARA FORA do interior da peça ativa (o macho projeta
+  // para fora e a fêmea é cavada para dentro). O PCA devolve um autovetor sem
+  // orientação definida (cima/baixo); aqui medimos de qual lado do plano está
+  // o material — independe de como o usuário fez a seleção.
+  const normal = orientOutward(geometry, ana.seamCenter, ana.fitNormal, selectedFaces)
 
   const center = ana.seamCenter.clone()
 
@@ -123,12 +124,14 @@ export function analyzeEncaixe(
   const maxRadius = Math.min(ana.halfU, ana.halfV) * 0.95
   if (maxRadius < RADIUS_MM_MIN) return null
 
-  // Complemento: peça cortada no lado da normal e mais próxima do centro.
-  // A própria peça ativa fica no lado negativo (penalizada).
+  // Complemento: OUTRA peça (nunca a própria ativa, identificada pela mesma
+  // geometria) no lado da normal e mais próxima do centro.
   let complementIndex = -1
   let bestDist = Infinity
   for (let i = 0; i < parts.length; i++) {
-    const geo = parts[i].mesh.geometry
+    const partMesh = parts[i]?.mesh
+    if (!partMesh || partMesh.geometry === geometry) continue
+    const geo = partMesh.geometry
     if (!geo.boundingBox) geo.computeBoundingBox()
     const bbCenter = new THREE.Vector3()
     geo.boundingBox!.getCenter(bbCenter)
@@ -162,6 +165,79 @@ export function analyzeEncaixe(
     complementIndex,
     complementName: complementIndex >= 0 ? parts[complementIndex].name : '',
   }
+}
+
+/**
+ * Orienta a normal da costura para apontar PARA FORA da peça ativa, ou seja,
+ * a direção onde o MACHO nasce (visível) e oposta ao interior onde a FÊMEA
+ * é cavada. Sinais combinados, do mais confiável para o mais fraco:
+ *
+ *   1. RAYCAST direto no frame local: dispara um raio na normal e outro na
+ *      anti-normal a partir do centro da costura; o lado que tem interseção
+ *      com a malha é o INTERIOR. (Decisivo na maioria dos casos — não depende
+ *      da direção da seleção nem do winding das faces.)
+ *   2. PROXY do interior pelo centro da bounding sphere da geometria.
+ *   3. Normal média (área-ponderada) das faces selecionadas.
+ */
+function orientOutward(
+  geometry: THREE.BufferGeometry,
+  seamCenter: THREE.Vector3,
+  fitNormal: THREE.Vector3,
+  selectedFaces: Set<number>,
+): THREE.Vector3 {
+  const n = fitNormal.clone().normalize()
+
+  const flipViaProxy = (): number => {
+    if (!geometry.boundingSphere) geometry.computeBoundingSphere()
+    const bs = geometry.boundingSphere!
+    const inward = bs.center.clone().sub(seamCenter).dot(n)
+    if (Math.abs(inward) > 1e-6) return inward > 0 ? 1 : 0
+    const selNormal = averageSelectionNormal(geometry, selectedFaces)
+    if (selNormal.lengthSq() > 0.5 && selNormal.dot(n) < 0) return 1
+    return 0
+  }
+
+  try {
+    const probe = new THREE.Mesh(geometry)
+    const posHits = new THREE.Raycaster(
+      seamCenter.clone().addScaledVector(n, 1e-3), n,
+    ).intersectObject(probe, false).length
+    const negHits = new THREE.Raycaster(
+      seamCenter.clone().addScaledVector(n, -1e-3), n.clone().negate(),
+    ).intersectObject(probe, false).length
+    if (posHits > 0 && negHits === 0) return n.clone().negate() // material em +n
+    if (negHits > 0 && posHits === 0) return n.clone()           // material em −n
+    return flipViaProxy() === 1 ? n.clone().negate() : n.clone()
+  } catch {
+    return flipViaProxy() === 1 ? n.clone().negate() : n.clone()
+  }
+}
+
+/** Normal média (área-ponderada) das faces selecionadas. */
+function averageSelectionNormal(
+  geometry: THREE.BufferGeometry,
+  selectedFaces: Set<number>,
+): THREE.Vector3 {
+  const pos = geometry.getAttribute('position') as THREE.BufferAttribute
+  const idx = geometry.index
+  const faceCount = idx ? idx.count / 3 : pos.count / 3
+  const a = new THREE.Vector3()
+  const b = new THREE.Vector3()
+  const c = new THREE.Vector3()
+  const e1 = new THREE.Vector3()
+  const e2 = new THREE.Vector3()
+  const sum = new THREE.Vector3()
+  for (const f of selectedFaces) {
+    if (f < 0 || f >= faceCount) continue
+    a.fromBufferAttribute(pos, idx ? idx.getX(f * 3) : f * 3)
+    b.fromBufferAttribute(pos, idx ? idx.getX(f * 3 + 1) : f * 3 + 1)
+    c.fromBufferAttribute(pos, idx ? idx.getX(f * 3 + 2) : f * 3 + 2)
+    e1.subVectors(b, a)
+    e2.subVectors(c, a)
+    e1.cross(e2)
+    sum.add(e1)
+  }
+  return sum.normalize()
 }
 
 // ─── Aplicação (CSG) ───────────────────────────────────────────────────────────
@@ -299,8 +375,10 @@ function computeFemaleDepth(
 
 /**
  * Mede a espessura da peça ao longo de `dir` a partir do centro do encaixe.
- * O centro/dir estão no frame local da própria `mesh`; o frame é derivado de
- * position/quaternion/scale (robusto mesmo para malhas fora da cena).
+ * `center`/`dir` estão no frame LOCAL da geometria da `mesh` (já convertidos
+ * por toTargetFrame). A medida é feita com um mesh sem transformação (frame
+ * local), então independe de position/quaternion/scale e funciona mesmo para
+ * malhas fora da cena.
  */
 export function measureThickness(
   mesh: THREE.Mesh,
@@ -308,15 +386,12 @@ export function measureThickness(
   dir: THREE.Vector3,
 ): number {
   try {
-    const inv = new THREE.Matrix4().compose(mesh.position, mesh.quaternion, mesh.scale).invert()
-    const origin = center.clone().applyMatrix4(inv)
-    const axis = dir.clone().transformDirection(inv).normalize()
-
-    const ray = new THREE.Raycaster()
+    const origin = center.clone().addScaledVector(dir, 0.02)
+    const ray = new THREE.Raycaster(origin, dir.clone().normalize())
     ray.near = 1e-4
     ray.far = 1e5
-    ray.set(origin.clone().addScaledVector(axis, 0.02), axis)
-    const hits = ray.intersectObject(mesh, false)
+    const probe = new THREE.Mesh(mesh.geometry)
+    const hits = ray.intersectObject(probe, false)
     if (hits.length < 2) return 0
     return Math.max(0, hits[hits.length - 1].distance - hits[0].distance)
   } catch {

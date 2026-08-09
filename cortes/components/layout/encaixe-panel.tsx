@@ -20,9 +20,11 @@ import { useDraggable } from '@/lib/use-draggable'
 const HEIGHT_MIN = 3
 const HEIGHT_MAX = 8
 const RADIUS_MIN = 0.8
-const TOL_MIN = 0.1
-const TOL_MAX = 0.5
-const TOL_STEP = 0.05
+// Folga radial da fêmea (cavidade maior que o pino): 0,15–0,2 mm é o ideal
+// para impressão 3D — folga de montagem sem folga visual.
+const TOL_MIN = 0.15
+const TOL_MAX = 0.2
+const TOL_STEP = 0.01
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 const round = (v: number, d = 1) => Number(v.toFixed(d))
@@ -90,7 +92,7 @@ export function EncaixePanel() {
     encaixePreview, setEncaixePreview, patchEncaixePreview,
     modelMesh, selectedFaceIndices, selectionState,
     parts, cutParts, setCutParts,
-    setModelMesh, setActivePartId,
+    setModelMesh, setActivePartId, updatePart,
     setStatus, pushHistory, clearSelection,
   } = useAppStore()
 
@@ -198,17 +200,26 @@ export function EncaixePanel() {
 
         if (mode === 'both') {
           if (!result.maleGeo || !result.femaleGeo || !compPart) throw new Error('encaixe vazio')
+          if (result.maleGeo.attributes.position.count === 0 || result.femaleGeo.attributes.position.count === 0) {
+            throw new Error('a geometria do encaixe ficou vazia')
+          }
           // setModelMesh sincroniza a peça ativa em parts; setCutParts
           // sincroniza a malha do complemento em parts.
           const newActive = cloneMeshTransform(activeMesh, result.maleGeo)
           const newComp = cloneMeshTransform(compPart.mesh, result.femaleGeo)
           setModelMesh(newActive)
           setCutParts(cutParts.map((cp) => (cp.id === compPart.id ? { ...cp, mesh: newComp } : cp)))
+          updatePart(compPart.id, { mesh: newComp })
           setActivePartId(null) // sai do isolamento e mostra as duas peças
         } else {
           const geo = mode === 'male' ? result.maleGeo : result.femaleGeo
-          if (!geo) throw new Error('encaixe vazio')
-          setModelMesh(cloneMeshTransform(activeMesh, geo))
+          if (!geo || geo.attributes.position.count === 0) throw new Error('a geometria do encaixe ficou vazia')
+          const newActive = cloneMeshTransform(activeMesh, geo)
+          setModelMesh(newActive)
+          // Garantia extra: sincroniza a parte ativa também quando activePartId
+          // estiver nulo, localizando-a pela referência da malha.
+          const activeRef = parts.find((p) => p.mesh === activeMesh)
+          if (activeRef) updatePart(activeRef.id, { mesh: newActive })
         }
 
         clearSelection()
@@ -216,7 +227,8 @@ export function EncaixePanel() {
         setEncaixeOpen(false)
         setStatus('loaded', t.encaixe_generated((p.radius * 2).toFixed(1), p.height.toFixed(1)))
       } catch (err) {
-        setStatus('error', t.encaixe_error)
+        const msg = err instanceof Error ? err.message : ''
+        setStatus('error', msg ? `${t.encaixe_error} — ${msg}` : t.encaixe_error)
         console.error('[Encaixe] Erro:', err)
       } finally {
         setBusy(false)
@@ -224,7 +236,7 @@ export function EncaixePanel() {
     }, 60)
   }, [
     encaixePreview, modelMesh, parts, cutParts,
-    pushHistory, setModelMesh, setActivePartId, setCutParts,
+    pushHistory, setModelMesh, setActivePartId, setCutParts, updatePart,
     setStatus, clearSelection, setEncaixePreview, setEncaixeOpen, t,
   ])
 
