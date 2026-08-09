@@ -16,7 +16,6 @@ import { useUserStore, ADMIN_EMAIL } from '@/lib/user-store'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/lang-store'
 import { ConfigModal } from './config-modal'
-import { CreditCountdown } from './credit-countdown'
 
 interface TopBarProps {
   onExport?: () => void
@@ -251,8 +250,7 @@ export function TopBar({ onExport }: TopBarProps) {
           </div>
         )}
 
-        {/* Credit expiry countdown (só para quem comprou créditos / conta de teste) */}
-        {!isAdmin && <CreditCountdown />}
+        {/* Credit expiry countdown (oculto — visível apenas no painel do admin) */}
 
         {/* Credits badge */}
         {!isAdmin && (

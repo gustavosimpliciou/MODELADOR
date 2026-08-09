@@ -770,7 +770,7 @@ function UsersPage({ compact = false }) {
               <Th style={{ maxWidth: 120 }}>ID</Th>
               {!compact && <Th><SortBtn col="created_at" label="Cadastro" /></Th>}
               <Th><SortBtn col="credits" label="Créditos" /></Th>
-              <Th><SortBtn col="credits_expires_at" label="Expira em" /></Th>
+              <Th><SortBtn col="credits_expires_at" label="Expiração" /></Th>
               {!compact && <Th>Tipo</Th>}
               <Th>Ações</Th>
             </tr>
@@ -1160,9 +1160,10 @@ function formatBRL(value) {
 }
 
 /**
- * Informações da expiração do crédito. O texto principal é o DIA/MÊS em que
- * os créditos finalizam (ex.: "05/12"); a cor sinaliza a urgência pelos dias
- * restantes e o título completo fica disponível no tooltip.
+ * Informações da expiração do crédito. O texto principal é a QUANTIDADE DE
+ * DIAS que faltam para os créditos finalizarem (ex.: "37 dias"); a cor
+ * sinaliza a urgência e o título completo fica disponível no tooltip.
+ * Visível apenas no painel do admin.
  */
 function expiryInfo(iso) {
   if (!iso) return { text: '—', color: 'var(--text-dim)', days: null, full: null }
@@ -1173,11 +1174,11 @@ function expiryInfo(iso) {
   const full = exp.toLocaleDateString('pt-BR', {
     day: '2-digit', month: '2-digit', year: 'numeric',
   })
-  const dayMonth = exp.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
   if (diff <= 0) return { text: 'Expirado', color: '#e05050', days, full }
-  if (days <= 7)  return { text: dayMonth, color: '#ff9800', days, full }
-  if (days <= 30) return { text: dayMonth, color: '#ffd600', days, full }
-  return { text: dayMonth, color: '#4caf50', days, full }
+  const text = days === 1 ? '1 dia' : `${days} dias`
+  if (days <= 7)  return { text, color: '#ff9800', days, full }
+  if (days <= 30) return { text, color: '#ffd600', days, full }
+  return { text, color: '#4caf50', days, full }
 }
 
 /** Normaliza status para exibição legível e cor. */
