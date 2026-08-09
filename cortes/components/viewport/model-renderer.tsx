@@ -49,8 +49,12 @@ export function ModelRenderer() {
   const parts = useAppStore((s) => s.parts)
   const activePartId = useAppStore((s) => s.activePartId)
   const modelMesh = useAppStore((s) => s.modelMesh)
+  const activeTool = useAppStore((s) => s.activeTool)
 
   if (parts.length === 0 && !modelMesh) return null
+
+  // Em ACAB isolamos pela peça ativa para reduzir draw calls
+  const isolate = activePartId !== null || String(activeTool) === 'acab'
 
   return (
     <group>
@@ -59,7 +63,7 @@ export function ModelRenderer() {
           key={part.id}
           part={part}
           isActive={part.id === activePartId}
-          isolate={activePartId !== null}
+          isolate={isolate}
         />
       ))}
       {/* Previews operate on modelMesh (always the active part's mesh) */}
@@ -85,7 +89,7 @@ interface PartMeshProps {
 
 const PartMesh = memo(function PartMesh({ part, isActive, isolate }: PartMeshProps) {
   const overlayActive = useCutOverlayActive()
-  const { showWireframe } = useAppStore()
+  const showWireframe = useAppStore((s) => s.showWireframe)
 
   // Visibility rules:
   // 1. If overlay is active, hide everything (CutPreviewOverlay replaces the view)

@@ -53,6 +53,7 @@ export function AcabPanel() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [statusLine, setStatusLine] = useState('Ajuste os parâmetros e veja o preview')
   const [fixedPos, setFixedPos] = useState<{ left: number; top: number } | null>(null)
+  const [cloneTick, setCloneTick] = useState(0)
 
   const originalGeoRef = useRef<THREE.BufferGeometry | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -128,30 +129,67 @@ export function AcabPanel() {
       const part = parts.find((p) => p.id === partId)
       if (!part?.mesh?.geometry) return
 
+      // PERFORMANCE: não dispara N updates no Zustand.
+      // Só altera mesh.visible localmente — o renderer já respeita part.visible
+      // e isolation via activePartId.
       parts.forEach((p) => {
         try {
-          updatePart(p.id, { visible: p.id === partId })
+          p.mesh.visible = p.id === partId
         } catch {
           /* */
         }
       })
 
-      const geo = part.mesh.geometry as THREE.BufferGeometry
-      originalGeoRef.current = geo.clone()
-
-      const tagged = (part as { cutFaceIndices?: number[] }).cutFaceIndices
-      const region = identifyCutRegion(geo, { taggedFaceIndices: tagged })
+      // Cancela preview anterior imediatamente (evita freeze empilhado)
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current)
+        debounceRef.current = null
+      }
       setPreviewGeo((g) => {
         g?.dispose()
         return null
       })
+      setProcessing(false)
+
+      const geo = part.mesh.geometry as THREE.BufferGeometry
+      // Clone em idle para não travar o clique
+      originalGeoRef.current = null
+      const doClone = () => {
+        try {
+          originalGeoRef.current = geo.clone()
+        } catch {
+          originalGeoRef.current = geo
+        }
+        setCloneTick((t) => t + 1)
+      }
+      if (typeof requestIdleCallback !== 'undefined') {
+        requestIdleCallback(doClone, { timeout: 120 })
+      } else {
+        setTimeout(doClone, 0)
+      }
+
       setErrorMsg(null)
       setShowOriginal(false)
+      setStatusLine('Peça carregada · ajuste os parâmetros para o preview')
 
-      if (region.method === 'fallback-none') {
-        setStatusLine('Região não detectada — suavização leve na peça inteira (modo seguro)')
+      // Identificação leve em idle (não bloqueia o clique)
+      const tagged = (part as { cutFaceIndices?: number[] }).cutFaceIndices
+      const idWork = () => {
+        try {
+          const region = identifyCutRegion(geo, { taggedFaceIndices: tagged })
+          if (region.method === 'fallback-none') {
+            setStatusLine('Região não detectada · preview usará borda/curvatura')
+          } else {
+            setStatusLine(`Região: ${region.method} · ${region.cutFaceIndices.length || 0} faces`)
+          }
+        } catch {
+          setStatusLine('Peça pronta · ajuste os parâmetros')
+        }
+      }
+      if (typeof requestIdleCallback !== 'undefined') {
+        requestIdleCallback(idWork, { timeout: 200 })
       } else {
-        setStatusLine(`Região de corte: ${region.method} · ajuste e veja o preview`)
+        setTimeout(idWork, 0)
       }
     },
     [parts, updatePart],
@@ -221,11 +259,11 @@ export function AcabPanel() {
   useEffect(() => {
     if (!open || !originalGeoRef.current) return
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(runPreview, 160)
+    debounceRef.current = setTimeout(runPreview, 280)
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [settings, open, runPreview])
+  }, [settings, open, runPreview, cloneTick])
 
   useEffect(() => {
     if (!selectedPart?.mesh || !originalGeoRef.current) return

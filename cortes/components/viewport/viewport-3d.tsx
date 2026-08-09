@@ -624,7 +624,7 @@ export function Viewport3D() {
 
       <WebGLErrorBoundary>
       <Canvas
-        frameloop="always"
+        frameloop="demand"
         camera={{ position: [0, 0, 5], fov: 45, near: 0.001, far: 2000 }}
         gl={{
           antialias: true,
@@ -636,7 +636,7 @@ export function Viewport3D() {
           failIfMajorPerformanceCaveat: false,
         }}
         style={{ background: 'transparent' }}
-        dpr={[1, 1.5]}
+        dpr={[1, 1.25]}
         onCreated={({ gl }) => {
           // Silence any post-creation context-lost events so they don't
           // propagate as unhandled rejections.
@@ -678,6 +678,9 @@ export function Viewport3D() {
 
         <OrbitControls
           ref={controlsRef}
+          onStart={() => invalidate()}
+          onChange={() => invalidate()}
+          onEnd={() => invalidate()}
           enableDamping
           dampingFactor={0.06}
           rotateSpeed={0.85}

@@ -750,6 +750,84 @@ function estimateVolumeFromPositions(arr: ArrayLike<number>, idx: THREE.BufferAt
 
 // ─── 4. Pipeline completo ────────────────────────────────────────────────────
 
+
+// ─── 3b. Micro-fillet na fronteira do corte ──────────────────────────────────
+
+/**
+ * Aproxima um fillet sutil nos vértices de borda da região de corte.
+ * Desloca cada vértice de fronteira ao longo da normal média das faces
+ * adjacentes, com amplitude proporcional a intensity × radiusMm × weight.
+ * Vértices com weight≈0 permanecem intactos.
+ */
+export function applyEdgeRefine(
+  geometry: THREE.BufferGeometry,
+  weights: Float32Array,
+  settings: AcabSettings,
+  scaleToMm = 1,
+): THREE.BufferGeometry {
+  const s = clampAcabSettings(settings)
+  const geo = geometry.clone()
+  const pos = geo.getAttribute('position') as THREE.BufferAttribute
+  const n = pos.count
+  const idx = geo.getIndex()
+
+  // Build face normals per vertex (area-weighted)
+  const nx = new Float32Array(n)
+  const ny = new Float32Array(n)
+  const nz = new Float32Array(n)
+  const va = new THREE.Vector3(), vb = new THREE.Vector3(), vc = new THREE.Vector3()
+  const ab = new THREE.Vector3(), ac = new THREE.Vector3(), fn = new THREE.Vector3()
+
+  const faceCount = idx ? idx.count / 3 : n / 3
+  for (let f = 0; f < faceCount; f++) {
+    let a: number, b: number, c: number
+    if (idx) {
+      a = idx.getX(f * 3); b = idx.getX(f * 3 + 1); c = idx.getX(f * 3 + 2)
+    } else {
+      a = f * 3; b = f * 3 + 1; c = f * 3 + 2
+    }
+    va.fromBufferAttribute(pos, a)
+    vb.fromBufferAttribute(pos, b)
+    vc.fromBufferAttribute(pos, c)
+    ab.subVectors(vb, va)
+    ac.subVectors(vc, va)
+    fn.crossVectors(ab, ac)
+    const area = fn.length()
+    if (area < 1e-14) continue
+    fn.multiplyScalar(1 / area) // unit-ish; keep area weight by not fully normalizing before add
+    // re-normalize for direction, weight by area
+    const len = fn.length()
+    if (len < 1e-12) continue
+    const wx = (fn.x / len) * area
+    const wy = (fn.y / len) * area
+    const wz = (fn.z / len) * area
+    nx[a] += wx; ny[a] += wy; nz[a] += wz
+    nx[b] += wx; ny[b] += wy; nz[b] += wz
+    nx[c] += wx; ny[c] += wy; nz[c] += wz
+  }
+
+  // Amplitude max in scene units (radiusMm is the influence; fillet is a fraction)
+  const maxDisp = (s.radiusMm * 0.35 * s.intensity) / Math.max(scaleToMm, 1e-6)
+
+  for (let i = 0; i < n; i++) {
+    const w = weights[i]
+    if (w < 0.15) continue // só região de influência relevante
+    const len = Math.sqrt(nx[i] * nx[i] + ny[i] * ny[i] + nz[i] * nz[i])
+    if (len < 1e-12) continue
+    // Falloff: mais forte no centro da máscara (borda do corte tipicamente ~1)
+    const amp = maxDisp * w * w
+    pos.setXYZ(
+      i,
+      pos.getX(i) + (nx[i] / len) * amp,
+      pos.getY(i) + (ny[i] / len) * amp,
+      pos.getZ(i) + (nz[i] / len) * amp,
+    )
+  }
+
+  pos.needsUpdate = true
+  return geo
+}
+
 export function runAcabamento(
   sourceGeometry: THREE.BufferGeometry,
   settings: AcabSettings,
@@ -760,23 +838,40 @@ export function runAcabamento(
   },
 ): AcabResult {
   const s = clampAcabSettings(settings)
-  const region = identifyCutRegion(sourceGeometry, opts)
+  const scale = opts?.scaleToMm ?? 1
+  let region = identifyCutRegion(sourceGeometry, opts)
 
-  if (region.method === 'fallback-none' || region.cutFaceIndices.length === 0 && region.method !== 'boundary-expand') {
-    // Ainda tenta boundary-expand
+  // Fallback agressivo: se nada detectado, usa boundary aberta ou
+  // seeds nos vértices de maior curvatura (ainda localizado, não global).
+  if (region.method === 'fallback-none') {
+    region = identifyCutRegion(sourceGeometry, opts)
   }
 
-  const expanded = expandInfluenceMask(
+  let expanded = expandInfluenceMask(
     sourceGeometry,
     region.vertexWeights,
     s.radiusMm,
-    opts?.scaleToMm ?? 1,
+    scale,
     s.preserveDetails,
   )
 
-  // Se máscara está toda zerada, não altera nada
   let maxW = 0
   for (let i = 0; i < expanded.length; i++) if (expanded[i] > maxW) maxW = expanded[i]
+
+  // Último recurso: máscara suave nos 8% vértices de maior curvatura
+  if (maxW < 1e-4) {
+    const curv = estimateVertexCurvature(sourceGeometry)
+    const n = curv.length
+    const sorted = Array.from(curv).map((c, i) => [c, i] as [number, number])
+    sorted.sort((a, b) => b[0] - a[0])
+    const take = Math.max(12, Math.floor(n * 0.08))
+    const seeds = new Float32Array(n)
+    for (let k = 0; k < take; k++) seeds[sorted[k][1]] = 1
+    expanded = expandInfluenceMask(sourceGeometry, seeds, s.radiusMm, scale, s.preserveDetails)
+    maxW = 0
+    for (let i = 0; i < expanded.length; i++) if (expanded[i] > maxW) maxW = expanded[i]
+  }
+
   if (maxW < 1e-4) {
     const geo = sourceGeometry.clone()
     const vol = estimateVolume(geo)
@@ -791,7 +886,12 @@ export function runAcabamento(
   }
 
   const volumeBefore = estimateVolume(sourceGeometry)
-  const resultGeo = applyLocalizedSmooth(sourceGeometry, expanded, s)
+
+  // 1) Micro-fillet na fronteira (arredonda sutilmente o corte)
+  let resultGeo = applyEdgeRefine(sourceGeometry, expanded, s, scale)
+  // 2) Taubin localizado (limpa irregularidades restantes)
+  resultGeo = applyLocalizedSmooth(resultGeo, expanded, s)
+
   const validation = validateGeometry(resultGeo, volumeBefore)
 
   return {
