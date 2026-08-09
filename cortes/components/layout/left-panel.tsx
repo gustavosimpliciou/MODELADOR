@@ -1,7 +1,7 @@
 "use client"
 
 import React from 'react'
-import { MousePointerClick, Scissors, Sparkles, RotateCcw } from 'lucide-react'
+import { MousePointerClick, Scissors, RotateCcw } from 'lucide-react'
 import { useAppStore, type Tool } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/lang-store'
@@ -20,15 +20,10 @@ export function LeftPanel() {
     parts,
   } = useAppStore()
 
+  // O acabamento ('acab') está em desenvolvimento e ficará oculto até ser finalizado.
   const tools: { id: Tool; icon: React.ReactNode; label: string; description: string }[] = [
     { id: 'select', icon: <MousePointerClick className="w-4 h-4" />, label: 'Smart', description: t.tool_smart_desc },
     { id: 'cut',    icon: <Scissors className="w-4 h-4" />,          label: 'Corte',  description: t.tool_cut_desc },
-    {
-      id: 'acab',
-      icon: <Sparkles className="w-4 h-4" />,
-      label: 'Acab',
-      description: 'Acabamento — refine o contorno do corte',
-    },
   ]
 
   const sensLabel =

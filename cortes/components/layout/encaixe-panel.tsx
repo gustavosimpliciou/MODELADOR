@@ -66,6 +66,17 @@ function StepperField({ label, value, min, max, step, unit, accent, decimals = 1
           +
         </button>
       </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(round(clamp(Number(e.target.value), min, max), decimals))}
+        className="w-full cursor-pointer"
+        style={{ height: 12, accentColor: accent ?? 'oklch(0.55 0.15 260)' }}
+        aria-label={label}
+      />
     </div>
   )
 }
@@ -172,10 +183,6 @@ export function EncaixePanel() {
         const compMesh = p.inverted ? newMaleMesh : newFemaleMesh
         setModelMesh(activeMesh)
         setCutParts(cutParts.map((cp) => (cp.id === compPart.id ? { ...cp, mesh: compMesh } : cp)))
-
-        // Libera as geometrias substituídas.
-        try { maleMesh.geometry.dispose() } catch {}
-        try { femaleMesh.geometry.dispose() } catch {}
 
         clearSelection()
         setEncaixePreview(null)

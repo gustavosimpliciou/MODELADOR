@@ -127,12 +127,13 @@ export function analyzeEncaixe(
     }
   }
 
-  // Altura máxima limitada pela espessura da peça receptora (não atravessar)
+  // Altura máxima limitada pela espessura da peça receptora (não atravessar).
+  // Mantém a folga generosa para o usuário ajustar (apenas a parede de segurança).
   let maxHeight = HEIGHT_MAX
   if (complementIndex >= 0) {
     const thickness = measureThickness(cutParts[complementIndex].mesh, center, normal)
     if (thickness > 0) {
-      maxHeight = Math.min(HEIGHT_MAX, thickness - FEMALE_WALL_MM - 1)
+      maxHeight = Math.min(HEIGHT_MAX, thickness - FEMALE_WALL_MM)
     }
   }
   maxHeight = Math.max(HEIGHT_MIN, Math.min(HEIGHT_MAX, maxHeight))

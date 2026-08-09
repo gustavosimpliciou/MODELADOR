@@ -19,12 +19,14 @@ import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import { useAppStore } from '@/lib/store'
 
 const COL = {
-  male: '#2fd6b0',
-  female: '#ff8a3d',
+  male: '#3ff0c4',
+  maleBright: '#9dffe8',
+  female: '#ff9d55',
+  femaleBright: '#ffd0a8',
   maxRing: '#ff4757',
   axis: '#ffffff',
   center: '#ffd54a',
-  seam: 'rgba(255,255,255,0.85)',
+  seam: 'rgba(255,255,255,0.95)',
 }
 
 const HEIGHT_MIN = 3
@@ -42,6 +44,13 @@ interface DragState {
   startCenter: THREE.Vector3
   groupInv: THREE.Matrix4
   dirLocal: THREE.Vector3
+  /** Eixo e centro em espaço mundo — usados no arrasto de altura. */
+  axisWorld: THREE.Vector3
+  centerWorld: THREE.Vector3
+  /** Posição do cursor projetada no eixo no início do arrasto (evita pulo). */
+  startAxisParam: number
+  /** Raio inicial medido no plano da costura (evita pulo no arrasto do diâmetro). */
+  startRadiusParam: number
   u: THREE.Vector3
   v: THREE.Vector3
 }
@@ -78,7 +87,6 @@ export function EncaixeGizmo() {
     [preview],
   )
   const u = useMemo(() => preview ? new THREE.Vector3(...preview.planeU).normalize() : new THREE.Vector3(1, 0, 0), [preview])
-  const v = useMemo(() => preview ? new THREE.Vector3(...preview.planeV).normalize() : new THREE.Vector3(0, 1, 0), [preview])
 
   const seamCenter = useMemo(
     () => preview ? new THREE.Vector3(...preview.seamCenter) : new THREE.Vector3(),
@@ -115,23 +123,58 @@ export function EncaixeGizmo() {
       if (!p) return
       e.stopPropagation()
       const ray = getWorldRay(e.nativeEvent.clientX, e.nativeEvent.clientY)
-      const planeNormal = cameraRef.current.getWorldDirection(new THREE.Vector3()).negate()
-      const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(planeNormal, e.point.clone())
+      const groupWorld = groupRef.current?.matrixWorld.clone() ?? new THREE.Matrix4()
+      const inv = groupWorld.clone().invert()
+      const dirLocal = new THREE.Vector3(...p.normal).multiplyScalar(p.inverted ? -1 : 1).normalize()
+      const axisWorld = dirLocal.clone().transformDirection(groupWorld)
+      const centerWorld = new THREE.Vector3(...p.center).applyMatrix4(groupWorld)
+
+      // Plano de arrasto:
+      //  - altura → plano que CONTÉM o eixo e o "up" da tela, garantindo que
+      //    arrastar verticalmente mude a altura em QUALQUER ângulo de câmera;
+      //  - raio/centro → plano paralelo à tela (comportamento clássico).
+      let plane: THREE.Plane
+      if (type === 'height') {
+        const screenUp = cameraRef.current.up.clone().normalize()
+        const n = new THREE.Vector3().crossVectors(axisWorld, screenUp)
+        if (n.lengthSq() > 1e-6) {
+          plane = new THREE.Plane().setFromNormalAndCoplanarPoint(n.normalize(), centerWorld)
+        } else {
+          plane = new THREE.Plane().setFromNormalAndCoplanarPoint(
+            cameraRef.current.getWorldDirection(new THREE.Vector3()).negate(),
+            centerWorld,
+          )
+        }
+      } else {
+        plane = new THREE.Plane().setFromNormalAndCoplanarPoint(
+          cameraRef.current.getWorldDirection(new THREE.Vector3()).negate(),
+          e.point.clone(),
+        )
+      }
+
       const hit = new THREE.Vector3()
       if (!ray.intersectPlane(plane, hit)) return
+      const hitLocal = hit.clone().applyMatrix4(inv)
+      const uLocal = new THREE.Vector3(...p.planeU).normalize()
+      const vLocal = new THREE.Vector3(...p.planeV).normalize()
+      const centerLocal = new THREE.Vector3(...p.center)
+      const rel0 = hitLocal.clone().sub(centerLocal)
 
-      const inv = groupRef.current?.matrixWorld.clone().invert() ?? new THREE.Matrix4()
       dragRef.current = {
         type,
         plane,
-        startHitLocal: hit.clone().applyMatrix4(inv),
+        startHitLocal: hitLocal,
         startRadius: p.radius,
         startHeight: p.height,
-        startCenter: new THREE.Vector3(...p.center),
+        startCenter: centerLocal,
         groupInv: inv,
-        dirLocal: new THREE.Vector3(...p.normal).multiplyScalar(p.inverted ? -1 : 1).normalize(),
-        u: new THREE.Vector3(...p.planeU).normalize(),
-        v: new THREE.Vector3(...p.planeV).normalize(),
+        dirLocal,
+        axisWorld,
+        centerWorld,
+        startAxisParam: hit.clone().sub(centerWorld).dot(axisWorld),
+        startRadiusParam: Math.hypot(rel0.dot(uLocal), rel0.dot(vLocal)),
+        u: uLocal,
+        v: vLocal,
       }
       setEncaixeDragging(true)
     },
@@ -151,10 +194,12 @@ export function EncaixeGizmo() {
       if (d.type === 'radius') {
         const rel = local.clone().sub(d.startCenter)
         const rad = Math.hypot(rel.dot(d.u), rel.dot(d.v))
-        patchRef.current({ radius: clamp(rad, Math.min(RADIUS_MIN, p.maxRadius), p.maxRadius) })
+        patchRef.current({ radius: clamp(d.startRadius + (rad - d.startRadiusParam), Math.min(RADIUS_MIN, p.maxRadius), p.maxRadius) })
       } else if (d.type === 'height') {
-        const h = d.startHeight + local.clone().sub(d.startCenter).dot(d.dirLocal)
-        patchRef.current({ height: clamp(h, HEIGHT_MIN, p.maxHeight) })
+        // Projeção do cursor sobre o eixo (espaço mundo) — funciona em qualquer ângulo,
+        // com deslocamento incremental a partir do ponto inicial (sem pulo).
+        const t = hit.clone().sub(d.centerWorld).dot(d.axisWorld)
+        patchRef.current({ height: clamp(d.startHeight + (t - d.startAxisParam), HEIGHT_MIN, p.maxHeight) })
       } else if (d.type === 'center') {
         const delta = local.clone().sub(d.startHitLocal)
         const du = delta.dot(d.u)
@@ -202,68 +247,84 @@ export function EncaixeGizmo() {
       scale={modelMesh!.scale.toArray()}
     >
       {/* ── Preview do MACHO (boss integrado) ─────────────────────────────── */}
-      <mesh position={center.clone().addScaledVector(dirLocal, height / 2).toArray()} quaternion={quatY.toArray() as [number, number, number, number]}>
+      <mesh position={center.clone().addScaledVector(dirLocal, height / 2).toArray()} quaternion={quatY.toArray() as [number, number, number, number]} renderOrder={5}>
         <cylinderGeometry args={[radius, radius, height, CYL_SEG, 1, true]} />
-        <meshBasicMaterial color={COL.male} transparent opacity={0.4} side={THREE.DoubleSide} depthWrite={false} />
+        <meshBasicMaterial color={COL.male} transparent opacity={0.72} side={THREE.DoubleSide} depthWrite={false} depthTest={false} />
       </mesh>
 
       {/* ── Preview da FÊMEA (cavidade) ───────────────────────────────────── */}
-      <mesh position={center.clone().addScaledVector(dirLocal, femaleDepth / 2).toArray()} quaternion={quatY.toArray() as [number, number, number, number]}>
+      <mesh position={center.clone().addScaledVector(dirLocal, femaleDepth / 2).toArray()} quaternion={quatY.toArray() as [number, number, number, number]} renderOrder={6}>
         <cylinderGeometry args={[radius + tolerance, radius + tolerance, femaleDepth, CYL_SEG, 1, true]} />
-        <meshBasicMaterial color={COL.female} transparent opacity={0.32} side={THREE.DoubleSide} depthWrite={false} />
+        <meshBasicMaterial color={COL.female} transparent opacity={0.55} side={THREE.DoubleSide} depthWrite={false} depthTest={false} />
       </mesh>
 
       {/* ── Eixo ──────────────────────────────────────────────────────────── */}
-      <mesh position={center.clone().addScaledVector(dirLocal, height / 2).toArray()} quaternion={quatY.toArray() as [number, number, number, number]}>
-        <cylinderGeometry args={[s * 0.05, s * 0.05, height, 6, 1, true]} />
-        <meshBasicMaterial color={COL.axis} transparent opacity={0.55} depthWrite={false} />
+      <mesh position={center.clone().addScaledVector(dirLocal, height / 2).toArray()} quaternion={quatY.toArray() as [number, number, number, number]} renderOrder={7}>
+        <cylinderGeometry args={[s * 0.06, s * 0.06, height, 6, 1, true]} />
+        <meshBasicMaterial color={COL.axis} transparent opacity={0.85} depthWrite={false} depthTest={false} />
       </mesh>
 
       {/* ── Disco da base (boca do encaixe) ───────────────────────────────── */}
-      <mesh position={center.toArray()} quaternion={quatZ.toArray() as [number, number, number, number]}>
+      <mesh position={center.toArray()} quaternion={quatZ.toArray() as [number, number, number, number]} renderOrder={4}>
         <circleGeometry args={[radius, CYL_SEG]} />
-        <meshBasicMaterial color={COL.seam} transparent opacity={0.35} side={THREE.DoubleSide} depthWrite={false} />
+        <meshBasicMaterial color={COL.seam} transparent opacity={0.5} side={THREE.DoubleSide} depthWrite={false} depthTest={false} />
       </mesh>
 
       {/* ── Anel de limite máximo (região da costura) ─────────────────────── */}
-      <mesh position={seamCenter.toArray()} quaternion={quatZ.toArray() as [number, number, number, number]}>
+      <mesh position={seamCenter.toArray()} quaternion={quatZ.toArray() as [number, number, number, number]} renderOrder={8}>
         <ringGeometry args={[maxRadius - s * 0.07, maxRadius + s * 0.02, CYL_SEG]} />
         <meshBasicMaterial
           color={COL.maxRing}
           transparent
-          opacity={atLimit ? 0.9 : 0.45}
+          opacity={atLimit ? 0.95 : 0.6}
           side={THREE.DoubleSide}
           depthWrite={false}
+          depthTest={false}
         />
       </mesh>
 
       {/* ── Anel de diâmetro (arrastável) ─────────────────────────────────── */}
-      <mesh position={center.toArray()} quaternion={quatZ.toArray() as [number, number, number, number]}>
+      <mesh position={center.toArray()} quaternion={quatZ.toArray() as [number, number, number, number]} renderOrder={9}>
         <ringGeometry args={[radius - s * 0.09, radius + s * 0.05, CYL_SEG]} />
-        <meshBasicMaterial color={COL.male} transparent opacity={0.85} side={THREE.DoubleSide} depthWrite={false} />
+        <meshBasicMaterial color={COL.maleBright} transparent opacity={0.95} side={THREE.DoubleSide} depthWrite={false} depthTest={false} />
+      </mesh>
+
+      {/* ── Anel da boca da FÊMEA (contorno sólido) ───────────────────────── */}
+      <mesh position={center.toArray()} quaternion={quatZ.toArray() as [number, number, number, number]} renderOrder={10}>
+        <ringGeometry args={[radius + tolerance - s * 0.035, radius + tolerance + s * 0.035, CYL_SEG]} />
+        <meshBasicMaterial color={COL.femaleBright} transparent opacity={1} side={THREE.DoubleSide} depthWrite={false} depthTest={false} />
+      </mesh>
+
+      {/* ── Anel do topo do MACHO (mostra a altura) ───────────────────────── */}
+      <mesh position={center.clone().addScaledVector(dirLocal, height).toArray()} quaternion={quatZ.toArray() as [number, number, number, number]} renderOrder={10}>
+        <ringGeometry args={[radius - s * 0.045, radius + s * 0.045, CYL_SEG]} />
+        <meshBasicMaterial color={COL.maleBright} transparent opacity={1} side={THREE.DoubleSide} depthWrite={false} depthTest={false} />
       </mesh>
 
       {/* ── Handles ───────────────────────────────────────────────────────── */}
       <mesh
         position={radiusKnob.toArray()}
         onPointerDown={(e) => beginDrag('radius', e)}
+        renderOrder={20}
       >
         <sphereGeometry args={[s * 0.30, 16, 16]} />
-        <meshBasicMaterial color={COL.male} />
+        <meshBasicMaterial color={COL.maleBright} depthTest={false} />
       </mesh>
       <mesh
         position={heightKnob.toArray()}
         onPointerDown={(e) => beginDrag('height', e)}
+        renderOrder={21}
       >
-        <sphereGeometry args={[s * 0.26, 16, 16]} />
-        <meshBasicMaterial color={COL.axis} />
+        <sphereGeometry args={[s * 0.28, 16, 16]} />
+        <meshBasicMaterial color={COL.axis} depthTest={false} />
       </mesh>
       <mesh
         position={center.toArray()}
         onPointerDown={(e) => beginDrag('center', e)}
+        renderOrder={22}
       >
         <sphereGeometry args={[s * 0.34, 16, 16]} />
-        <meshBasicMaterial color={COL.center} />
+        <meshBasicMaterial color={COL.center} depthTest={false} />
       </mesh>
     </group>
   )
