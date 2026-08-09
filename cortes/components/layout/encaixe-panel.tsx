@@ -13,6 +13,7 @@ import { Box, AlertTriangle, Loader2, X, GripHorizontal } from 'lucide-react'
 import * as THREE from 'three'
 import { useAppStore } from '@/lib/store'
 import { analyzeEncaixe, applyEncaixe, type EncaixeMode } from '@/lib/encaixe'
+import { analyzeSelection } from '@/lib/smart-autocut'
 import { cloneMeshTransform } from '@/lib/parts-manager'
 import { useT } from '@/lib/lang-store'
 import { useDraggable } from '@/lib/use-draggable'
@@ -114,27 +115,70 @@ export function EncaixePanel() {
     return [...byId.values()]
   }, [parts, cutParts, modelMesh])
 
-  // Limites inteligentes da seleção (costura + complemento).
-  const limits = useMemo(() => {
+  // Análise da costura (centro/normal) — usada para escolher o membro do
+  // grupo de corte mais próximo da região de contato.
+  const seamAnalysis = useMemo(() => {
     if (!visible || !modelMesh || !hasSelection) return null
     try {
-      return analyzeEncaixe(modelMesh.geometry as THREE.BufferGeometry, selectedFaceIndices, candidates)
+      const ana = analyzeSelection(modelMesh.geometry as THREE.BufferGeometry, selectedFaceIndices)
+      return ana && ana.hasSeam ? ana : null
     } catch {
       return null
     }
-  }, [visible, modelMesh, selectedFaceIndices, candidates, hasSelection])
+  }, [visible, modelMesh, selectedFaceIndices, hasSelection])
 
-  // Complemento GARANTIDO: a peça oposta do MESMO corte. Se a análise não a
-  // encontrou por proximidade, usa a peça cortada mais recente (regra máxima:
-  // macho numa peça + fêmea na outra, simultâneos e vinculados).
+  // Complemento DETERMINÍSTICO: a peça do MESMO corte (mesmo conjunto).
+  // A relação vem do pipeline de corte — cada peça cortada guarda `parentId`
+  // (a peça que foi dividida). Grupo:
+  //   · peça ativa é um corte → pai + irmãos (mesma operação de corte);
+  //   · peça ativa é base     → ela + os cortes derivados dela.
+  // Dentro do grupo, escolhe o membro mais próximo do centro da costura.
+  // Fallback: peça cortada mais recente. Isso garante que NUNCA falta par.
   const compPart = useMemo(() => {
-    if (!limits) return null
-    if (limits.complementIndex >= 0 && candidates[limits.complementIndex]) {
-      return candidates[limits.complementIndex]
+    if (!seamAnalysis) return null
+    const active = parts.find((p) => p.mesh === modelMesh)
+    if (!active) return null
+    const group = active.parentId
+      ? parts.filter((p) => p.id === active.parentId || p.parentId === active.parentId)
+      : parts.filter((p) => p.id === active.id || p.parentId === active.id)
+    const members = group.filter((p) => p.id !== active.id && p.mesh)
+    let best: { id: string; name: string; mesh: THREE.Mesh } | null = null
+    if (members.length === 1) {
+      best = { id: members[0].id, name: members[0].name, mesh: members[0].mesh }
+    } else if (members.length > 1) {
+      let bestD = Infinity
+      for (const m of members) {
+        const g = m.mesh.geometry
+        if (!g.boundingBox) g.computeBoundingBox()
+        const c = new THREE.Vector3()
+        g.boundingBox!.getCenter(c)
+        const d = c.distanceTo(seamAnalysis.seamCenter)
+        if (d < bestD) { bestD = d; best = { id: m.id, name: m.name, mesh: m.mesh } }
+      }
     }
-    const fallback = [...cutParts].reverse().find((cp) => cp.mesh && cp.mesh !== modelMesh)
-    return fallback ? { id: fallback.id, name: fallback.name, mesh: fallback.mesh } : null
-  }, [limits, candidates, cutParts, modelMesh])
+    if (!best) {
+      const fallback = [...cutParts].reverse().find((cp) => cp.mesh && cp.mesh !== modelMesh)
+      if (fallback) best = { id: fallback.id, name: fallback.name, mesh: fallback.mesh }
+    }
+    return best
+  }, [parts, modelMesh, seamAnalysis, cutParts])
+
+  // Limites inteligentes da seleção (costura + complemento). Passa o
+  // complemento determinístico para que a altura máxima seja medida contra a
+  // peça certa.
+  const limits = useMemo(() => {
+    if (!visible || !modelMesh || !hasSelection) return null
+    try {
+      return analyzeEncaixe(
+        modelMesh.geometry as THREE.BufferGeometry,
+        selectedFaceIndices,
+        candidates,
+        compPart?.id ?? null,
+      )
+    } catch {
+      return null
+    }
+  }, [visible, modelMesh, selectedFaceIndices, candidates, compPart, hasSelection])
 
   // Inicializa (ou reinicializa) o preview quando abre / troca de seleção.
   // Mantém os ajustes do usuário enquanto a seleção não muda.
