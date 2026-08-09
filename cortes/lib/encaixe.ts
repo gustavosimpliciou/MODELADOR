@@ -124,8 +124,10 @@ export function analyzeEncaixe(
   const maxRadius = Math.min(ana.halfU, ana.halfV) * 0.95
   if (maxRadius < RADIUS_MM_MIN) return null
 
-  // Complemento: OUTRA peça (nunca a própria ativa, identificada pela mesma
-  // geometria) no lado da normal e mais próxima do centro.
+  // Complemento: OUTRA peça (nunca a própria ativa) mais próxima do centro da
+  // costura. A peça do corte compartilha a face de corte — seu bounding box
+  // estará próximo do centro da costura. NÃO penalizamos pelo lado da normal,
+  // pois o complemento legítimo fica no lado "interno" (−normal) do corte.
   let complementIndex = -1
   let bestDist = Infinity
   for (let i = 0; i < parts.length; i++) {
@@ -135,12 +137,23 @@ export function analyzeEncaixe(
     if (!geo.boundingBox) geo.computeBoundingBox()
     const bbCenter = new THREE.Vector3()
     geo.boundingBox!.getCenter(bbCenter)
-    const sideSign = bbCenter.clone().sub(center).dot(normal)
-    const penalty = sideSign < 0 ? 1e6 : 0
-    const score = bbCenter.distanceTo(center) + penalty
+    const score = bbCenter.distanceTo(center)
     if (score < bestDist) {
       bestDist = score
       complementIndex = i
+    }
+  }
+
+  // Validação extra: se a peça candidata não intersecta a região da costura,
+  // não é um complemento válido de corte.
+  if (complementIndex >= 0) {
+    const candMesh = parts[complementIndex].mesh
+    const candGeo = candMesh.geometry
+    if (!candGeo.boundingBox) candGeo.computeBoundingBox()
+    // O BB do complemento deve estar próximo do plano da costura (distância < 1.5 * maxRadius)
+    const planeDist = Math.abs(candGeo.boundingBox!.getCenter(new THREE.Vector3()).clone().sub(center).dot(normal))
+    if (planeDist > maxRadius * 1.5) {
+      complementIndex = -1
     }
   }
 
