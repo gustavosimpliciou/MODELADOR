@@ -262,15 +262,20 @@ export function applyEncaixe(params: EncaixeApplyParams): EncaixeResult {
 
   if (mode === 'male' || mode === 'both') {
     const f = toTargetFrame(maleMesh, sourceMesh, center, direction)
-    const brush = makeCylinderBrush(radius, height, f.center, f.direction)
+    // Ancorar o pino na superfície da malha alvo (funciona mesmo quando a peça
+    // está deslocada pelo espalhamento do corte).
+    const base = snapCenterToSurface(maleMesh, f.center, f.direction)
+    const brush = makeCylinderBrush(radius, height, base, f.direction)
     maleGeo = csgUnion(maleMesh.geometry, brush)
     disposeBrush(brush)
   }
 
   if (mode === 'female' || mode === 'both') {
     const f = toTargetFrame(femaleMesh, sourceMesh, center, direction)
-    femaleDepth = computeFemaleDepth(femaleMesh, f.center, f.direction, height, tolerance)
-    const brush = makeCylinderBrush(radius + tolerance, femaleDepth, f.center, f.direction)
+    // A cavidade nasce na superfície da malha alvo e entra no material.
+    const base = snapCenterToSurface(femaleMesh, f.center, f.direction)
+    femaleDepth = computeFemaleDepth(femaleMesh, base, f.direction, height, tolerance)
+    const brush = makeCylinderBrush(radius + tolerance, femaleDepth, base, f.direction)
     femaleGeo = csgSubtract(femaleMesh.geometry, brush)
     disposeBrush(brush)
   }
@@ -374,11 +379,13 @@ function computeFemaleDepth(
 }
 
 /**
- * Mede a espessura da peça ao longo de `dir` a partir do centro do encaixe.
+ * Mede a espessura da peça ao longo de `dir` a partir de `center`.
  * `center`/`dir` estão no frame LOCAL da geometria da `mesh` (já convertidos
- * por toTargetFrame). A medida é feita com um mesh sem transformação (frame
- * local), então independe de position/quaternion/scale e funciona mesmo para
- * malhas fora da cena.
+ * por toTargetFrame ou ancorados na superfície). A medida é feita com um mesh
+ * sem transformação (frame local), então independe de position/quaternion/scale
+ * e funciona mesmo para malhas fora da cena. Como a superfície de partida já
+ * está ancorada na face, a espessura é a distância da interseção mais distante
+ * (robusto tanto com origem fora quanto dentro do material).
  */
 export function measureThickness(
   mesh: THREE.Mesh,
@@ -390,11 +397,53 @@ export function measureThickness(
     const ray = new THREE.Raycaster(origin, dir.clone().normalize())
     ray.near = 1e-4
     ray.far = 1e5
-    const probe = new THREE.Mesh(mesh.geometry)
+    // DoubleSide: conta tanto a entrada quanto a saída da malha.
+    const probe = new THREE.Mesh(mesh.geometry, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }))
     const hits = ray.intersectObject(probe, false)
-    if (hits.length < 2) return 0
-    return Math.max(0, hits[hits.length - 1].distance - hits[0].distance)
+    if (hits.length === 0) return 0
+    return Math.max(0, hits[hits.length - 1].distance)
   } catch {
     return 0
+  }
+}
+
+/**
+ * Ancorar o centro do encaixe na superfície da malha alvo ao longo do eixo.
+ * Percorre o eixo completo (ambos os sentidos) e escolhe o ponto de
+ * interseção mais próximo do centro da costura — é a face do corte. O centro
+ * retornado fica levemente "antes" do ponto (contra a direção), para que:
+ *  - o MACHO mergulhe um pouco no material e a união seja limpa;
+ *  - a FÊMEA abra a boca completa na superfície.
+ */
+function snapCenterToSurface(
+  mesh: THREE.Mesh,
+  center: THREE.Vector3,
+  dir: THREE.Vector3,
+): THREE.Vector3 {
+  try {
+    const probe = new THREE.Mesh(mesh.geometry, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }))
+    const d = dir.clone().normalize()
+    const BIG = 1e4
+    const pts: THREE.Vector3[] = []
+    for (const s of [1, -1]) {
+      const origin = center.clone().addScaledVector(d, -s * BIG)
+      const ray = new THREE.Raycaster(origin, d.clone().multiplyScalar(s))
+      ray.near = 1e-5
+      ray.far = BIG * 2
+      for (const h of ray.intersectObject(probe, false)) pts.push(h.point.clone())
+    }
+    if (pts.length === 0) return center.clone()
+    let best = pts[0]
+    let bestD = Infinity
+    for (const p of pts) {
+      const dd = p.distanceToSquared(center)
+      if (dd < bestD) {
+        bestD = dd
+        best = p
+      }
+    }
+    return best.clone().addScaledVector(d, -0.1)
+  } catch {
+    return center.clone()
   }
 }

@@ -12,7 +12,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Box, AlertTriangle, Loader2, X, GripHorizontal } from 'lucide-react'
 import * as THREE from 'three'
 import { useAppStore } from '@/lib/store'
-import { analyzeEncaixe, applyEncaixe } from '@/lib/encaixe'
+import { analyzeEncaixe, applyEncaixe, type EncaixeMode } from '@/lib/encaixe'
 import { cloneMeshTransform } from '@/lib/parts-manager'
 import { useT } from '@/lib/lang-store'
 import { useDraggable } from '@/lib/use-draggable'
@@ -150,19 +150,42 @@ export function EncaixePanel() {
   const handleApply = useCallback(() => {
     const p = encaixePreview
     if (!modelMesh || !p) return
-    // Sempre que houver peça cortada (complemento), o encaixe é criado nas DUAS
-    // peças ao mesmo tempo: macho na atual + fêmea na peça oposta do corte.
-    const mode = p.complementIndex >= 0 ? 'both' : p.mode
-    if (mode === 'both' && (p.complementIndex < 0 || !parts[p.complementIndex])) {
-      setStatus('error', t.encaixe_error)
-      return
-    }
 
+    // ── REGRA RÍGIDA ────────────────────────────────────────────────────────
+    // Sempre que houver peça cortada (complemento), o encaixe cria os DOIS
+    // conectores ao mesmo tempo e vinculados pelo mesmo diâmetro:
+    //   · Macho / Ambos → pino na peça atual + furo na peça cortada.
+    //   · Fêmea         → furo na peça atual + pino na peça cortada.
+    const hasComp = p.complementIndex >= 0 && !!parts[p.complementIndex]
     const activeMesh = modelMesh
-
-    // Direção: pino sai da peça ativa (+normal); furo entra na peça ativa (−normal).
     const normal = new THREE.Vector3(...p.normal).normalize()
-    const direction = mode === 'female' ? normal.clone().negate() : normal
+
+    let mode: EncaixeMode
+    let direction: THREE.Vector3
+    let maleMesh: THREE.Mesh
+    let femaleMesh: THREE.Mesh
+    let compPart: { id: string; name: string; mesh: THREE.Mesh } | null = null
+
+    if (hasComp) {
+      compPart = parts[p.complementIndex]
+      if (p.mode === 'female') {
+        mode = 'both'
+        direction = normal.clone().negate()
+        maleMesh = compPart.mesh
+        femaleMesh = activeMesh
+      } else {
+        mode = 'both'
+        direction = normal.clone()
+        maleMesh = activeMesh
+        femaleMesh = compPart.mesh
+      }
+    } else {
+      // Peça sem corte: gera apenas o tipo escolhido na peça atual.
+      mode = p.mode === 'female' ? 'female' : 'male'
+      direction = mode === 'female' ? normal.clone().negate() : normal.clone()
+      maleMesh = activeMesh
+      femaleMesh = activeMesh
+    }
 
     const myVersion = ++computeRef.current
     setBusy(true)
@@ -173,21 +196,6 @@ export function EncaixePanel() {
       try {
         pushHistory()
 
-        // Resolve as malhas alvo por modo.
-        let maleMesh: THREE.Mesh | null = null
-        let femaleMesh: THREE.Mesh | null = null
-        let compPart: { id: string; name: string; mesh: THREE.Mesh } | null = null
-
-        if (mode === 'both') {
-          compPart = parts[p.complementIndex]
-          maleMesh = activeMesh
-          femaleMesh = compPart.mesh
-        } else if (mode === 'male') {
-          maleMesh = activeMesh
-        } else {
-          femaleMesh = activeMesh
-        }
-
         const result = applyEncaixe({
           center: new THREE.Vector3(...p.center),
           direction,
@@ -196,23 +204,31 @@ export function EncaixePanel() {
           tolerance: p.tolerance,
           mode,
           sourceMesh: activeMesh,
-          maleMesh: maleMesh ?? activeMesh,
-          femaleMesh: femaleMesh ?? activeMesh,
+          maleMesh,
+          femaleMesh,
         })
 
-        if (mode === 'both') {
-          if (!result.maleGeo || !result.femaleGeo || !compPart) throw new Error('encaixe vazio')
+        if (compPart) {
+          if (!result.maleGeo || !result.femaleGeo) throw new Error('encaixe vazio')
           if (result.maleGeo.attributes.position.count === 0 || result.femaleGeo.attributes.position.count === 0) {
             throw new Error('a geometria do encaixe ficou vazia')
           }
-          // setModelMesh sincroniza a peça ativa em parts; setCutParts
-          // sincroniza a malha do complemento em parts.
-          const newActive = cloneMeshTransform(activeMesh, result.maleGeo)
-          const newComp = cloneMeshTransform(compPart.mesh, result.femaleGeo)
+          // A peça atual recebe um conector e a peça cortada recebe o outro.
+          const maleIsActive = maleMesh === activeMesh
+          const newActive = cloneMeshTransform(activeMesh, maleIsActive ? result.maleGeo : result.femaleGeo)
+          const newComp = cloneMeshTransform(compPart.mesh, maleIsActive ? result.femaleGeo : result.maleGeo)
           setModelMesh(newActive)
-          setCutParts(cutParts.map((cp) => (cp.id === compPart.id ? { ...cp, mesh: newComp } : cp)))
-          updatePart(compPart.id, { mesh: newComp })
+          // setModelMesh sincroniza a peça ativa em parts; setCutParts +
+          // updatePart sincronizam a malha da peça cortada em parts.
+          setCutParts(cutParts.map((cp) => (cp.id === compPart!.id ? { ...cp, mesh: newComp } : cp)))
+          updatePart(compPart!.id, { mesh: newComp })
           setActivePartId(null) // sai do isolamento e mostra as duas peças
+          setStatus(
+            'loaded',
+            maleIsActive
+              ? `${t.encaixe_generated((p.radius * 2).toFixed(1), p.height.toFixed(1))} · ${t.male_label}: ${t.piece_current} + ${t.female_label}: ${compPart.name}`
+              : `${t.encaixe_generated((p.radius * 2).toFixed(1), p.height.toFixed(1))} · ${t.female_label}: ${t.piece_current} + ${t.male_label}: ${compPart.name}`,
+          )
         } else {
           const geo = mode === 'male' ? result.maleGeo : result.femaleGeo
           if (!geo || geo.attributes.position.count === 0) throw new Error('a geometria do encaixe ficou vazia')
@@ -220,19 +236,14 @@ export function EncaixePanel() {
           setModelMesh(newActive)
           // Garantia extra: sincroniza a parte ativa também quando activePartId
           // estiver nulo, localizando-a pela referência da malha.
-          const activeRef = parts.find((p) => p.mesh === activeMesh)
+          const activeRef = parts.find((part) => part.mesh === activeMesh)
           if (activeRef) updatePart(activeRef.id, { mesh: newActive })
+          setStatus('loaded', t.encaixe_generated((p.radius * 2).toFixed(1), p.height.toFixed(1)))
         }
 
         clearSelection()
         setEncaixePreview(null)
         setEncaixeOpen(false)
-        setStatus(
-          'loaded',
-          mode === 'both'
-            ? `${t.encaixe_generated((p.radius * 2).toFixed(1), p.height.toFixed(1))} · ${t.male_label}: ${t.piece_current} + ${t.female_label}: ${p.complementName || '?'}`
-            : t.encaixe_generated((p.radius * 2).toFixed(1), p.height.toFixed(1)),
-        )
       } catch (err) {
         const msg = err instanceof Error ? err.message : ''
         setStatus('error', msg ? `${t.encaixe_error} — ${msg}` : t.encaixe_error)
@@ -250,10 +261,10 @@ export function EncaixePanel() {
   if (!visible) return null
 
   const p = encaixePreview
-  const forcedBoth = !!p && p.complementIndex >= 0
-  const effMode = forcedBoth ? 'both' : p?.mode
-  const canApply = !!p && (effMode !== 'both' || p.complementIndex >= 0)
-  const needsCut = !!p && effMode === 'both' && p.complementIndex < 0
+  const hasComp = !!p && p.complementIndex >= 0
+  const effMode = p?.mode ?? 'male'
+  const canApply = !!p && (effMode !== 'both' || hasComp)
+  const needsCut = !!p && effMode === 'both' && !hasComp
 
   return (
     <div
@@ -297,7 +308,7 @@ export function EncaixePanel() {
           <div className="flex gap-0.5 rounded-lg p-0.5" style={{ background: 'oklch(1 0 0 / 4%)', border: '1px solid oklch(1 0 0 / 6%)' }}>
             {(['both', 'male', 'female'] as const).map((m) => {
               const active = effMode === m
-              const disabled = !!p && (forcedBoth ? m !== 'both' : m === 'both')
+              const disabled = !!p && m === 'both' && !hasComp
               return (
                 <button
                   key={m}
@@ -324,36 +335,43 @@ export function EncaixePanel() {
           </div>
           {/* Onde cada um será criado */}
           <p className="m-0 text-[8px] font-mono text-muted-foreground/60 leading-relaxed">
-            {effMode === 'both'
-              ? `${t.male_label}: ${t.piece_current} · ${t.female_label}: ${p?.complementName || '?'}`
-              : effMode === 'male'
-                ? `${t.male_label}: ${t.piece_current}`
-                : `${t.female_label}: ${t.piece_current}`}
+            {hasComp
+              ? effMode === 'female'
+                ? `${t.female_label}: ${t.piece_current} · ${t.male_label}: ${p?.complementName || '?'}`
+                : `${t.male_label}: ${t.piece_current} · ${t.female_label}: ${p?.complementName || '?'}`
+              : effMode === 'female'
+                ? `${t.female_label}: ${t.piece_current}`
+                : `${t.male_label}: ${t.piece_current}`}
           </p>
+          {hasComp && (
+            <p className="m-0 text-[8px] font-mono leading-relaxed" style={{ color: 'oklch(0.75 0.14 20 / 80%)' }}>
+              {t.encaixe_auto_pair}
+            </p>
+          )}
         </div>
 
         {/* Preview resumido do que será gerado */}
         {p && canApply && (
           <div className="flex flex-col gap-0.5 rounded-lg px-2 py-1.5" style={{ background: 'oklch(0.55 0.15 260 / 10%)' }}>
-            {effMode !== 'female' && (
+            {hasComp || effMode !== 'female' ? (
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-1 text-[8px] font-mono uppercase tracking-wider text-muted-foreground/60">
                   <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#2fd6b0' }} />
                   {t.male_label}
                 </span>
-                <span className="text-[8px] font-mono text-foreground/70">{t.piece_current}</span>
+                <span className="text-[8px] font-mono text-foreground/70">{hasComp && effMode === 'female' ? p.complementName : t.piece_current}</span>
               </div>
-            )}
-            {effMode !== 'male' && (
+            ) : null}
+            {hasComp || effMode !== 'male' ? (
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-1 text-[8px] font-mono uppercase tracking-wider text-muted-foreground/60">
                   <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#ff8a3d' }} />
                   {t.female_label}
                 </span>
-                <span className="text-[8px] font-mono text-foreground/70">{effMode === 'both' ? p.complementName : t.piece_current}</span>
+                <span className="text-[8px] font-mono text-foreground/70">{hasComp ? (effMode === 'female' ? t.piece_current : p.complementName) : t.piece_current}</span>
               </div>
-            )}
-            {effMode === 'both' && (
+            ) : null}
+            {hasComp && (
               <div className="text-[8px] font-mono text-muted-foreground/50">
                 {t.female_label}: ∅{((p.radius + p.tolerance) * 2).toFixed(1)}mm {t.female_bore_plus}
               </div>

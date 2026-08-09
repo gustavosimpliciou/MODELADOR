@@ -199,6 +199,7 @@ export const translations = {
     encaixe_generated: (d: string, h: string) => `Encaixe integrado · ∅${d} × ${h} mm`,
     encaixe_error: 'Falha ao gerar o encaixe.',
     female_bore_plus: '(furo maior que o pino)',
+    encaixe_auto_pair: 'O oposto é criado automaticamente na peça cortada',
   },
 
   en: {
@@ -388,6 +389,7 @@ export const translations = {
     encaixe_generated: (d: string, h: string) => `Integrated connector · Ø${d} × ${h} mm`,
     encaixe_error: 'Failed to generate the connector.',
     female_bore_plus: '(bore larger than the pin)',
+    encaixe_auto_pair: 'The opposite connector is created automatically on the cut part',
   },
 
   es: {
@@ -577,6 +579,7 @@ export const translations = {
     encaixe_generated: (d: string, h: string) => `Conector integrado · Ø${d} × ${h} mm`,
     encaixe_error: 'Error al generar el conector.',
     female_bore_plus: '(agujero mayor que el pasador)',
+    encaixe_auto_pair: 'El conector opuesto se crea automáticamente en la pieza cortada',
   },
 } as const
 
