@@ -1,7 +1,7 @@
 "use client"
 
 import React from 'react'
-import { MousePointerClick, Scissors, RotateCcw } from 'lucide-react'
+import { MousePointerClick, Scissors, Sparkles, RotateCcw } from 'lucide-react'
 import { useAppStore, type Tool } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/lang-store'
@@ -17,17 +17,18 @@ export function LeftPanel() {
     setSharpAngle,
     cutMode,
     setCutMode,
+    parts,
   } = useAppStore()
 
-  const TOOLS: { id: Tool; icon: React.ReactNode; label: string; description: string }[] = [
-    { id: 'select', icon: <MousePointerClick className="w-4 h-4" />, label: 'Smart', description: t.tool_smart_desc },
-    { id: 'cut',    icon: <Scissors className="w-4 h-4" />,          label: t.reset /* Corte label via i18n would be "Corte" but it's always English-ish "CORTE" */, description: t.tool_cut_desc },
-  ]
-
-  // Recalculate tools with translated descriptions
   const tools: { id: Tool; icon: React.ReactNode; label: string; description: string }[] = [
     { id: 'select', icon: <MousePointerClick className="w-4 h-4" />, label: 'Smart', description: t.tool_smart_desc },
     { id: 'cut',    icon: <Scissors className="w-4 h-4" />,          label: 'Corte',  description: t.tool_cut_desc },
+    {
+      id: 'acab',
+      icon: <Sparkles className="w-4 h-4" />,
+      label: 'Acab',
+      description: 'Acabamento — refine o contorno do corte',
+    },
   ]
 
   const sensLabel =
@@ -35,6 +36,8 @@ export function LeftPanel() {
     sharpAngle < 15 ? t.sens_restricted :
     sharpAngle < 35 ? t.sens_standard :
     sharpAngle < 55 ? t.sens_wide : t.sens_max
+
+  const hasParts = parts.length > 0
 
   return (
     <aside
@@ -52,7 +55,11 @@ export function LeftPanel() {
           description={tool.description}
           active={activeTool === tool.id}
           onClick={() => setActiveTool(tool.id)}
-          disabled={tool.id !== 'select' && !modelMesh}
+          disabled={
+            tool.id === 'acab'
+              ? !hasParts
+              : tool.id !== 'select' && !modelMesh
+          }
         />
       ))}
 
