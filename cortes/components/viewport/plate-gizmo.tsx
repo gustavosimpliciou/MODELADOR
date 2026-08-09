@@ -105,7 +105,7 @@ export function PlateGizmo() {
     const ray = getWorldRay(clientX, clientY)
 
     // Eixo de restrição no espaço mundo (não usado para 'free')
-    let axisWorld = new THREE.Vector3(0, 1, 0)
+    const axisWorld = new THREE.Vector3(0, 1, 0)
     switch (type) {
       case 'tx': axisWorld.set(1, 0, 0); break
       case 'ty': axisWorld.set(0, 1, 0); break
@@ -274,7 +274,8 @@ export function PlateGizmo() {
         <mesh
           renderOrder={2}
           onPointerDown={plateMoveMode ? mkDown('free') : undefined}
-          style={plateMoveMode ? { cursor: 'grab' } : undefined}
+          onPointerOver={plateMoveMode ? () => { document.body.style.cursor = 'grab' } : undefined}
+          onPointerOut={plateMoveMode ? () => { document.body.style.cursor = 'auto' } : undefined}
         >
           <planeGeometry args={[W, H, 1, 1]} />
           <meshBasicMaterial

@@ -1,237 +1,260 @@
 /**
- * Encaixe Quadrado — Geração de encaixe de quadrado tipo pino/furo
+ * Encaixe Circular Integrado — Macho/Fêmea paramétrico
  * -----------------------------------------------------------------
- * Workflow separado do corte: o usuário seleciona com SmartCut a região
- * onde quer o encaixe (ex: pescoço), clica "Gerar Encaixe" e o sistema:
+ * Substitui o antigo sistema de pino solto + furos. Agora o encaixe
+ * faz parte da geometria das duas peças resultantes do corte:
  *
- *   1. Analisa a costura da seleção para encontrar o plano de encaixe.
- *   2. Detecta automaticamente a peça complementar (aquela que foi
- *      descolada naquele ponto — ex: cabeça, mão).
- *   3. Subtrai o furo nas DUAS peças (pino vai por fora como peça solta).
- *   4. Cria o pino quadrado como cutPart separado (para impressão avulsa).
+ *   Peça A (selecionada)  → MACHO  (protuberância cilíndrica integrada)
+ *   Peça B (complemento)  → FÊMEA  (cavidade cilíndrica integrada)
  *
- * Tamanho proporcional à seção transversal da costura.
+ * - O eixo segue a normal da costura da seleção (auto-orientação).
+ * - Macho e fêmea são parametricamente vinculados: a fêmea deriva do
+ *   macho + tolerância de impressão 3D.
+ * - Limites inteligentes: o encaixe nunca ultrapassa a região da
+ *   costura (diâmetro) nem atravessa a peça receptora (altura).
+ * - Nenhum pino separado é gerado — o STL final tem só as duas peças.
+ *
+ * Tolerância: a cavidade da fêmea é maior que o macho por `tolerance`
+ * (radial), garantindo folga de impressão sem folga visual.
  */
 
 import * as THREE from 'three'
-import { Evaluator, Brush, SUBTRACTION } from 'three-bvh-csg'
+import { Evaluator, Brush, ADDITION as UNION, SUBTRACTION } from 'three-bvh-csg'
 import { analyzeSelection } from './smart-autocut'
 import type { CutPart } from './store'
 
 // ─── Tipos públicos ────────────────────────────────────────────────────────────
 
-export type EncaixeSize = 'xs' | 's' | 'm'
-
-export interface EncaixeParams {
-  size: EncaixeSize
-  /** Folga (mm) adicionada ao furo em relação ao pino. Padrão 0.2. */
-  tolerance: number
-}
-
-/** Dados de planejamento calculados antes de aplicar o encaixe. */
-export interface EncaixePlan {
-  /** Centro do plano de encaixe (espaço local da geometria). */
-  seamCenter: THREE.Vector3
+/** Limites calculados a partir da seleção + geometria da peça. */
+export interface EncaixeLimits {
+  /** Centro do encaixe no espaço local da peça ativa. */
+  center: THREE.Vector3
   /**
-   * Normal do plano orientada da peça selecionada (fonte/pino) para a
-   * peça complementar (furo/buraco). Usada para orientar o pino.
+   * Normal da costura orientada da peça selecionada (ativa) em direção
+   * ao complemento. Usada para o eixo e para a orientação automática.
    */
-  seamNormal: THREE.Vector3
-  /** Lado do pino quadrado em unidades do modelo. */
-  side: number
-  /**
-   * Profundidade total do conjunto furo+pino. Cada peça recebe
-   * um furo de depth/2; o pino mede depth - folga.
-   */
-  depth: number
-  /** Folga acrescentada ao furo. */
-  tolerance: number
-  /**
-   * Índice em `cutParts[]` do complemento detectado.
-   * -1 se nenhum complemento foi encontrado.
-   */
+  normal: THREE.Vector3
+  /** Base ortonormal do plano da costura (para reposicionar no plano). */
+  planeU: THREE.Vector3
+  planeV: THREE.Vector3
+  /** Maior raio do macho permitido pela região da costura. */
+  maxRadius: number
+  /** Maior altura do macho permitida pela peça receptora (≤ 8). */
+  maxHeight: number
+  /** Índice em cutParts[] da peça complementar. -1 se não há complemento. */
   complementIndex: number
-  /** Nome descritivo do complemento (para exibição na UI). */
+  /** Nome descritivo da peça complementar. */
   complementName: string
 }
 
-export interface EncaixeResult {
-  /** Geometria atualizada da peça fonte (com furo subtraído). */
-  sourceGeo: THREE.BufferGeometry
+/** Parâmetros finais para gerar as geometrias. */
+export interface EncaixeApplyParams {
+  /** Centro do encaixe (espaço local das peças). */
+  center: THREE.Vector3
   /**
-   * Geometria atualizada da peça complementar (com furo subtraído).
-   * `null` quando não há peça cortada complementar — encaixe só na fonte.
+   * Direção do eixo APONTANDO da peça macho → peça fêmea. Macho e
+   * cavidade da fêmea se estendem ao longo dela a partir do plano.
    */
-  complementGeo: THREE.BufferGeometry | null
-  /** Geometria do pino quadrado (peça solta para impressão separada). */
-  pegGeo: THREE.BufferGeometry
-  /** Posição central do pino (espaço local do modelo). */
-  pegPosition: THREE.Vector3
-  /** Quaternion que alinha Y → seamNormal (orientação do pino). */
-  pegQuaternion: THREE.Quaternion
+  direction: THREE.Vector3
+  /** Raio do macho (mm). */
+  radius: number
+  /** Altura/protrusão do macho (mm). */
+  height: number
+  /** Folga radial da cavidade da fêmea (mm). */
+  tolerance: number
+  /** Malha da peça que recebe o MACHO (integrado por união). */
+  maleMesh: THREE.Mesh
+  /** Malha da peça que recebe a FÊMEA (cavidade por subtração). */
+  femaleMesh: THREE.Mesh
 }
 
-// ─── Planejamento ─────────────────────────────────────────────────────────────
-
-const SIZE_FRACTION: Record<EncaixeSize, number> = {
-  xs: 0.08,
-  s:  0.13,
-  m:  0.20,
+export interface EncaixeResult {
+  /** Geometria da peça com o macho integrado. */
+  maleGeo: THREE.BufferGeometry
+  /** Geometria da peça com a cavidade fêmea integrada. */
+  femaleGeo: THREE.BufferGeometry
+  /** Profundidade efetiva da cavidade (≤ espessura da peça). */
+  femaleDepth: number
 }
-const MIN_SIDE_MM = 0.8
-const MAX_SIDE_MM = 10.0
+
+// ─── Planejamento / limites inteligentes ───────────────────────────────────────
+
+const HEIGHT_MIN = 3
+const HEIGHT_MAX = 8
+const RADIUS_MM_MIN = 0.8
+const FEMALE_WALL_MM = 0.5
 
 /**
- * Analisa a seleção e planeja os parâmetros do encaixe quadrado.
- * Não modifica nenhuma geometria — só faz cálculos.
+ * Analisa a seleção e calcula os limites do encaixe. Não modifica nada.
+ * Retorna `null` quando a seleção não tem costura utilizável.
  */
-export function planEncaixe(
+export function analyzeEncaixe(
   geometry: THREE.BufferGeometry,
   selectedFaces: Set<number>,
   cutParts: CutPart[],
-  params: EncaixeParams,
-): EncaixePlan | null {
-  if (selectedFaces.size === 0) return null
+): EncaixeLimits | null {
+  if (!selectedFaces || selectedFaces.size === 0) return null
 
   const ana = analyzeSelection(geometry, selectedFaces)
+  if (!ana || !ana.hasSeam) return null
 
-  // ── Normal orientada da seleção para o complemento ───────────────────────
-  let seamNormal = ana.fitNormal.clone().normalize()
-  const sourceOffset = ana.selectionCenter.clone().sub(ana.seamCenter).dot(seamNormal)
-  // Se a seleção está no lado positivo da normal, a normal já aponta
-  // para longe da seleção (em direção ao complemento). Caso contrário, inverte.
-  if (sourceOffset > 0) seamNormal.negate()
+  // Normal orientada da peça ativa em direção ao complemento
+  const normal = ana.fitNormal.clone().normalize()
+  const sourceOffset = ana.selectionCenter.clone().sub(ana.seamCenter).dot(normal)
+  if (sourceOffset > 0) normal.negate()
 
-  // ── Tamanho proporcional à seção mínima da costura ───────────────────────
-  const minSectionDim = Math.min(ana.halfU, ana.halfV) * 2
-  const fraction = SIZE_FRACTION[params.size]
-  let side = minSectionDim * fraction
-  // Fallback: seção muito pequena ou inválida → usa escala global
-  if (!isFinite(side) || side < MIN_SIDE_MM) {
-    side = Math.max(MIN_SIDE_MM, ana.modelDiagonal * 0.012 * fraction / 0.13)
-  }
-  side = Math.min(side, MAX_SIDE_MM)
-  const depth = side * 2.2 // profundidade total ≈ 2× a largura
+  const center = ana.seamCenter.clone()
 
-  // ── Detecta peça complementar (opcional) ─────────────────────────────────
-  const seamCenter = ana.seamCenter.clone()
-  let bestIdx = -1
+  // Diâmetro máximo = região da costura (com margem de segurança).
+  // Região menor que o mínimo → não dá para encaixar com segurança.
+  const maxRadius = Math.min(ana.halfU, ana.halfV) * 0.95
+  if (maxRadius < RADIUS_MM_MIN) return null
+
+  // Complemento: peça cortada no lado da normal e mais próxima do centro
+  let complementIndex = -1
   let bestDist = Infinity
-
   for (let i = 0; i < cutParts.length; i++) {
     const geo = cutParts[i].mesh.geometry
     if (!geo.boundingBox) geo.computeBoundingBox()
-    const center = new THREE.Vector3()
-    geo.boundingBox!.getCenter(center)
-
-    // Prefere peças do lado oposto ao da seleção (lado do complemento)
-    const sideSign = center.clone().sub(seamCenter).dot(seamNormal)
-    // Pontuação: peças no lado certo (sideSign > 0) e próximas ao seam têm prioridade
-    const penaltyWrongSide = sideSign < 0 ? 1e6 : 0
-    const score = center.distanceTo(seamCenter) + penaltyWrongSide
-    if (score < bestDist) { bestDist = score; bestIdx = i }
-  }
-
-  // bestIdx === -1 quando não há peças cortadas — encaixe só na peça fonte
-  return {
-    seamCenter,
-    seamNormal,
-    side,
-    depth,
-    tolerance: params.tolerance,
-    complementIndex: bestIdx,
-    complementName: bestIdx >= 0 ? cutParts[bestIdx].name : '',
-  }
-}
-
-// ─── Aplicação ────────────────────────────────────────────────────────────────
-
-/**
- * Subtrai os furos das duas peças e retorna as geometrias atualizadas
- * junto com o pino quadrado para ser adicionado como cutPart separado.
- *
- * Pode lançar — envolva em try/catch no chamador.
- */
-/** Cria um novo Brush do furo posicionado na costura. Recriado a cada operação
- *  para evitar estado acumulado no three-bvh-csg entre chamadas consecutivas. */
-function makeHoleBrush(
-  holeGeo: THREE.BoxGeometry,
-  seamCenter: THREE.Vector3,
-  quat: THREE.Quaternion,
-): Brush {
-  const b = new Brush(holeGeo.clone())
-  b.position.copy(seamCenter)
-  b.quaternion.copy(quat)
-  b.updateMatrixWorld()
-  return b
-}
-
-export function applyEncaixe(
-  sourceMesh: THREE.Mesh,
-  complementMesh: THREE.Mesh | null,
-  plan: EncaixePlan,
-): EncaixeResult {
-  // ── Geometria do furo (maior que o pino pela tolerância) ─────────────────
-  const hs = plan.side + plan.tolerance * 2
-  const hd = plan.depth + plan.tolerance
-  const holeGeo = new THREE.BoxGeometry(hs, hd, hs)
-
-  const quat = new THREE.Quaternion().setFromUnitVectors(
-    new THREE.Vector3(0, 1, 0),
-    plan.seamNormal.clone().normalize(),
-  )
-
-  // ── Subtrai furo da peça fonte — avaliador independente ──────────────────
-  let sourceGeo: THREE.BufferGeometry
-  try {
-    const ev = new Evaluator()
-    ev.attributes = ['position', 'normal']
-    const srcBrush = new Brush(sourceMesh.geometry.clone())
-    srcBrush.updateMatrixWorld()
-    const holeSrc = makeHoleBrush(holeGeo, plan.seamCenter, quat)
-    sourceGeo = ev.evaluate(srcBrush, holeSrc, SUBTRACTION).geometry
-  } catch (e) {
-    console.error('[Encaixe] CSG falhou na peça fonte:', e)
-    sourceGeo = sourceMesh.geometry.clone()
-  }
-
-  // ── Subtrai furo da peça complementar — avaliador independente ───────────
-  // null quando não existe peça cortada — encaixe só na fonte
-  let complementGeo: THREE.BufferGeometry | null = null
-  if (complementMesh) {
-    try {
-      const ev = new Evaluator()
-      ev.attributes = ['position', 'normal']
-      const compBrush = new Brush(complementMesh.geometry.clone())
-      compBrush.updateMatrixWorld()
-      const holeComp = makeHoleBrush(holeGeo, plan.seamCenter, quat)
-      complementGeo = ev.evaluate(compBrush, holeComp, SUBTRACTION).geometry
-    } catch (e) {
-      console.error('[Encaixe] CSG falhou na peça complementar:', e)
-      complementGeo = complementMesh.geometry.clone()
+    const bbCenter = new THREE.Vector3()
+    geo.boundingBox!.getCenter(bbCenter)
+    const sideSign = bbCenter.clone().sub(center).dot(normal)
+    const penalty = sideSign < 0 ? 1e6 : 0
+    const score = bbCenter.distanceTo(center) + penalty
+    if (score < bestDist) {
+      bestDist = score
+      complementIndex = i
     }
   }
 
-  // ── Geometria do pino (levemente menor que o furo) ───────────────────────
-  const ps = Math.max(0.3, plan.side - plan.tolerance * 0.5)
-  const pd = Math.max(0.5, plan.depth - plan.tolerance * 1.0)
-  const pegGeo = new THREE.BoxGeometry(ps, pd, ps)
+  // Altura máxima limitada pela espessura da peça receptora (não atravessar)
+  let maxHeight = HEIGHT_MAX
+  if (complementIndex >= 0) {
+    const thickness = measureThickness(cutParts[complementIndex].mesh, center, normal)
+    if (thickness > 0) {
+      maxHeight = Math.min(HEIGHT_MAX, thickness - FEMALE_WALL_MM - 1)
+    }
+  }
+  maxHeight = Math.max(HEIGHT_MIN, Math.min(HEIGHT_MAX, maxHeight))
 
-  // ── Finaliza ─────────────────────────────────────────────────────────────
-  for (const g of [sourceGeo, complementGeo, pegGeo]) {
-    if (!g) continue
+  return {
+    center,
+    normal,
+    planeU: ana.planeU.clone().normalize(),
+    planeV: ana.planeV.clone().normalize(),
+    maxRadius,
+    maxHeight,
+    complementIndex,
+    complementName: complementIndex >= 0 ? cutParts[complementIndex].name : '',
+  }
+}
+
+// ─── Aplicação (CSG) ───────────────────────────────────────────────────────────
+
+/**
+ * Gera as geometrias definitivas:
+ *  - macho  = UNIÃO da peça com um cilindro (boss integrado);
+ *  - fêmea  = SUBTRAÇÃO da peça com um cilindro maior (cavidade).
+ * Pode lançar — envolva em try/catch no chamador.
+ */
+export function applyEncaixe(params: EncaixeApplyParams): EncaixeResult {
+  const { center, direction, radius, height, tolerance, maleMesh, femaleMesh } = params
+
+  const maleBrush = makeCylinderBrush(radius, height, center, direction)
+  const femaleDepth = computeFemaleDepth(femaleMesh, center, direction, height, tolerance)
+  const femaleBrush = makeCylinderBrush(radius + tolerance, femaleDepth, center, direction)
+
+  const maleGeo = csgUnion(maleMesh.geometry, maleBrush)
+  const femaleGeo = csgSubtract(femaleMesh.geometry, femaleBrush)
+
+  disposeBrush(maleBrush)
+  disposeBrush(femaleBrush)
+
+  for (const g of [maleGeo, femaleGeo]) {
     g.computeVertexNormals()
     g.computeBoundingBox()
     g.computeBoundingSphere()
   }
 
-  holeGeo.dispose()
+  return { maleGeo, femaleGeo, femaleDepth }
+}
 
-  return {
-    sourceGeo,
-    complementGeo,
-    pegGeo,
-    pegPosition: plan.seamCenter.clone(),
-    pegQuaternion: quat.clone(),
+/** Cilindro com base no plano da costura (local) estendendo ao longo de `dir`. */
+function makeCylinderBrush(
+  radius: number,
+  length: number,
+  center: THREE.Vector3,
+  dir: THREE.Vector3,
+): Brush {
+  const geo = new THREE.CylinderGeometry(radius, radius, length, 48, 1, false)
+  geo.translate(0, length / 2, 0)
+  const b = new Brush(geo)
+  b.position.copy(center)
+  b.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize())
+  b.updateMatrixWorld()
+  return b
+}
+
+function csgUnion(a: THREE.BufferGeometry, b: Brush): THREE.BufferGeometry {
+  const ev = new Evaluator()
+  ev.attributes = ['position', 'normal']
+  const ba = new Brush(a.clone())
+  ba.updateMatrixWorld()
+  return ev.evaluate(ba, b, UNION).geometry
+}
+
+function csgSubtract(a: THREE.BufferGeometry, b: Brush): THREE.BufferGeometry {
+  const ev = new Evaluator()
+  ev.attributes = ['position', 'normal']
+  const ba = new Brush(a.clone())
+  ba.updateMatrixWorld()
+  return ev.evaluate(ba, b, SUBTRACTION).geometry
+}
+
+function disposeBrush(b: Brush): void {
+  try { b.geometry?.dispose() } catch {}
+}
+
+/**
+ * Profundidade da cavidade da fêmea: suficiente para receber o macho
+ * (height + tolerance + folga), mas nunca atravessando a peça.
+ */
+function computeFemaleDepth(
+  mesh: THREE.Mesh,
+  center: THREE.Vector3,
+  direction: THREE.Vector3,
+  height: number,
+  tolerance: number,
+): number {
+  const thickness = measureThickness(mesh, center, direction)
+  const ideal = height + tolerance + 1
+  if (thickness <= 0) return Math.max(1, ideal)
+  return Math.max(0.8, Math.min(ideal, thickness - FEMALE_WALL_MM))
+}
+
+/**
+ * Mede a espessura da peça ao longo de `dir` a partir do centro do encaixe.
+ * O centro/normal estão no espaço local da peça ativa; aqui são convertidos
+ * para o frame da malha alvo (geralmente o mesmo frame das peças do corte).
+ */
+export function measureThickness(
+  mesh: THREE.Mesh,
+  center: THREE.Vector3,
+  dir: THREE.Vector3,
+): number {
+  try {
+    const inv = new THREE.Matrix4().copy(mesh.matrixWorld).invert()
+    const origin = center.clone().applyMatrix4(inv)
+    const axis = dir.clone().transformDirection(inv).normalize()
+
+    const ray = new THREE.Raycaster()
+    ray.near = 1e-4
+    ray.far = 1e5
+    ray.set(origin.clone().addScaledVector(axis, 0.02), axis)
+    const hits = ray.intersectObject(mesh, false)
+    if (hits.length < 2) return 0
+    return Math.max(0, hits[hits.length - 1].distance - hits[0].distance)
+  } catch {
+    return 0
   }
 }

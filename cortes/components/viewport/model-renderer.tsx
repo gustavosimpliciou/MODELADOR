@@ -8,6 +8,7 @@ import type { Part } from '@/lib/parts-manager'
 import { planeFromAxisOffset } from '@/lib/solid-plane-cut'
 import { CutPreviewOverlay } from './cut-preview-overlay'
 import { PlateGizmo } from './plate-gizmo'
+import { EncaixeGizmo } from './encaixe-gizmo'
 
 // Geometrias de plano pré-alocadas fora do ciclo de render — reutilizadas por
 // todas as instâncias de preview, evitando criação de objeto a cada render.
@@ -74,6 +75,8 @@ export function ModelRenderer() {
       <CutPreviewOverlay />
       {/* Gizmo da Placa de Limitação */}
       <PlateGizmo />
+      {/* Gizmo do Encaixe Circular Integrado (macho/fêmea) */}
+      <EncaixeGizmo />
     </group>
   )
 }

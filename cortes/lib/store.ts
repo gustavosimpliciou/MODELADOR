@@ -38,6 +38,35 @@ export interface CutPart {
   isConnector?: boolean
 }
 
+/** Preview paramétrico do encaixe circular integrado macho/fêmea. */
+export interface EncaixePreview {
+  /** Centro FIXO da região de costura (limite para reposicionar). */
+  seamCenter: [number, number, number]
+  /** Centro atual do encaixe (reposicionável) no espaço local da peça ativa. */
+  center: [number, number, number]
+  /** Normal da costura orientada da peça ativa para o complemento (local). */
+  normal: [number, number, number]
+  /** Base ortonormal do plano da costura (local). */
+  planeU: [number, number, number]
+  planeV: [number, number, number]
+  /** Raio do macho (mm). */
+  radius: number
+  /** Altura do macho (mm) — limites 3..8. */
+  height: number
+  /** Folga aplicada à cavidade da fêmea (mm). */
+  tolerance: number
+  /** Maior raio permitido pela região da costura. */
+  maxRadius: number
+  /** Maior altura permitida pela peça receptora. */
+  maxHeight: number
+  /** Índice em cutParts[] da peça complementar. */
+  complementIndex: number
+  /** Nome da peça complementar (para exibição na UI). */
+  complementName: string
+  /** true → macho no complemento, fêmea na peça ativa. */
+  inverted: boolean
+}
+
 /** Dados das cascas abertas (Etapas 1–3 do SmartCut V2, sem tampas). */
 export interface OpenCutData {
   openSelectedGeometry: THREE.BufferGeometry
@@ -156,6 +185,9 @@ export interface AppState {
 
   // Encaixe — painel de pino/furo (abre só pelo botão)
   encaixeOpen: boolean
+  // Encaixe integrado macho/fêmea — preview paramétrico editável via gizmo
+  encaixePreview: EncaixePreview | null
+  encaixeDragging: boolean
 
   // ─── Pipeline V2 do SmartCut ──────────────────────────────────────────────
   openCutData: OpenCutData | null
@@ -239,6 +271,9 @@ export interface AppState {
   setAutoSplitPlan: (plan: AutoSplitPlan | null) => void
   setAutoCutOpen: (open: boolean) => void
   setEncaixeOpen: (open: boolean) => void
+  setEncaixePreview: (preview: EncaixePreview | null) => void
+  patchEncaixePreview: (patch: Partial<EncaixePreview>) => void
+  setEncaixeDragging: (dragging: boolean) => void
   setAutoCutPreview: (
     preview: { normal: [number, number, number]; point: [number, number, number] } | null,
   ) => void
@@ -324,6 +359,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   autoCutOpen: false,
   autoCutPreview: null,
   encaixeOpen: false,
+  encaixePreview: null,
+  encaixeDragging: false,
 
   openCutData: null,
   autoCutPipelineStage: 'idle',
@@ -351,6 +388,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         selectionState: 'idle',
         autoCutOpen: false,
         encaixeOpen: false,
+        encaixePreview: null,
+        encaixeDragging: false,
         autoCutPreview: null,
         cutPreview: null,
         openCutData: null,
@@ -402,6 +441,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         hoveredFaceIndices: new Set(),
         selectionState: 'idle',
         autoCutOpen: false,
+        encaixePreview: null,
+        encaixeDragging: false,
       }
     }),
 
@@ -566,6 +607,17 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setEncaixeOpen: (encaixeOpen) => set({ encaixeOpen }),
 
+  setEncaixePreview: (encaixePreview) => set({ encaixePreview }),
+
+  patchEncaixePreview: (patch) =>
+    set((state) => ({
+      encaixePreview: state.encaixePreview
+        ? { ...state.encaixePreview, ...patch }
+        : state.encaixePreview,
+    })),
+
+  setEncaixeDragging: (encaixeDragging) => set({ encaixeDragging }),
+
   setAutoCutPreview: (autoCutPreview) => set({ autoCutPreview }),
 
   setOpenCutData: (openCutData) =>
@@ -607,6 +659,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         selectionState: 'idle',
         autoCutOpen: false,
         encaixeOpen: false,
+        encaixePreview: null,
+        encaixeDragging: false,
         autoCutPreview: null,
         cutPreview: null,
         openCutData: null,
@@ -628,6 +682,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         activeCutPartId: null,
         autoCutOpen: false,
         encaixeOpen: false,
+        encaixePreview: null,
+        encaixeDragging: false,
         autoCutPreview: null,
         cutPreview: null,
         openCutData: null,

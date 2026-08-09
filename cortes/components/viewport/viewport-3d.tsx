@@ -440,9 +440,11 @@ function SmartCutInteraction() {
   return null
 }
 
-// ─── OrbitControls disabler while plate gizmo is dragged ─────────────────────
+// ─── OrbitControls disabler while plate/encaixe gizmos are dragged ───────────
 function OrbitControlsGuard({ controlsRef }: { controlsRef: React.RefObject<any> }) {
-  const dragging = useAppStore((s) => s.plateCutDragging)
+  const plateDragging = useAppStore((s) => s.plateCutDragging)
+  const encaixeDragging = useAppStore((s) => s.encaixeDragging)
+  const dragging = plateDragging || encaixeDragging
   useEffect(() => {
     if (controlsRef.current) {
       controlsRef.current.enabled = !dragging

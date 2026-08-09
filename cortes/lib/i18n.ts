@@ -180,6 +180,19 @@ export const translations = {
     generating_enc: 'Gerando...',
     legend_hole_in: 'Furo nas peças',
     legend_pin_loose: 'Pino solto',
+    // Encaixe circular integrado (macho/fêmea)
+    encaixe_circular_title: 'Encaixe Circular',
+    diameter_label: 'Diâmetro',
+    height_label: 'Altura',
+    tolerance_label: 'Tolerância',
+    male_label: 'Macho',
+    female_label: 'Fêmea',
+    invert_label: 'Inverter',
+    invert_hint: 'Inverte macho/fêmea entre as peças',
+    needs_cut_hint: 'Faça o corte primeiro para criar macho e fêmea.',
+    encaixe_generating: 'Gerando encaixe integrado...',
+    encaixe_generated: (d: string, h: string) => `Encaixe integrado · ∅${d} × ${h} mm`,
+    encaixe_error: 'Falha ao gerar o encaixe.',
   },
 
   en: {
@@ -350,6 +363,19 @@ export const translations = {
     generating_enc: 'Generating...',
     legend_hole_in: 'Hole in parts',
     legend_pin_loose: 'Loose pin',
+    // Integrated circular connector (male/female)
+    encaixe_circular_title: 'Circular Connector',
+    diameter_label: 'Diameter',
+    height_label: 'Height',
+    tolerance_label: 'Tolerance',
+    male_label: 'Male',
+    female_label: 'Female',
+    invert_label: 'Invert',
+    invert_hint: 'Swap male/female between the parts',
+    needs_cut_hint: 'Make the cut first to create male and female.',
+    encaixe_generating: 'Generating integrated connector...',
+    encaixe_generated: (d: string, h: string) => `Integrated connector · Ø${d} × ${h} mm`,
+    encaixe_error: 'Failed to generate the connector.',
   },
 
   es: {
@@ -520,6 +546,19 @@ export const translations = {
     generating_enc: 'Generando...',
     legend_hole_in: 'Agujero en piezas',
     legend_pin_loose: 'Pasador suelto',
+    // Conector circular integrado (macho/hembra)
+    encaixe_circular_title: 'Conector Circular',
+    diameter_label: 'Diámetro',
+    height_label: 'Altura',
+    tolerance_label: 'Tolerancia',
+    male_label: 'Macho',
+    female_label: 'Hembra',
+    invert_label: 'Invertir',
+    invert_hint: 'Cambia macho/hembra entre las piezas',
+    needs_cut_hint: 'Haz el corte primero para crear macho y hembra.',
+    encaixe_generating: 'Generando conector integrado...',
+    encaixe_generated: (d: string, h: string) => `Conector integrado · Ø${d} × ${h} mm`,
+    encaixe_error: 'Error al generar el conector.',
   },
 } as const
 
