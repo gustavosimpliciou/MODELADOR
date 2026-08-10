@@ -339,11 +339,12 @@ export function applyEncaixe(params: EncaixeApplyParams): EncaixeResult {
     femaleDepth = computeFemaleDepth(femaleMesh, base, f.direction, height)
     // O FemaleCutTool é um cilindro SÓLIDO e fechado (CylinderGeometry real,
     // não um anel/linha) que PROJETA claramente PARA FORA da superfície
-    // (outset = raio×1,5 ou 3mm mín.) antes de entrar no material. Isso
-    // garante: (1) interseção inequívoca com a peça; (2) nenhuma face coplanar
-    // com a superfície do corte (a boca do furo fica aberta na superfície).
+    // (outset = raio×1,5 ou 3mm mín. + OUTSET_MM) antes de entrar no material.
+    // Isso garante: (1) interseção inequívoca com a peça; (2) nenhuma face
+    // coplanar com a superfície do corte (a boca do furo fica aberta na
+    // superfície). OUTSET_MM é a margem extra, separada de `height`.
     const cavityRadius = radius + tolerance
-    const outset = Math.max(cavityRadius * 1.5, 3)
+    const outset = Math.max(cavityRadius * 1.5, 3) + OUTSET_MM
     const brushLength = femaleDepth + outset
     const brushStart = base.clone().addScaledVector(f.direction, -outset)
     const brush = makeCylinderBrush(cavityRadius, brushLength, brushStart, f.direction)
