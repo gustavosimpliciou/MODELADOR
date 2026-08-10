@@ -5,6 +5,7 @@ export default function ToolSelector({ onSelectModelador, onSelectDashboard }) {
   const user = useStore((s) => s.user)
   const logout = useStore((s) => s.logout)
   const [hovering, setHovering] = useState(null)
+  const [supportOpen, setSupportOpen] = useState(false)
 
   const handleCortes = () => {
     window.location.href = '/cortes'
@@ -117,6 +118,106 @@ export default function ToolSelector({ onSelectModelador, onSelectDashboard }) {
       >
         Sair da conta
       </button>
+
+      {/* Contato Suporte */}
+      <button
+        onClick={() => setSupportOpen(true)}
+        style={{
+          fontFamily: 'var(--font-mono)', fontSize: 11,
+          letterSpacing: '0.1em', textTransform: 'uppercase',
+          color: 'var(--text-dim)', background: 'none',
+          border: 'none', cursor: 'pointer', padding: '6px 12px',
+          borderRadius: 4, transition: 'color 0.15s',
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+        onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-dim)'}
+      >
+        Contato Suporte
+      </button>
+
+      {/* Popup de contato suporte */}
+      {supportOpen && (
+        <div
+          onClick={() => setSupportOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--card)', border: '1px solid var(--line)',
+              borderRadius: 12, padding: '28px 32px', width: 360,
+              display: 'flex', flexDirection: 'column', gap: 16,
+              boxShadow: '0 16px 48px rgba(0,0,0,0.5)',
+              animation: 'fadeIn 0.2s ease both',
+            }}
+          >
+            <div style={{
+              fontFamily: 'var(--font-condensed)', fontSize: 18, fontWeight: 800,
+              letterSpacing: '0.08em', textTransform: 'uppercase',
+              color: 'var(--text)',
+            }}>
+              Contato Suporte
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--accent)' }}>
+                Email
+              </div>
+              <a
+                href="mailto:nativos3d.ofc@gmail.com"
+                style={{
+                  fontFamily: 'var(--font-body)', fontSize: 14, color: 'var(--text)',
+                  textDecoration: 'none', padding: '10px 14px',
+                  background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 8,
+                  wordBreak: 'break-all',
+                }}
+              >
+                nativos3d.ofc@gmail.com
+              </a>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--accent)' }}>
+                Telefone / WhatsApp
+              </div>
+              <a
+                href="https://wa.me/5583991348780"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  fontFamily: 'var(--font-body)', fontSize: 14, color: 'var(--text)',
+                  textDecoration: 'none', padding: '10px 14px',
+                  background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 8,
+                }}
+              >
+                (83) 99134-8780
+              </a>
+            </div>
+
+            <button
+              onClick={() => setSupportOpen(false)}
+              style={{
+                marginTop: 4,
+                fontFamily: 'var(--font-mono)', fontSize: 11,
+                letterSpacing: '0.14em', textTransform: 'uppercase',
+                color: 'var(--text-dim)', background: 'none',
+                border: '1px solid var(--line)', borderRadius: 8,
+                padding: '10px 0', cursor: 'pointer',
+                transition: 'color 0.15s, border-color 0.15s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; e.currentTarget.style.borderColor = 'var(--text-dim)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-dim)'; e.currentTarget.style.borderColor = 'var(--line)' }}
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

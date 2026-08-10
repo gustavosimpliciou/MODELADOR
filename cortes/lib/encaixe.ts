@@ -333,7 +333,7 @@ export function applyEncaixe(params: EncaixeApplyParams): EncaixeResult {
     const f = toTargetFrame(femaleMesh, sourceMesh, center, direction)
     // A cavidade nasce na superfície da malha alvo e entra no material.
     const base = snapCenterToSurface(femaleMesh, f.center, f.direction)
-    femaleDepth = computeFemaleDepth(femaleMesh, base, f.direction, height, tolerance)
+    femaleDepth = computeFemaleDepth(femaleMesh, base, f.direction, height)
     // O FemaleCutTool é um cilindro SÓLIDO e fechado (CylinderGeometry real,
     // não um anel/linha) que PROJETA claramente PARA FORA da superfície
     // (outset = raio×1,5 ou 3mm mín.) antes de entrar no material. Isso
@@ -345,10 +345,18 @@ export function applyEncaixe(params: EncaixeApplyParams): EncaixeResult {
     const brushStart = base.clone().addScaledVector(f.direction, -outset)
     const brush = makeCylinderBrush(cavityRadius, brushLength, brushStart, f.direction)
     const before = meshStats(femaleMesh.geometry)
+    const targetBox = new THREE.Box3().setFromBufferAttribute(femaleMesh.geometry.getAttribute('position') as THREE.BufferAttribute)
+    const brushBox = new THREE.Box3().setFromBufferAttribute(brush.geometry.getAttribute('position') as THREE.BufferAttribute)
+      .applyMatrix4(brush.matrixWorld)
     console.log(
       `[CONNECTOR] fêmea (subtração) → target=${femaleMesh.name || '?'} ` +
       `cutTool={r:${cavityRadius.toFixed(2)}, len:${brushLength.toFixed(2)}, outset:${outset.toFixed(2)}} ` +
       `antes={v:${before.verts}, vol:${before.volume.toFixed(1)}}`,
+    )
+    console.log(
+      `[CONNECTOR] fêmea (diagnóstico) → seam(local)=${fmtV3(f.center)} dir=${fmtV3(f.direction)} ` +
+      `base=${fmtV3(base)} alvo.bbox=${fmtBox(targetBox)} brush.bbox=${fmtBox(brushBox)} ` +
+      `brushFora=${!targetBox.intersectsBox(brushBox)}`,
     )
     femaleGeo = csgSubtract(femaleMesh.geometry, brush)
     disposeBrush(brush)
@@ -471,17 +479,18 @@ function meshStats(geo: THREE.BufferGeometry): { verts: number; volume: number }
 
 /**
  * Profundidade da cavidade da fêmea: suficiente para receber o macho
- * (height + tolerance + folga), mas nunca atravessando a peça.
+ * (height + folga de 0.1mm), mas nunca atravessando a peça.
  */
 function computeFemaleDepth(
   mesh: THREE.Mesh,
   center: THREE.Vector3,
   direction: THREE.Vector3,
   height: number,
-  tolerance: number,
 ): number {
   const thickness = measureThickness(mesh, center, direction)
-  const ideal = height + tolerance + 1
+  // Folga axial: o macho entra `height` e o fundo da cavidade fica 0.1mm
+  // além da ponta do macho (distância fundo-do-macho → fundo-da-fêmea).
+  const ideal = height + 0.1
   if (thickness <= 0) return Math.max(1, ideal)
   return Math.max(0.8, Math.min(ideal, thickness - FEMALE_WALL_MM))
 }
@@ -554,4 +563,14 @@ function snapCenterToSurface(
   } catch {
     return center.clone()
   }
+}
+
+function fmtV3(v: THREE.Vector3): string {
+  return `[${v.x.toFixed(2)}, ${v.y.toFixed(2)}, ${v.z.toFixed(2)}]`
+}
+
+function fmtBox(b: THREE.Box3): string {
+  const mn = b.min
+  const mx = b.max
+  return `min=${fmtV3(mn)} max=${fmtV3(mx)}`
 }
