@@ -112,10 +112,13 @@ export interface EncaixeResult {
 
 // ─── Planejamento / limites inteligentes ───────────────────────────────────────
 
-const HEIGHT_MIN = 0.5
+const HEIGHT_MIN = 0.2
 const HEIGHT_MAX = 8
 const RADIUS_MM_MIN = 0.8
 const FEMALE_WALL_MM = 0.5
+/** Margem do cortador da fêmea: ultrapassa a superfície em 0.1mm para garantir
+ * interseção real do Boolean Difference. Separado de `height`. */
+const OUTSET_MM = 0.1
 
 /**
  * Analisa a seleção e calcula os limites do encaixe. Não modifica nada.
