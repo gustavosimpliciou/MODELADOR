@@ -21,6 +21,7 @@
 import * as THREE from 'three'
 import { Evaluator, Brush, ADDITION as UNION, SUBTRACTION } from 'three-bvh-csg'
 import { analyzeSelection } from './smart-autocut'
+import { estimateVolume } from './acabamento'
 
 /** O que gerar: pino (macho), furo (fêmea) ou os dois integrados. */
 export type EncaixeMode = 'male' | 'female' | 'both'
@@ -88,6 +89,25 @@ export interface EncaixeResult {
   femaleGeo: THREE.BufferGeometry | null
   /** Profundidade efetiva da cavidade (≤ espessura da peça). */
   femaleDepth: number
+  /** Prova de que o booleano REALMENTE rodou (topologia + volume). */
+  validation: {
+    /** `true` apenas se o volume da malha mudou entre antes/depois. */
+    femaleVolumeChanged: boolean
+    /** Volume da peça alvo antes da subtração (mm³). */
+    femaleVolumeBefore: number
+    /** Volume da peça alvo depois da subtração (mm³). */
+    femaleVolumeAfter: number
+    /** `true` apenas se o nº de vértices mudou (booleano efetivamente executado). */
+    femaleTopologyChanged: boolean
+    /** Volume da peça alvo antes da união (mm³). */
+    maleVolumeBefore: number
+    /** Volume da peça alvo depois da união (mm³). */
+    maleVolumeAfter: number
+    /** `true` apenas se o volume da peça aumentou na união (pino adiciona). */
+    maleVolumeChanged: boolean
+    /** `true` apenas se o nº de vértices mudou na união. */
+    maleTopologyChanged: boolean
+  }
 }
 
 // ─── Planejamento / limites inteligentes ───────────────────────────────────────
@@ -267,14 +287,46 @@ export function applyEncaixe(params: EncaixeApplyParams): EncaixeResult {
   let femaleGeo: THREE.BufferGeometry | null = null
   let femaleDepth = 0
 
+  // Prova de que os booleanos rodaram de verdade: medimos a topologia e o
+  // volume ANTES e DEPOIS de cada operação. Sem essa prova, NUNCA reportamos
+  // sucesso — lançamos erro (o painel mostra erro e não fecha o fluxo).
+  const validation = {
+    femaleVolumeChanged: false,
+    femaleVolumeBefore: 0,
+    femaleVolumeAfter: 0,
+    femaleTopologyChanged: false,
+    maleVolumeBefore: 0,
+    maleVolumeAfter: 0,
+    maleVolumeChanged: false,
+    maleTopologyChanged: false,
+  }
+
   if (mode === 'male' || mode === 'both') {
     const f = toTargetFrame(maleMesh, sourceMesh, center, direction)
     // Ancorar o pino na superfície da malha alvo (funciona mesmo quando a peça
     // está deslocada pelo espalhamento do corte).
     const base = snapCenterToSurface(maleMesh, f.center, f.direction)
     const brush = makeCylinderBrush(radius, height, base, f.direction)
+    const before = meshStats(maleMesh.geometry)
     maleGeo = csgUnion(maleMesh.geometry, brush)
     disposeBrush(brush)
+    const after = meshStats(maleGeo)
+    validation.maleVolumeBefore = before.volume
+    validation.maleVolumeAfter = after.volume
+    validation.maleTopologyChanged = after.verts !== before.verts
+    validation.maleVolumeChanged = after.volume > before.volume
+    console.log(
+      `[CONNECTOR] macho (união) → target=${maleMesh.name || '?'} ` +
+      `antes={v:${before.verts}, vol:${before.volume.toFixed(1)}} ` +
+      `depois={v:${after.verts}, vol:${after.volume.toFixed(1)}}`,
+    )
+    // União NÃO executada (geometria idêntica antes/depois) = erro, nunca
+    // sucesso. Um pino 100% submerso também cai aqui: o macho não protrai.
+    const maleUnchanged = after.verts === before.verts && Math.abs(after.volume - before.volume) < 1e-6
+    if (maleUnchanged) {
+      console.error('[CONNECTOR] macho: topologia e volume inalterados após união — booleano não executou')
+      throw new Error('o macho não adicionou material: a união não alterou a geometria')
+    }
   }
 
   if (mode === 'female' || mode === 'both') {
@@ -282,18 +334,45 @@ export function applyEncaixe(params: EncaixeApplyParams): EncaixeResult {
     // A cavidade nasce na superfície da malha alvo e entra no material.
     const base = snapCenterToSurface(femaleMesh, f.center, f.direction)
     femaleDepth = computeFemaleDepth(femaleMesh, base, f.direction, height, tolerance)
-    // O cilindro deve PROJETAR claramente PARA FORA da superfície (outset)
-    // antes de entrar no material. Se ele mal atravessa a face (ex: 0,1mm),
-    // o three-bvh-csg produz topologia degenerada e o furo sai cego/fragmentado
-    // (boca selada ~3mm abaixo da superfície). Com o outset, a subtração corta
-    // limpo a face e a boca do furo fica aberta na superfície.
+    // O FemaleCutTool é um cilindro SÓLIDO e fechado (CylinderGeometry real,
+    // não um anel/linha) que PROJETA claramente PARA FORA da superfície
+    // (outset = raio×1,5 ou 3mm mín.) antes de entrar no material. Isso
+    // garante: (1) interseção inequívoca com a peça; (2) nenhuma face coplanar
+    // com a superfície do corte (a boca do furo fica aberta na superfície).
     const cavityRadius = radius + tolerance
     const outset = Math.max(cavityRadius * 1.5, 3)
     const brushLength = femaleDepth + outset
     const brushStart = base.clone().addScaledVector(f.direction, -outset)
     const brush = makeCylinderBrush(cavityRadius, brushLength, brushStart, f.direction)
+    const before = meshStats(femaleMesh.geometry)
+    console.log(
+      `[CONNECTOR] fêmea (subtração) → target=${femaleMesh.name || '?'} ` +
+      `cutTool={r:${cavityRadius.toFixed(2)}, len:${brushLength.toFixed(2)}, outset:${outset.toFixed(2)}} ` +
+      `antes={v:${before.verts}, vol:${before.volume.toFixed(1)}}`,
+    )
     femaleGeo = csgSubtract(femaleMesh.geometry, brush)
     disposeBrush(brush)
+    const after = meshStats(femaleGeo)
+    validation.femaleVolumeBefore = before.volume
+    validation.femaleVolumeAfter = after.volume
+    validation.femaleTopologyChanged = after.verts !== before.verts
+    validation.femaleVolumeChanged = after.volume < before.volume
+    console.log(
+      `[CONNECTOR] fêmea (subtração) → depois={v:${after.verts}, vol:${after.volume.toFixed(1)}} ` +
+      `removido=${(before.volume - after.volume).toFixed(2)}mm³`,
+    )
+    // Regra inegociável: a fêmea SÓ é válida se a subtração REMOVEU material.
+    // Geometria idêntica antes/depois = o booleano não executou (cortador
+    // fora da peça, interseção cega, topologia degenerada) → nunca sucesso.
+    const femaleUnchanged = after.verts === before.verts && Math.abs(after.volume - before.volume) < 1e-6
+    if (femaleUnchanged) {
+      console.error('[CONNECTOR] fêmea: topologia e volume inalterados após subtração — furo não criado')
+      throw new Error('a fêmea não removeu material: a subtração não alterou a geometria (furo cego)')
+    }
+    if (!(after.volume < before.volume)) {
+      console.error('[CONNECTOR] fêmea: topologia mudou mas o volume não diminuiu — resultado inválido')
+      throw new Error('a fêmea produziu um resultado inválido (volume não diminuiu)')
+    }
   }
 
   for (const g of [maleGeo, femaleGeo]) {
@@ -303,7 +382,7 @@ export function applyEncaixe(params: EncaixeApplyParams): EncaixeResult {
     g.computeBoundingSphere()
   }
 
-  return { maleGeo, femaleGeo, femaleDepth }
+  return { maleGeo, femaleGeo, femaleDepth, validation }
 }
 
 /**
@@ -375,6 +454,19 @@ function ensureNormals(geo: THREE.BufferGeometry): THREE.BufferGeometry {
 
 function disposeBrush(b: Brush): void {
   try { b.geometry?.dispose() } catch {}
+}
+
+/** Estatísticas de uma malha para validar que o CSG efetivamente rodou. */
+function meshStats(geo: THREE.BufferGeometry): { verts: number; volume: number } {
+  const pos = geo.getAttribute('position')
+  const verts = pos ? pos.count : 0
+  let volume = 0
+  try {
+    volume = estimateVolume(geo)
+  } catch {
+    volume = 0
+  }
+  return { verts, volume }
 }
 
 /**

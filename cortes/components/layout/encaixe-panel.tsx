@@ -282,6 +282,15 @@ export function EncaixePanel() {
           if (result.maleGeo.attributes.position.count === 0 || result.femaleGeo.attributes.position.count === 0) {
             throw new Error('a geometria do encaixe ficou vazia')
           }
+          // Prova geométrica de que o CSG rodou: se o booleano falhou em
+          // silêncio (volume/topologia inalterados), NÃO reportamos sucesso.
+          const v = result.validation
+          if (!v.maleTopologyChanged && !v.femaleTopologyChanged) {
+            throw new Error('o booleano não alterou a geometria — encaixe não aplicado')
+          }
+          if (mode === 'both' && !v.femaleVolumeChanged && !v.maleVolumeChanged) {
+            throw new Error('a cavidade não foi criada (sem remoção de material)')
+          }
           // A peça atual recebe um conector e a peça cortada recebe o outro.
           const maleIsActive = maleMesh === activeMesh
           const newActive = cloneMeshTransform(activeMesh, maleIsActive ? result.maleGeo : result.femaleGeo)
@@ -316,6 +325,9 @@ export function EncaixePanel() {
         } else {
           const geo = mode === 'male' ? result.maleGeo : result.femaleGeo
           if (!geo || geo.attributes.position.count === 0) throw new Error('a geometria do encaixe ficou vazia')
+          const v = result.validation
+          const ok = mode === 'female' ? v.femaleVolumeChanged : v.maleVolumeChanged
+          if (!ok) throw new Error('o booleano não alterou a geometria — encaixe não aplicado')
           const newActive = cloneMeshTransform(activeMesh, geo)
           setModelMesh(newActive)
           // Garantia extra: sincroniza a parte ativa também quando activePartId
