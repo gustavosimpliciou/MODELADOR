@@ -11,6 +11,7 @@ import {
   makePinPositions,
   type SplitAxis,
 } from '@/lib/auto-split'
+import { trackEvent } from '@/lib/events'
 import { cn } from '@/lib/utils'
 
 const AXES: { id: SplitAxis | 'auto'; label: string }[] = [
@@ -244,6 +245,11 @@ export function AutoSplitPanel() {
             : ' · pinos ignorados (falha no booleano)'
           : ''
         setStatus('loaded', `Divisão automática concluída — ${pieces.length} peças${pinMsg}`)
+        trackEvent('cut_created', {
+          tool: 'auto_split',
+          pieces: pieces.length,
+          pins: dowels.length,
+        })
       } catch (err) {
         console.log('[v0] Erro na execução Auto Split:', (err as Error).message)
         setStatus('error', 'Falha ao dividir o modelo.')

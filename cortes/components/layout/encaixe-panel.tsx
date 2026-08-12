@@ -15,6 +15,7 @@ import { useAppStore } from '@/lib/store'
 import { analyzeEncaixe, applyEncaixe, type EncaixeMode } from '@/lib/encaixe'
 import { analyzeSelection } from '@/lib/smart-autocut'
 import { cloneMeshTransform } from '@/lib/parts-manager'
+import { trackEvent } from '@/lib/events'
 import { useT } from '@/lib/lang-store'
 import { useDraggable } from '@/lib/use-draggable'
 
@@ -340,6 +341,13 @@ export function EncaixePanel() {
         clearSelection()
         setEncaixePreview(null)
         setEncaixeOpen(false)
+        trackEvent('cut_created', {
+          tool: 'encaixe',
+          mode,
+          radius: p.radius,
+          height: p.height,
+          paired: Boolean(compPart),
+        })
       } catch (err) {
         const msg = err instanceof Error ? err.message : ''
         setStatus('error', msg ? `${t.encaixe_error} — ${msg}` : t.encaixe_error)

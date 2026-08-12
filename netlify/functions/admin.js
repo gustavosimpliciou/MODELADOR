@@ -435,7 +435,80 @@ export const handler = async (event) => {
     })
   }
 
-  // ── POST /payments/:id/link  — vincular pagamento órfão a um USER_ID ──────
+// ─── GET /events ──────────────────────────────────────────────────────────────
+// Central de atividades: log unificado (busca por usuário, filtros e paginação)
+if (method === 'GET' && path === '/events') {
+  const qs       = event.queryStringParameters || {}
+  const page     = Math.max(1, parseInt(qs.page || '1', 10))
+  const limit    = Math.min(500, Math.max(1, parseInt(qs.limit || '50', 10)))
+  const offset   = (page - 1) * limit
+  const search   = (qs.search || '').trim().replace(/[%(),]/g, ' ').replace(/\s+/g, ' ').trim()
+  const evt      = (qs.event || '').trim()
+  const tool     = (qs.tool || '').trim()
+  const from     = qs.from ? new Date(qs.from + 'T00:00:00.000Z') : null
+  const to       = qs.to   ? new Date(qs.to   + 'T23:59:59.999Z') : null
+
+  const params = new URLSearchParams()
+  params.set('select', '*')
+  params.set('order', 'created_at.desc')
+  params.set('offset', String(offset))
+  params.set('limit', String(limit))
+  if (evt)   params.set('event', `eq.${evt}`)
+  if (tool)  params.set('tool', `eq.${tool}`)
+  if (from && !Number.isNaN(from.getTime())) params.set('created_at', `gte.${from.toISOString()}`)
+  if (to   && !Number.isNaN(to.getTime()))   params.append('created_at', `lte.${to.toISOString()}`)
+  if (search) {
+    params.set('or', `(user_name.ilike.*${search}*,user_email.ilike.*${search}*)`)
+  }
+
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/user_events?${params.toString()}`, {
+    headers: { ...sbHeaders(), 'Prefer': 'count=exact' },
+  })
+  const rows   = res.ok ? await res.json() : []
+  const total  = parseInt(res.headers.get('content-range')?.split('/')[1] ?? '0', 10)
+  const pages  = Math.max(1, Math.ceil(total / limit))
+
+  return json(200, { events: rows, total, page, limit, pages })
+}
+
+// ─── GET /events/stats ────────────────────────────────────────────────────────
+// Métricas agregadas de usabilidade (hoje / últimos 7 e 30 dias)
+if (method === 'GET' && path === '/events/stats') {
+  const now = new Date()
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
+  const start7  = new Date(now.getTime() - 7  * 24 * 60 * 60 * 1000).toISOString()
+  const start30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString()
+
+  async function fetchSince(iso) {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/user_events?select=event,user_id,tool&order=created_at.desc&created_at=gte.${encodeURIComponent(iso)}`,
+      { headers: sbHeaders() },
+    )
+    return res.ok ? await res.json() : []
+  }
+
+  function summarize(rows) {
+    const counts = {}
+    const tools  = {}
+    const users  = new Set()
+    for (const r of (rows || [])) {
+      counts[r.event] = (counts[r.event] || 0) + 1
+      tools[r.tool]   = (tools[r.tool] || 0) + 1
+      if (r.user_id) users.add(r.user_id)
+    }
+    return { total: rows?.length || 0, counts, tools, active_users: users.size }
+  }
+
+  const [today, last7, last30] = await Promise.all([fetchSince(startToday), fetchSince(start7), fetchSince(start30)])
+
+  return json(200, {
+    today:   summarize(today),
+    last_7d: summarize(last7),
+    last_30d: summarize(last30),
+  })
+}
+
+// ── POST /payments/:id/link  — vincular pagamento órfão a um USER_ID ──────
   const linkMatch = path.match(/^\/payments\/([^/]+)\/link$/)
   if (method === 'POST' && linkMatch) {
     const paymentId = linkMatch[1]

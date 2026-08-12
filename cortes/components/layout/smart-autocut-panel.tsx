@@ -22,6 +22,7 @@ import { useAppStore } from '@/lib/store'
 import { extractSubMesh, removeSubMesh, autoFillMicroFragments } from '@/lib/smart-cut'
 import { computeOpenCut, generateCaps, addCapsToShell } from '@/lib/smartcut-pipeline'
 import { analyzeSelection } from '@/lib/smart-autocut'
+import { trackEvent } from '@/lib/events'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/lang-store'
 import { useDraggable } from '@/lib/use-draggable'
@@ -397,6 +398,11 @@ export function SmartAutoCutPanel() {
         setAutoCutOpen(false)
         clearSelection()
         setStatus('loaded', 'AutoCut V2 concluído')
+        trackEvent('cut_created', {
+          tool: 'smart_autocut',
+          mode: noCap ? 'no_cap' : 'cap',
+          parts: cutParts.length + 1,
+        })
       } catch (err) {
         setStatus('error', 'Falha ao aplicar o AutoCut.')
         console.error('[AutoCut V2] Apply error:', err)

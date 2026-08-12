@@ -3,6 +3,7 @@ import { useStore } from '../store/useStore'
 import MeshLibrary from './MeshLibrary'
 import TextureLibrary from './TextureLibrary'
 import { exportGeometry } from '../lib/exporters'
+import { trackEvent } from '../lib/events'
 import { useT } from '../i18n/useT'
 
 const MESH_PARAMS_CONFIG = [
@@ -380,6 +381,11 @@ function ExportPanel() {
       setExporting(false)
       setExportDone(true)
       setTimeout(() => setExportDone(false), 3000)
+      trackEvent('download', {
+        format: exportFormat,
+        mode: result === 'free' ? 'free' : 'paid',
+        source: 'studio',
+      })
     } catch (e) {
       setExporting(false)
       setExportErr(e?.message || t('export.error'))

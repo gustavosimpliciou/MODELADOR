@@ -6,6 +6,7 @@ import * as THREE from 'three'
 import { useAppStore } from '@/lib/store'
 import { solidPlaneCut, planeFromAxisOffset, type PlaneAxis } from '@/lib/solid-plane-cut'
 // plate-cut imports removed — Placa de Limitação não executa cortes
+import { trackEvent } from '@/lib/events'
 import { cn } from '@/lib/utils'
 
 const AXES: { id: PlaneAxis; label: string; color: string; glow: string }[] = [
@@ -339,6 +340,7 @@ export function PlaneCutPanel() {
 
     clearSelection()
     setStatus('loaded', statusMsg)
+    trackEvent('cut_created', { tool: 'plane_cut', kind: cutPlaneAxis, pieces: 2 })
   }
 
   // ─── Render ──────────────────────────────────────────────────────────────────

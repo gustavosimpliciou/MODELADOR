@@ -139,6 +139,12 @@ function AdminShell({ onBack, user, mobileOnly }) {
               active={page === 'users'}
               onClick={() => setPage('users')}
             />
+            <NavItem
+              label="Log de Atividades"
+              icon={<ActivityIcon size={14} />}
+              active={page === 'log'}
+              onClick={() => setPage('log')}
+            />
           </nav>
         )}
 
@@ -151,6 +157,7 @@ function AdminShell({ onBack, user, mobileOnly }) {
         }}>
           {page === 'overview' && <OverviewPage compact={isMobile} />}
           {page === 'users'    && <UsersPage compact={isMobile} />}
+          {page === 'log'      && <ActivitiesLogPage compact={isMobile} />}
         </main>
 
         {/* Bottom tab bar mobile */}
@@ -176,6 +183,12 @@ function AdminShell({ onBack, user, mobileOnly }) {
               icon={<UsersIcon size={18} />}
               active={page === 'users'}
               onClick={() => setPage('users')}
+            />
+            <MobileTab
+              label="Log"
+              icon={<ActivityIcon size={18} />}
+              active={page === 'log'}
+              onClick={() => setPage('log')}
             />
           </nav>
         )}
@@ -893,6 +906,324 @@ function UsersPage({ compact = false }) {
     </div>
   )
 }
+
+// ─── Log de Atividades (Central) ─────────────────────────────────────────────
+const LOG_POLL_MS = 20_000 // atualiza sozinho a cada 20s
+
+const EVENT_META = {
+  login:            { label: 'Login',            color: '#4caf50' },
+  logout:           { label: 'Logout',           color: '#9e9e9e' },
+  upload:           { label: 'Upload',           color: '#2196f3' },
+  download:         { label: 'Download',         color: '#ff6a00' },
+  download_attempt: { label: 'Tent. download',   color: '#ff9800' },
+  cut_created:      { label: 'Corte gerado',     color: '#e040fb' },
+  upgrade:          { label: 'Upgrade',          color: '#ffd600' },
+}
+
+const TOOL_META = {
+  cortes:  { label: 'Cortes',    color: '#ff6a00' },
+  studio:  { label: 'Modelador', color: '#2196f3' },
+  auth:    { label: 'Sistema',   color: '#9e9e9e' },
+}
+
+function fmtEventLabel(evt) {
+  return (EVENT_META[evt] || {}).label || evt || '—'
+}
+function fmtEventColor(evt) {
+  return (EVENT_META[evt] || {}).color || '#888'
+}
+function fmtToolLabel(tool) {
+  return (TOOL_META[tool] || {}).label || tool || '—'
+}
+function fmtToolColor(tool) {
+  return (TOOL_META[tool] || {}).color || '#888'
+}
+
+function fmtDT(iso) {
+  if (!iso) return '—'
+  try {
+    return new Date(iso).toLocaleString('pt-BR', {
+      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+    })
+  } catch { return iso }
+}
+
+/** Resumo legível dos detalhes de um evento (destaques por tipo). */
+function detailsLine(evt, details = {}) {
+  if (!details || typeof details !== 'object') return ''
+  const d = details
+  switch (evt) {
+    case 'upload':    return [d.fileName, d.faces ? `${d.faces} faces` : null].filter(Boolean).join(' · ')
+    case 'download':
+    case 'download_attempt': {
+      const parts = []
+      if (d.format) parts.push(`.${d.format}`)
+      if (d.partCount) parts.push(`${d.partCount} parte(s)`)
+      if (d.mode) parts.push(d.mode === 'free' ? 'grátis' : 'pago')
+      if (d.zip) parts.push('ZIP')
+      if (d.blocked) parts.push(d.reason === 'creditos_insuficientes' ? '⛔ sem créditos' : '⛔ bloqueado')
+      if (d.source) parts.push(d.source)
+      return parts.join(' · ')
+    }
+    case 'cut_created': {
+      const tool = { smart_autocut: 'SmartCut', encaixe: 'Encaixe', auto_split: 'Auto Split', plane_cut: 'Corte plano', acabamento: 'Acabamento' }[d.tool] || d.tool
+      const parts = [tool]
+      if (d.pieces) parts.push(`${d.pieces} peças`)
+      if (d.parts) parts.push(`${d.parts} parte(s)`)
+      if (d.radius) parts.push(`Ø${(d.radius * 2).toFixed(1)}mm`)
+      if (d.mode) parts.push(d.mode)
+      return parts.join(' · ')
+    }
+    case 'upgrade': {
+      const parts = []
+      if (d.plan) parts.push(`Plano ${d.plan}`)
+      if (d.credits) parts.push(`+${d.credits} créditos`)
+      if (d.product) parts.push(d.product)
+      return parts.join(' · ')
+    }
+    case 'login': {
+      const parts = []
+      if (d.plan) parts.push(`plano ${d.plan}`)
+      if (d.href) parts.push(d.href)
+      return parts.join(' · ')
+    }
+    default: {
+      const keys = Object.keys(d).filter((k) => !['href'].includes(k))
+      return keys.slice(0, 3).map((k) => `${k}: ${JSON.stringify(d[k])}`).join(' · ')
+    }
+  }
+}
+
+function ActivitiesLogPage({ compact = false }) {
+  const [stats, setStats]     = useState(null)
+  const [data, setData]       = useState({ events: [], total: 0, pages: 1 })
+  const [loading, setLoading] = useState(true)
+  const [error, setError]     = useState(null)
+  const [lastUpdated, setLastUpdated] = useState(null)
+
+  const [search, setSearch] = useState('')
+  const [evt, setEvt]       = useState('')      // '' = todos
+  const [tool, setTool]     = useState('')      // '' = todas
+  const [range, setRange]   = useState('7d')    // 'today' | '7d' | '30d' | 'all'
+  const [page, setPage]     = useState(1)
+
+  const load = useCallback(async (opts) => {
+    try {
+      const q = new URLSearchParams()
+      if (opts.search) q.set('search', opts.search)
+      if (opts.evt)    q.set('event', opts.evt)
+      if (opts.tool)   q.set('tool', opts.tool)
+      if (opts.range === 'today') q.set('from', new Date().toISOString().slice(0, 10))
+      if (opts.range === '7d')    q.set('from', new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10))
+      if (opts.range === '30d')   q.set('from', new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10))
+      q.set('page', String(opts.page || 1))
+      q.set('limit', '60')
+
+      const [eventsRes, statsRes] = await Promise.all([
+        adminFetch(`/events?${q.toString()}`),
+        adminFetch('/events/stats'),
+      ])
+      setData(eventsRes)
+      setStats(statsRes)
+      setError(null)
+      setLastUpdated(new Date())
+    } catch (e) {
+      setError(e?.message || 'Falha ao carregar o log')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  // Carga inicial + auto-refresh a cada 20s (mantém filtros atuais)
+  useEffect(() => {
+    setLoading(true)
+    load({ search, evt, tool, range, page })
+    const id = setInterval(() => load({ search, evt, tool, range, page }), LOG_POLL_MS)
+    return () => clearInterval(id)
+  }, [load, search, evt, tool, range, page])
+
+  const applyFilters = (patch) => {
+    setSearch(patch.search !== undefined ? patch.search : search)
+    setEvt(patch.evt !== undefined ? patch.evt : evt)
+    setTool(patch.tool !== undefined ? patch.tool : tool)
+    setRange(patch.range !== undefined ? patch.range : range)
+    setPage(1)
+  }
+
+  const counts  = stats?.today?.counts || {}
+  const tools   = stats?.today?.tools || {}
+  const last7   = stats?.last_7d?.counts || {}
+
+  const cards = compact ? 2 : 3
+  const grid = {
+    display: 'grid',
+    gridTemplateColumns: `repeat(${cards}, minmax(0, 1fr))`,
+    gap: 10,
+  }
+
+  const inputStyle = {
+    width: '100%',
+    background: 'var(--panel)',
+    border: '1px solid var(--line)',
+    borderRadius: 6,
+    padding: '8px 10px',
+    fontFamily: 'var(--font-body)', fontSize: 13,
+    color: 'var(--text)',
+    outline: 'none',
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <PageTitle
+          title="Log de Atividades"
+          subtitle="Tudo que acontece na ferramenta: quem entrou, carregou arquivo, gerou cortes, baixou e comprou. Atualiza automaticamente."
+          compact={compact}
+        />
+        {lastUpdated && (
+          <span style={{
+            fontFamily: 'var(--font-mono)', fontSize: 10,
+            color: 'var(--text-dim)', whiteSpace: 'nowrap',
+          }}>
+            atualizado {lastUpdated.toLocaleTimeString('pt-BR')}
+          </span>
+        )}
+      </div>
+
+      {/* ── Métricas de hoje ─────────────────────────────────────── */}
+      <div style={grid}>
+        <StatCard label="Downloads hoje" value={counts.download || 0} accent="#ff6a00" icon={<span>⬇</span>} />
+        <StatCard label="Tentativas de download" value={counts.download_attempt || 0} accent="#ff9800" icon={<span>⚡</span>} />
+        <StatCard label="Cortes gerados hoje" value={counts.cut_created || 0} accent="#e040fb" icon={<span>✂</span>} />
+        <StatCard label="Uploads hoje" value={counts.upload || 0} accent="#2196f3" icon={<span>⬆</span>} />
+        <StatCard label="Logins hoje" value={counts.login || 0} accent="#4caf50" icon={<span>→</span>} />
+        <StatCard label="Usuários ativos hoje" value={stats?.today?.active_users || 0} accent="#00bcd4" icon={<span>●</span>} />
+      </div>
+
+      {/* ── Painel de hoje vs 7d ─────────────────────────────────── */}
+      <Section title="Usabilidade (hoje · últimos 7 dias)">
+        <div style={grid}>
+          <StatCard label="Downloads 7 dias" value={last7.download || 0} accent="#ff6a00" icon={<span>⬇</span>} />
+          <StatCard label="Cortes 7 dias" value={last7.cut_created || 0} accent="#e040fb" icon={<span>✂</span>} />
+          <StatCard label="Uploads 7 dias" value={last7.upload || 0} accent="#2196f3" icon={<span>⬆</span>} />
+          <StatCard label="Logins 7 dias" value={last7.login || 0} accent="#4caf50" icon={<span>→</span>} />
+          <StatCard label="Ativos 7 dias" value={stats?.last_7d?.active_users || 0} accent="#00bcd4" icon={<span>●</span>} />
+          <StatCard label="Upgrades 7 dias" value={last7.upgrade || 0} accent="#ffd600" icon={<span>⭐</span>} />
+        </div>
+      </Section>
+
+      {/* ── Filtros ──────────────────────────────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: compact ? '1fr' : '2fr 1fr 1fr 1fr', gap: 10 }}>
+        <div>
+          <span style={labelStyle}>Buscar usuário</span>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Nome ou e-mail..."
+              style={inputStyle}
+            />
+            <button onClick={() => applyFilters({ search })} style={btnStyle({ variant: 'primary', size: 'sm' })}>
+              <SearchIcon size={13} /> Buscar
+            </button>
+          </div>
+        </div>
+        <div>
+          <span style={labelStyle}>Ferramenta</span>
+          <select value={tool} onChange={(e) => applyFilters({ tool: e.target.value })} style={inputStyle}>
+            <option value="">Todas</option>
+            <option value="cortes">Cortes</option>
+            <option value="studio">Modelador</option>
+            <option value="auth">Sistema</option>
+          </select>
+        </div>
+        <div>
+          <span style={labelStyle}>Evento</span>
+          <select value={evt} onChange={(e) => applyFilters({ evt: e.target.value })} style={inputStyle}>
+            <option value="">Todos</option>
+            {Object.entries(EVENT_META).map(([k, m]) => (
+              <option key={k} value={k}>{m.label}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <span style={labelStyle}>Período</span>
+          <select value={range} onChange={(e) => applyFilters({ range: e.target.value })} style={inputStyle}>
+            <option value="today">Hoje</option>
+            <option value="7d">Últimos 7 dias</option>
+            <option value="30d">Últimos 30 dias</option>
+            <option value="all">Tudo</option>
+          </select>
+        </div>
+      </div>
+
+      {/* ── Tabela de eventos ────────────────────────────────────── */}
+      <div style={{
+        background: 'var(--panel)', border: '1px solid var(--line)',
+        borderRadius: 10, overflow: 'hidden',
+      }}>
+        {loading && !data.events.length ? (
+          <Spinner />
+        ) : error ? (
+          <ErrorBanner msg={error} onRetry={() => load({ search, evt, tool, range, page })} />
+        ) : !data.events.length ? (
+          <Empty msg="Nenhum evento encontrado para os filtros atuais." />
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+              <thead style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--line)' }}>
+                <tr>
+                  <Th>Data</Th>
+                  <Th>Usuário</Th>
+                  <Th>Ferramenta</Th>
+                  <Th>Evento</Th>
+                  <Th>Detalhes</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.events.map((e, i) => (
+                  <tr key={e.id ?? i} style={{ borderBottom: '1px solid var(--line)', verticalAlign: 'top' }}>
+                    <Td>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-secondary)' }}>
+                        {fmtDT(e.created_at)}
+                      </span>
+                    </Td>
+                    <Td>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--text)', fontWeight: 500 }}>
+                          {e.user_name || '—'}
+                        </span>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-dim)' }}>
+                          {e.user_email || 'anônimo'}
+                        </span>
+                      </div>
+                    </Td>
+                    <Td>
+                      <Tag label={fmtToolLabel(e.tool)} color={fmtToolColor(e.tool)} />
+                    </Td>
+                    <Td>
+                      <Tag label={fmtEventLabel(e.event)} color={fmtEventColor(e.event)} />
+                    </Td>
+                    <Td>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-secondary)' }}>
+                        {detailsLine(e.event, e.details)}
+                      </span>
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {data.pages > 1 && (
+        <Pagination current={page} total={data.pages} onChange={(p) => { setPage(p); setLoading(true) }} />
+      )}
+    </div>
+  )
+}
+
 
 // ─── Credits Modal ────────────────────────────────────────────────────────────
 function CreditsModal({ user, onClose, onSuccess }) {
@@ -1688,6 +2019,14 @@ function SearchIcon({ size = 16, style }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style}>
       <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    </svg>
+  )
+}
+
+function ActivityIcon({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
     </svg>
   )
 }

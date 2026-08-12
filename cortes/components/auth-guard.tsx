@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useUserStore, ADMIN_EMAIL } from '@/lib/user-store'
+import { trackEvent } from '@/lib/events'
 
 function hasValidSession(): boolean {
   try {
@@ -65,6 +66,8 @@ export function AuthGuard({ children }: AuthGuardProps) {
           useUserStore.getState().setCredits(credits)
           useUserStore.getState().setFreeDownloadUsed(freeUsed)
           useUserStore.getState().setFirstUpgradePurchased(firstPurchased)
+
+          trackEvent('login', { plan: row?.plan ?? 'free' })
 
           // Keep localStorage in sync with Supabase (shared with main Studio app)
           try {

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
+import { trackEvent } from '../lib/events'
 
 // Single source of truth for the mesh-editor sliders' baseline values.
 // Used both to seed/reset `meshParams` and to detect whether the user has
@@ -70,9 +71,11 @@ export const useStore = create((set, get) => ({
       freeDownloadUsed: freeUsed,
       firstUpgradePurchased: userData.firstUpgradePurchased,
     })
+    trackEvent('login', { plan: userData.plan || 'free' }, { name: userData.name })
   },
 
   logout: () => {
+    trackEvent('logout')
     supabase.auth.signOut().catch(() => {})
     ;[TOKEN_KEY, CREDITS_KEY, FREE_USED_KEY, FIRST_UPGRADE_KEY].forEach(lsDel)
     set({
@@ -166,6 +169,7 @@ export const useStore = create((set, get) => ({
         set({ freeDownloadUsed: true })
         return 'free'
       }
+      trackEvent('download_attempt', { blocked: true, reason: 'creditos_insuficientes', source: 'studio' })
       set({ showUpgradeModal: true })
       return 'upgrade_required'
     }
@@ -188,6 +192,7 @@ export const useStore = create((set, get) => ({
 
       const credits = row.credits ?? 0
       if (credits < EXPORT_COST) {
+        trackEvent('download_attempt', { blocked: true, reason: 'creditos_insuficientes', source: 'studio' })
         set({ showUpgradeModal: true })
         return 'upgrade_required'
       }

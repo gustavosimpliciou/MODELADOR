@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Download, X, FileDown, Layers, Package, Zap } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { useUserStore } from '@/lib/user-store'
+import { trackEvent } from '@/lib/events'
 import * as THREE from 'three'
 import { cn } from '@/lib/utils'
 
@@ -44,10 +45,21 @@ export function ExportPanel({ open, onClose }: ExportPanelProps) {
 
     // ── Credit gate ────────────────────────────────────────────────
     setExporting(true)
+    trackEvent('download_attempt', {
+      format,
+      partCount: visibleParts.length,
+      credits: credits,
+    })
     const result = await tryExport()
 
     if (result === 'upgrade_required') {
       setExporting(false)
+      trackEvent('download_attempt', {
+        format,
+        partCount: visibleParts.length,
+        blocked: true,
+        reason: 'creditos_insuficientes',
+      })
       onClose()   // close export panel so upgrade modal is visible
       return
     }
@@ -66,6 +78,13 @@ export function ExportPanel({ open, onClose }: ExportPanelProps) {
         await exportAllAsZip(visibleParts.map((p) => ({ mesh: p.mesh, name: p.name })), format)
       }
       setStatus('loaded', `Exportação concluída — ${visibleParts.length} parte(s).`)
+      trackEvent('download', {
+        format,
+        partCount: visibleParts.length,
+        mode: result === 'free' ? 'free' : 'paid',
+        fileCount: visibleParts.length === 1 ? 1 : visibleParts.length,
+        zip: visibleParts.length > 1,
+      })
       if (result !== 'free') onClose()
     } catch (err: any) {
       setStatus('error', `Erro ao exportar: ${err.message}`)

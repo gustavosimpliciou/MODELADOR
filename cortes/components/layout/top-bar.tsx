@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { useUserStore, ADMIN_EMAIL } from '@/lib/user-store'
+import { trackEvent } from '@/lib/events'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/lang-store'
 import { ConfigModal } from './config-modal'
@@ -73,6 +74,7 @@ export function TopBar({ onExport }: TopBarProps) {
       setOriginalGeometry(mesh.geometry.clone())
       setLoadProgress(-1)
       setStatus('loaded', t.loaded_file(info.name, `${info.faces.toLocaleString()} faces`))
+      trackEvent('upload', { fileName: info.name, faces: info.faces, sizeBytes: file.size })
       // Lazy-import invalidate so @react-three/fiber is not in the initial bundle
       const { invalidate } = await import('@react-three/fiber')
       invalidate()
@@ -101,6 +103,7 @@ export function TopBar({ onExport }: TopBarProps) {
   // ── Quit — faz logout e volta para o login da aplicação principal ────────────
   const handleQuit = () => {
     setQuitOpen(false)
+    trackEvent('logout')
     // Resetar estado local
     useAppStore.getState().resetAll()
     useAppStore.setState({

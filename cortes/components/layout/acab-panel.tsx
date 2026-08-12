@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import * as THREE from 'three'
 import { useAppStore } from '@/lib/store'
+import { trackEvent } from '@/lib/events'
 import { cn } from '@/lib/utils'
 import {
   ACAB_PRESETS,
@@ -312,6 +313,7 @@ export function AcabPanel() {
       /* */
     }
     setStatusLine('✓ Acabamento aplicado')
+    trackEvent('cut_created', { tool: 'acabamento', part: selectedPart.name })
   }
 
   const handleClose = () => {

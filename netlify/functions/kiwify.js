@@ -210,6 +210,13 @@ export const handler = async (event) => {
     created_at: now,
   })
 
+  await sbInsert('user_events', {
+    user_id: user.id, user_name: user.name || null, user_email: user.email || null,
+    tool: 'auth', event: 'upgrade',
+    details: { plan: tier, credits: creditsToAdd, product: productName || productId, order_id: orderId, resolved_by: resolvedBy },
+    created_at: now,
+  }).catch(() => {})
+
   return json(200, {
     ok: true,
     credits_added: creditsToAdd,
