@@ -5,6 +5,8 @@ export const translations = {
     // Top bar
     open: 'Abrir',
     export: 'Exportar',
+    save_project: 'Salvar',
+    my_projects: 'Projetos',
     grid: 'Grid',
     axes: 'Eixos',
     wireframe: 'Wireframe',
@@ -205,6 +207,8 @@ export const translations = {
   en: {
     open: 'Open',
     export: 'Export',
+    save_project: 'Save',
+    my_projects: 'Projects',
     grid: 'Grid',
     axes: 'Axes',
     wireframe: 'Wireframe',
@@ -395,6 +399,8 @@ export const translations = {
   es: {
     open: 'Abrir',
     export: 'Exportar',
+    save_project: 'Guardar',
+    my_projects: 'Proyectos',
     grid: 'Grilla',
     axes: 'Ejes',
     wireframe: 'Malla',

@@ -4,6 +4,7 @@ import { useAppStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { Activity, Cpu, HardDrive } from 'lucide-react'
 import { useT } from '@/lib/lang-store'
+import { CreditCountdown } from './credit-countdown'
 
 export function StatusBar() {
   const t = useT()
@@ -37,6 +38,9 @@ export function StatusBar() {
           </div>
         )}
       </div>
+
+      {/* Cronômetro de créditos — discreto, tooltip "expiração de créditos" */}
+      <CreditCountdown />
 
       <div className="flex items-center gap-4 shrink-0">
         {modelInfo && (

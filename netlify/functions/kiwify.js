@@ -189,10 +189,18 @@ export const handler = async (event) => {
   const creditsToAdd = PLAN_CREDITS[tier]
   const newCredits   = (user.credits || 0) + creditsToAdd
 
+  // Data de pagamento: usa a enviada pela Kiwify quando disponível, senão a
+  // chegada do webhook. Expiração = pagamento + 90 dias (3 meses).
+  const paidRaw = body.order_date || body.OrderDate || body.payment_date || now
+  const paidAt  = new Date(paidRaw)
+  const expiresAt = (Number.isNaN(paidAt.getTime()) ? new Date(now) : paidAt)
+  const credits_expires_at = new Date(expiresAt.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString()
+
   await sbUpdate('users', 'id', user.id, {
     credits:                 newCredits,
     plan:                    tier,
     first_upgrade_purchased: true,
+    credits_expires_at,
   })
 
   await sbInsert('payments', {

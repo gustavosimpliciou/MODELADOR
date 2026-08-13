@@ -50,17 +50,18 @@ export function CreditCountdown() {
 
   return (
     <div
-      className="flex items-center gap-1 px-2 py-1 rounded-lg border mr-1.5"
+      className="flex items-center gap-1 px-1.5 py-0.5 rounded border mr-2 cursor-default"
       style={{
-        borderColor: 'oklch(0.70 0.22 42 / 45%)',
-        background:  'oklch(0.70 0.22 42 / 10%)',
-        color:       'oklch(0.72 0.16 42)',
+        borderColor: 'oklch(0.70 0.22 42 / 22%)',
+        background:  'oklch(0.70 0.22 42 / 6%)',
+        color:       'oklch(0.72 0.16 42 / 85%)',
+        opacity:     0.8,
       }}
-      title={`Seu crédito expira em ${days} dias ${pad(hours)} horas ${pad(minutes)} minutos ${pad(seconds)} segundos`}
+      title={`Expiração de créditos: ${days} dia(s) ${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s`}
     >
-      <Timer className="w-3 h-3 shrink-0" aria-hidden="true" />
-      <span className="text-[10px] font-mono font-semibold tabular-nums tracking-tight">
-        {days}d&nbsp;{pad(hours)}h&nbsp;{pad(minutes)}m&nbsp;{pad(seconds)}s
+      <Timer className="w-2.5 h-2.5 shrink-0" aria-hidden="true" />
+      <span className="text-[10px] font-mono tabular-nums tracking-tight">
+        {days}d&nbsp;{pad(hours)}h&nbsp;{pad(minutes)}m
       </span>
     </div>
   )

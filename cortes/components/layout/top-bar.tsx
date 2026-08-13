@@ -10,6 +10,8 @@ import {
   Lock,
   LockOpen,
   LogOut,
+  Save,
+  Archive,
 } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { useUserStore, ADMIN_EMAIL } from '@/lib/user-store'
@@ -20,9 +22,11 @@ import { ConfigModal } from './config-modal'
 
 interface TopBarProps {
   onExport?: () => void
+  onSave?: () => void
+  onProjects?: () => void
 }
 
-export function TopBar({ onExport }: TopBarProps) {
+export function TopBar({ onExport, onSave, onProjects }: TopBarProps) {
   const t = useT()
   // Selective selectors — each subscribes only to the slice it needs,
   // so unrelated state changes (fps, hoveredFaceIndices, etc.) don't re-render TopBar.
@@ -223,6 +227,20 @@ export function TopBar({ onExport }: TopBarProps) {
             shortcut="Ctrl+E"
             disabled={!modelMesh}
             onClick={onExport}
+          />
+
+          {/* Projetos salvos (salvar / retomar) */}
+          <TopBarBtn
+            icon={<Save className="w-3.5 h-3.5" />}
+            label={t.save_project}
+            disabled={!modelMesh}
+            onClick={onSave}
+          />
+          <TopBarBtn
+            icon={<Archive className="w-3.5 h-3.5" />}
+            label={t.my_projects}
+            disabled={!user}
+            onClick={onProjects}
           />
         </div>
 

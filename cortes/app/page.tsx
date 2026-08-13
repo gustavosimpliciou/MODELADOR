@@ -12,6 +12,7 @@ import { SmartAutoCutPanel } from '@/components/layout/smart-autocut-panel'
 import { EncaixePanel } from '@/components/layout/encaixe-panel'
 import { AcabPanel } from '@/components/layout/acab-panel'
 import { ExportPanel } from '@/components/layout/export-panel'
+import { ProjectsModal } from '@/components/layout/projects-modal'
 import { UpgradeModal } from '@/components/upgrade-modal'
 import { EncaixeWelcome } from '@/components/encaixe-welcome'
 import { Viewport3D } from '@/components/viewport/viewport-3d'
@@ -19,6 +20,8 @@ import { AuthGuard } from '@/components/auth-guard'
 
 export default function NativosCut() {
   const [exportOpen, setExportOpen] = useState(false)
+  const [projectsOpen, setProjectsOpen] = useState(false)
+  const [projectsMode, setProjectsMode] = useState<'save' | 'list'>('list')
 
   return (
     <AuthGuard>
@@ -27,7 +30,11 @@ export default function NativosCut() {
       style={{ background: 'oklch(0.08 0 0)' }}
     >
       {/* Barra superior */}
-      <TopBar onExport={() => setExportOpen(true)} />
+      <TopBar
+        onExport={() => setExportOpen(true)}
+        onSave={() => { setProjectsMode('save'); setProjectsOpen(true) }}
+        onProjects={() => { setProjectsMode('list'); setProjectsOpen(true) }}
+      />
 
       {/* Área de trabalho */}
       <div className="flex flex-1 overflow-hidden relative">
@@ -60,6 +67,9 @@ export default function NativosCut() {
 
       {/* Modal de exportação */}
       <ExportPanel open={exportOpen} onClose={() => setExportOpen(false)} />
+
+      {/* Modal de projetos salvos (máx 2, retomar de onde parou) */}
+      <ProjectsModal open={projectsOpen} initialMode={projectsMode} onClose={() => setProjectsOpen(false)} />
 
       {/* Modal de upgrade de créditos — mesmo sistema do Modelador 3D */}
       <UpgradeModal />

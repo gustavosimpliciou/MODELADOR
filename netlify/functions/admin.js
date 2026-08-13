@@ -545,10 +545,16 @@ if (method === 'GET' && path === '/events/stats') {
     let newCredits = target.credits || 0
     if (grantCredits) {
       newCredits = newCredits + creditsToAdd
+      // Expiração = data da compra + 90 dias (3 meses)
+      const paidAt = payment.created_at ? new Date(payment.created_at) : new Date()
+      const expiresAt = new Date(
+        (Number.isNaN(paidAt.getTime()) ? new Date() : paidAt).getTime() + 90 * 24 * 60 * 60 * 1000,
+      )
       await sbUpdate('users', 'id', targetUserId, {
         credits: newCredits,
         plan: tier || target.plan || 'free',
         first_upgrade_purchased: true,
+        credits_expires_at: expiresAt.toISOString(),
       })
       await sbInsert('credit_history', {
         id: crypto.randomUUID(),
