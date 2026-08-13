@@ -14,6 +14,7 @@ import { AcabPanel } from '@/components/layout/acab-panel'
 import { ExportPanel } from '@/components/layout/export-panel'
 import { ProjectsModal } from '@/components/layout/projects-modal'
 import { UpgradeModal } from '@/components/upgrade-modal'
+import { ExpiredCreditsPopup } from '@/components/expired-credits-popup'
 import { EncaixeWelcome } from '@/components/encaixe-welcome'
 import { Viewport3D } from '@/components/viewport/viewport-3d'
 import { AuthGuard } from '@/components/auth-guard'
@@ -73,6 +74,9 @@ export default function NativosCut() {
 
       {/* Modal de upgrade de créditos — mesmo sistema do Modelador 3D */}
       <UpgradeModal />
+
+      {/* Popup de saldo expirado (cronômetro zerou) */}
+      <ExpiredCreditsPopup />
 
       {/* Popup de novidades (Encaixe 2.0) — aparece uma vez por usuário */}
       <EncaixeWelcome />

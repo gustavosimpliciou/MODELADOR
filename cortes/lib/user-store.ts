@@ -44,6 +44,8 @@ interface UserState {
   credits: number
   /** Timestamp (ms) de expiração dos créditos comprados; null = sem cronômetro. */
   creditsExpiresAt: number | null
+  /** Popup "saldo expirado" — exibido quando o cronômetro zera. */
+  expiredNotice: boolean
   freeDownloadUsed: boolean
   firstUpgradePurchased: boolean
   showUpgradeModal: boolean
@@ -51,6 +53,7 @@ interface UserState {
   setUser:                  (user: UserInfo | null) => void
   setCredits:               (credits: number)       => void
   setCreditsExpiresAt:      (ms: number | null)     => void
+  setExpiredNotice:         (v: boolean)            => void
   setFreeDownloadUsed:      (v: boolean)            => void
   setFirstUpgradePurchased: (v: boolean)            => void
   setShowUpgradeModal:      (v: boolean)            => void
@@ -83,6 +86,7 @@ export const useUserStore = create<UserState>((set, get) => ({
   user:                  null,
   credits:               parseInt(ls('nativos.credits', '0'), 10),
   creditsExpiresAt:      lsExpiry('nativos.creditsExpiresAt'),
+  expiredNotice:         false,
   freeDownloadUsed:      ls('nativos.freeDownloadUsed', 'false') === 'true',
   firstUpgradePurchased: ls('nativos.firstUpgradePurchased', 'false') === 'true',
   showUpgradeModal:      false,
@@ -90,6 +94,7 @@ export const useUserStore = create<UserState>((set, get) => ({
   setUser:                  (user)                  => set({ user }),
   setCredits:               (credits)               => set({ credits }),
   setCreditsExpiresAt:      (creditsExpiresAt)      => set({ creditsExpiresAt }),
+  setExpiredNotice:         (expiredNotice)         => set({ expiredNotice }),
   setFreeDownloadUsed:      (freeDownloadUsed)      => set({ freeDownloadUsed }),
   setFirstUpgradePurchased: (firstUpgradePurchased) => set({ firstUpgradePurchased }),
   setShowUpgradeModal:      (showUpgradeModal)      => set({ showUpgradeModal }),
@@ -188,7 +193,7 @@ export const useUserStore = create<UserState>((set, get) => ({
 
     lsSet('nativos.credits', String(EXPIRED_CREDIT_BALANCE))
     lsSet('nativos.creditsExpiresAt', '')
-    set({ credits: EXPIRED_CREDIT_BALANCE, creditsExpiresAt: null })
+    set({ credits: EXPIRED_CREDIT_BALANCE, creditsExpiresAt: null, expiredNotice: true })
   },
 
   tryExport: async () => {

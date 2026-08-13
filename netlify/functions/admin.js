@@ -439,6 +439,58 @@ export const handler = async (event) => {
     })
   }
 
+  // ── PATCH /users/:id/expiry ────────────────────────────────────────────────
+  // Define a expiração de créditos manualmente (para ativar o cronômetro de
+  // quem pagou e o pagamento ainda não carregou a data, ou para renovar).
+  // Body: { days?: number, expires_at?: string, note?: string }
+  const expiryMatch = path.match(/^\/users\/([^/]+)\/expiry$/)
+  if (method === 'PATCH' && expiryMatch) {
+    const userId = expiryMatch[1]
+    let body = {}
+    try { body = JSON.parse(event.body || '{}') } catch { body = {} }
+
+    const { days, expires_at, note } = body
+
+    let credits_expires_at
+    if (expires_at) {
+      const d = new Date(expires_at)
+      credits_expires_at = Number.isNaN(d.getTime()) ? null : d.toISOString()
+    } else if (typeof days === 'number' && days >= 0) {
+      credits_expires_at = new Date(Date.now() + days * 86400000).toISOString()
+    } else {
+      return json(400, { detail: 'Envie days (número) ou expires_at (ISO)' })
+    }
+
+    const rows = await sbSelect('users', { select: '*', id: `eq.${userId}` })
+    if (!rows?.length) return json(404, { detail: 'Usuário não encontrado' })
+
+    const target = rows[0]
+    const now    = new Date().toISOString()
+
+    await sbUpdate('users', 'id', userId, { credits_expires_at })
+
+    // Zera o popup/flag se a data estiver vencida (saldo volta a 100)
+    if (credits_expires_at && credits_expires_at <= now) {
+      await sbUpdate('users', 'id', userId, { credits: 100, credits_expires_at: null })
+    }
+
+    sbInsert('credit_history', {
+      id:          crypto.randomUUID(),
+      user_id:     userId,
+      type:        'admin_expiry',
+      credits:     0,
+      description: `Expiração definida pelo ADM (${days != null ? `${days} dias` : credits_expires_at})${note ? ` (${note})` : ''} | admin: ${admin.email}`,
+      created_at:  now,
+    }).catch(() => {})
+
+    return json(200, {
+      ok: true,
+      user_id: userId,
+      credits_expires_at,
+      current_credits: target.credits || 0,
+    })
+  }
+
 // ─── GET /events ──────────────────────────────────────────────────────────────
 // Central de atividades: log unificado (busca por usuário, filtros e paginação)
 if (method === 'GET' && path === '/events') {

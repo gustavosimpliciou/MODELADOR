@@ -956,6 +956,8 @@ const EVENT_META = {
   download:         { label: 'Download',         color: '#ff6a00' },
   download_attempt: { label: 'Tent. download',   color: '#ff9800' },
   cut_created:      { label: 'Corte gerado',     color: '#e040fb' },
+  project_saved:    { label: 'Projeto salvo',    color: '#00bcd4' },
+  project_loaded:   { label: 'Projeto aberto',   color: '#26a69a' },
   upgrade:          { label: 'Upgrade',          color: '#ffd600' },
 }
 
@@ -1018,6 +1020,13 @@ function detailsLine(evt, details = {}) {
       if (d.plan) parts.push(`Plano ${d.plan}`)
       if (d.credits) parts.push(`+${d.credits} créditos`)
       if (d.product) parts.push(d.product)
+      return parts.join(' · ')
+    }
+    case 'project_saved':
+    case 'project_loaded': {
+      const parts = []
+      if (d.name) parts.push(`"${d.name}"`)
+      if (d.partCount) parts.push(`${d.partCount} parte(s)`)
       return parts.join(' · ')
     }
     case 'login': {
@@ -1269,6 +1278,7 @@ function CreditsModal({ user, onClose, onSuccess }) {
   const [op, setOp]           = useState('add') // 'add' | 'remove' | 'set'
   const [amount, setAmount]   = useState('')
   const [note, setNote]       = useState('')
+  const [expiryDays, setExpiryDays] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState(null)
   const [success, setSuccess] = useState(null)
@@ -1299,6 +1309,20 @@ function CreditsModal({ user, onClose, onSuccess }) {
       setSuccess(`Saldo atualizado: ${result.previous_credits} → ${result.new_credits} créditos`)
       onSuccess(result.new_credits)
       setAmount(''); setNote('')
+
+      // Define/ativa o cronômetro quando dias de expiração informados
+      if (expiryDays && parseInt(expiryDays, 10) > 0) {
+        try {
+          await adminFetch(`/users/${user.id}/expiry`, {
+            method: 'PATCH',
+            body: JSON.stringify({ days: parseInt(expiryDays, 10), note: note || undefined }),
+          })
+          setSuccess(`Saldo atualizado (→ ${result.new_credits}) · cronômetro de ${parseInt(expiryDays, 10)} dias ativado`)
+          setExpiryDays('')
+        } catch (e) {
+          setSuccess(`Saldo atualizado: → ${result.new_credits} (falha ao ativar cronômetro: ${e.message})`)
+        }
+      }
     } catch (e) {
       setError(e.message)
     } finally {
@@ -1478,6 +1502,45 @@ function CreditsModal({ user, onClose, onSuccess }) {
             onFocus={e => e.currentTarget.style.borderColor = '#ff6a00'}
             onBlur={e => e.currentTarget.style.borderColor = 'var(--line)'}
           />
+        </div>
+
+        {/* Expiração (cronômetro) */}
+        <div>
+          <label style={labelStyle}>Expiração dos créditos (cronômetro)</label>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <input
+              type="number"
+              min="1"
+              max="365"
+              value={expiryDays}
+              onChange={e => setExpiryDays(e.target.value)}
+              placeholder="Dias (ex.: 90)"
+              style={{
+                flex: 1, boxSizing: 'border-box',
+                padding: '8px 12px',
+                background: 'var(--panel)', border: '1px solid var(--line)',
+                borderRadius: 6, outline: 'none',
+                fontFamily: 'var(--font-mono)', fontSize: 14, color: 'var(--text)',
+              }}
+              onFocus={e => e.currentTarget.style.borderColor = '#00bcd4'}
+              onBlur={e => e.currentTarget.style.borderColor = 'var(--line)'}
+            />
+            <button
+              onClick={() => setExpiryDays(String(90))}
+              style={btnStyle({ variant: 'ghost', size: 'sm' })}
+              title="Padrão: 3 meses"
+            >
+              90d
+            </button>
+          </div>
+          <p style={{ margin: '6px 0 0', fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--text-secondary)' }}>
+            {expiryDays && parseInt(expiryDays) > 0
+              ? <>▶ Cronômetro em {new Date(Date.now() + parseInt(expiryDays) * 86400000).toLocaleDateString('pt-BR')}</>
+              : user.credits_expires_at
+                ? <>Atual: {new Date(user.credits_expires_at).toLocaleDateString('pt-BR')}</>
+                : 'Sem expiração (não pago / sem cronômetro ativo)'}
+            {expiryDays && <span style={{ color: '#00897b' }}> · será aplicado ao confirmar</span>}
+          </p>
         </div>
 
         {/* Feedback */}

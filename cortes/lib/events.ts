@@ -13,6 +13,7 @@ import { useUserStore } from './user-store'
  *  - upload        (arquivo carregado)
  *  - download      (export concluído) e download_attempt (clique/tentativa)
  *  - cut_created   (corte/peça gerado na ferramenta)
+ *  - project_saved / project_loaded (salvou/carregou um projeto)
  *  - upgrade       (compra/plano — inserido também pelo webhook)
  */
 export type TrackEventName =
@@ -22,6 +23,8 @@ export type TrackEventName =
   | 'download'
   | 'download_attempt'
   | 'cut_created'
+  | 'project_saved'
+  | 'project_loaded'
   | 'upgrade'
 
 export function trackEvent(event: TrackEventName, details: Record<string, unknown> = {}): void {

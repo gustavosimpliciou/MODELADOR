@@ -69,7 +69,10 @@ export function ProjectsModal({ open, onClose, initialMode = 'list' }: ProjectsM
       })
       setName('')
       await refresh()
-      trackEvent('cut_created', { tool: 'project_saved', name: res.project.name })
+      trackEvent('project_saved', {
+        name: res.project.name,
+        partCount: res.project.data?.parts?.length ?? 0,
+      })
     } else if (res.full) {
       setNotice({ kind: 'full', msg: res.msg })
     } else {
@@ -105,7 +108,10 @@ export function ProjectsModal({ open, onClose, initialMode = 'list' }: ProjectsM
     try {
       await restoreProject(p.data)
       setNotice({ kind: 'ok', msg: `Projeto "${p.name}" carregado.` })
-      trackEvent('cut_created', { tool: 'project_loaded', name: p.name })
+      trackEvent('project_loaded', {
+        name: p.name,
+        partCount: p.data?.parts?.length ?? 0,
+      })
       onClose() // a cena foi restaurada — fecha o modal para o usuário continuar
     } catch (e: any) {
       setNotice({ kind: 'err', msg: `Erro ao carregar: ${e?.message ?? 'desconhecido'}` })
