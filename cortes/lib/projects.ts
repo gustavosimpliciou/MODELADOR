@@ -333,15 +333,25 @@ export async function restoreProject(data: SavedProjectData): Promise<void> {
   setStatus('loaded', `Projeto restaurado — ${restoredParts.length} parte(s)`)
 }
 
-// ─── Armazenamento local (IndexedDB — 100% no navegador) ─────────────────────
-// Projetos NUNCA vão ao banco: ficam no navegador do usuário (IndexedDB),
-// que suporta geometrias grandes sem limite de espaço como o localStorage.
+// ─── Armazenamento local (100% no navegador) ─────────────────────────────────
+// Projetos NUNCA vão ao banco. Usamos IndexedDB por padrão (suporta geometrias
+// grandes) e, se ele estiver indisponível (modo privado/quota), caímos
+// automaticamente para localStorage. Se nem isso funcionar, mantemos em
+// memória e retornamos erro claro — nunca perde em silêncio.
 
 const DB_NAME = 'nativos.cutProjects'
 const DB_STORE = 'projects'
+const LS_KEY = 'nativos.cutProjects.v1'
+
+let idb: Promise<IDBDatabase> | null = null
 
 function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+  if (idb) return idb
+  idb = new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') {
+      reject(new Error('IndexedDB indisponível'))
+      return
+    }
     const req = indexedDB.open(DB_NAME, 1)
     req.onupgradeneeded = () => {
       const db = req.result
@@ -350,31 +360,96 @@ function openDb(): Promise<IDBDatabase> {
         store.createIndex('user_id', 'user_id', { unique: false })
       }
     }
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error ?? new Error('indexedDB failed'))
-    req.onblocked = () => reject(new Error('indexedDB blocked'))
+    req.onsuccess = () => {
+      // Pede persistência (evita limpeza automática do navegador)
+      if (navigator.storage?.persist) navigator.storage.persist().catch(() => {})
+      resolve(req.result)
+    }
+    req.onerror = () => reject(req.error ?? new Error('indexedDB falhou'))
+    req.onblocked = () => reject(new Error('indexedDB bloqueado'))
   })
+  return idb
 }
 
-function idbTx<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore) => IDBRequest): Promise<T> {
-  return new Promise<T>(async (resolve, reject) => {
+/** Executa passos de escrita numa transação e resolve após o commit real. */
+function idbRun(mode: IDBTransactionMode, runner: (store: IDBObjectStore) => void): Promise<void> {
+  return new Promise(async (resolve, reject) => {
     try {
       const db = await openDb()
       const tx = db.transaction(DB_STORE, mode)
-      const req = fn(tx.objectStore(DB_STORE))
-      req.onsuccess = () => resolve(req.result as T)
-      req.onerror = () => reject(req.error ?? new Error('idb error'))
-      tx.oncomplete = () => db.close()
-      tx.onabort = () => reject(tx.error ?? new Error('idb abort'))
-      tx.onerror = () => reject(tx.error ?? new Error('idb error'))
+      runner(tx.objectStore(DB_STORE))
+      tx.oncomplete = () => resolve()
+      tx.onabort = () => {
+        reject(tx.error ?? new Error('idb transação abortada'))
+        idb = null
+      }
+      tx.onerror = () => {
+        const err = tx.error ?? new Error('idb erro na transação')
+        try { tx.abort() } catch {}
+        reject(err)
+      }
     } catch (e) {
       reject(e)
     }
   })
 }
 
-async function idbGetAll(): Promise<ProjectRow[]> {
-  return idbTx<ProjectRow[]>('readonly', (store) => store.getAll())
+/** Lê todos os projetos (IndexedDB, com leitura assíncrona segura). */
+async function idbReadAll(): Promise<ProjectRow[]> {
+  return new Promise((resolve, reject) => {
+    ;(async () => {
+      try {
+        const db = await openDb()
+        const tx = db.transaction(DB_STORE, 'readonly')
+        const req = tx.objectStore(DB_STORE).getAll()
+        req.onsuccess = () => resolve((req.result as ProjectRow[]) ?? [])
+        req.onerror = () => reject(req.error ?? new Error('idb leitura falhou'))
+        tx.onabort = () => reject(tx.error ?? new Error('idb abortada'))
+      } catch (e) {
+        reject(e)
+      }
+    })()
+  })
+}
+
+/** Lê todos os projetos de cada camada de armazenamento disponível. */
+async function readAllLayers(): Promise<{ rows: ProjectRow[]; source: 'idb' | 'local' }> {
+  // 1) IndexedDB
+  try {
+    const rows = await idbReadAll()
+    return { rows, source: 'idb' }
+  } catch { /* segue para localStorage */ }
+  // 2) localStorage
+  try {
+    const raw = localStorage.getItem(LS_KEY)
+    const arr = raw ? (JSON.parse(raw) as ProjectRow[]) : []
+    return { rows: Array.isArray(arr) ? arr : [], source: 'local' }
+  } catch {
+    return { rows: [], source: 'local' }
+  }
+}
+
+/** Grava TODAS as linhas na camada disponível (idb primeira, local de backup). */
+async function writeAllLayers(rows: ProjectRow[]): Promise<'idb' | 'local'> {
+  let primary: 'idb' | 'local' | null = null
+  // IndexedDB primeiro — replace atômico: apaga e grava na mesma transação
+  try {
+    await idbRun('readwrite', (store) => {
+      const all = store.getAll()
+      all.onsuccess = () => {
+        for (const r of all.result) store.delete((r as ProjectRow).id)
+        for (const r of rows) store.put(r)
+      }
+    })
+    primary = 'idb'
+  } catch { /* cai para local */ }
+  // localStorage de backup (caso o idb falhe OU para servir de espelho)
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(rows))
+    if (!primary) primary = 'local'
+  } catch { /* quota — ignorado se o idb segurou */ }
+  if (!primary) throw new Error('Nenhum armazenamento disponível no navegador')
+  return primary
 }
 
 function nowIso(): string {
@@ -389,8 +464,14 @@ export async function listProjects(): Promise<ProjectRow[]> {
   const user = useUserStore.getState().user
   if (!user) return []
   try {
-    const all = await idbGetAll()
-    return all
+    const { rows } = await readAllLayers()
+    // Mescla idb + local sem duplicar (maior updated_at vence)
+    const map = new Map<string, ProjectRow>()
+    for (const r of rows) {
+      const prev = map.get(r.id)
+      if (!prev || (r.updated_at ?? '') > (prev.updated_at ?? '')) map.set(r.id, r)
+    }
+    return Array.from(map.values())
       .filter((p) => p.user_id === user.id)
       .sort((a, b) => (b.updated_at ?? '').localeCompare(a.updated_at ?? ''))
   } catch {
@@ -405,8 +486,18 @@ export async function saveProject(name: string): Promise<SaveOutcome> {
   if (useAppStore.getState().parts.length === 0 && !useAppStore.getState().modelMesh) {
     return { ok: false, msg: 'Não há modelo na cena para salvar.' }
   }
+
+  const project: ProjectRow = {
+    id: uid(),
+    user_id: user.id,
+    name: name.trim() || 'Projeto sem título',
+    data: serializeProject(),
+    created_at: nowIso(),
+    updated_at: nowIso(),
+  }
+
   try {
-    const rows = await idbGetAll()
+    const { rows } = await readAllLayers()
     const mine = rows.filter((r) => r.user_id === user.id)
     if (mine.length >= MAX_SAVED_PROJECTS) {
       return {
@@ -415,19 +506,13 @@ export async function saveProject(name: string): Promise<SaveOutcome> {
         msg: `Salvamento cheio! Você tem ${MAX_SAVED_PROJECTS} projetos. Apague um deles para salvar um novo.`,
       }
     }
-
-    const project: ProjectRow = {
-      id: uid(),
-      user_id: user.id,
-      name: name.trim() || 'Projeto sem título',
-      data: serializeProject(),
-      created_at: nowIso(),
-      updated_at: nowIso(),
-    }
-    await idbTx('readwrite', (store) => store.put(project))
+    const next = [project, ...rows.filter((r) => r.id !== project.id)]
+    const source = await writeAllLayers(next)
+    console.info(`[projetos] salvo em ${source === 'idb' ? 'IndexedDB' : 'localStorage'} — "${project.name}"`)
     return { ok: true, project, local: true }
   } catch (e: any) {
-    return { ok: false, msg: `Erro ao salvar: ${e?.message ?? 'desconhecido'}` }
+    console.error('[projetos] falha ao salvar:', e)
+    return { ok: false, msg: `Não foi possível salvar: ${e?.message ?? 'armazenamento indisponível'}` }
   }
 }
 
@@ -436,7 +521,7 @@ export async function overwriteProject(id: string, name?: string): Promise<SaveO
   const user = useUserStore.getState().user
   if (!user) return { ok: false, msg: 'Faça login para salvar projetos.' }
   try {
-    const rows = await idbGetAll()
+    const { rows } = await readAllLayers()
     const idx  = rows.findIndex((r) => r.id === id && r.user_id === user.id)
     if (idx === -1) return { ok: false, msg: 'Projeto não encontrado.' }
     rows[idx] = {
@@ -445,10 +530,11 @@ export async function overwriteProject(id: string, name?: string): Promise<SaveO
       ...(name?.trim() ? { name: name.trim() } : {}),
       updated_at: nowIso(),
     }
-    await idbTx('readwrite', (store) => store.put(rows[idx]))
+    await writeAllLayers(rows)
     return { ok: true, project: rows[idx], local: true }
   } catch (e: any) {
-    return { ok: false, msg: `Erro ao salvar: ${e?.message ?? 'desconhecido'}` }
+    console.error('[projetos] falha ao atualizar:', e)
+    return { ok: false, msg: `Não foi possível salvar: ${e?.message ?? 'armazenamento indisponível'}` }
   }
 }
 
@@ -456,7 +542,9 @@ export async function deleteProject(id: string): Promise<boolean> {
   const user = useUserStore.getState().user
   if (!user) return false
   try {
-    await idbTx('readwrite', (store) => store.delete(id))
+    const { rows } = await readAllLayers()
+    const next = rows.filter((r) => r.id !== id)
+    await writeAllLayers(next)
     return true
   } catch {
     return false
