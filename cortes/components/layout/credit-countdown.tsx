@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Timer } from 'lucide-react'
 import { useUserStore } from '@/lib/user-store'
+import { cn } from '@/lib/utils'
 
 const pad = (n: number) => String(Math.max(0, Math.floor(n))).padStart(2, '0')
 
@@ -50,18 +51,21 @@ export function CreditCountdown() {
 
   return (
     <div
-      className="flex items-center gap-1 px-1.5 py-0.5 rounded border mr-2 cursor-default"
+      className={cn(
+        'flex items-center gap-1 px-1.5 py-0.5 rounded border mr-2 cursor-default',
+        days <= 7 && 'animate-pulse'
+      )}
       style={{
         borderColor: 'oklch(0.70 0.22 42 / 22%)',
         background:  'oklch(0.70 0.22 42 / 6%)',
-        color:       'oklch(0.72 0.16 42 / 85%)',
-        opacity:     0.8,
+        color:       days <= 7 ? 'oklch(0.65 0.2 40)' : 'oklch(0.72 0.16 42 / 85%)',
+        opacity:     0.85,
       }}
       title={`Expiração de créditos: ${days} dia(s) ${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s`}
     >
       <Timer className="w-2.5 h-2.5 shrink-0" aria-hidden="true" />
       <span className="text-[10px] font-mono tabular-nums tracking-tight">
-        {days}d&nbsp;{pad(hours)}h&nbsp;{pad(minutes)}m
+        {days > 0 ? `${days}d ` : ''}{pad(hours)}h&nbsp;{pad(minutes)}m&nbsp;{pad(seconds)}s
       </span>
     </div>
   )

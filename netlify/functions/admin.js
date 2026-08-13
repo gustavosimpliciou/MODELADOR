@@ -343,16 +343,20 @@ export const handler = async (event) => {
     const page    = Math.max(1, parseInt(qs.page    || '1',  10))
     const limit   = Math.max(1, parseInt(qs.limit   || '20', 10))
     const search  = (qs.search   || '').trim()
-    const sortBy  = ['name','created_at','credits','email'].includes(qs.sort_by) ? qs.sort_by : 'created_at'
+    const sortBy  = ['name','created_at','credits','email','credits_expires_at'].includes(qs.sort_by) ? qs.sort_by : 'created_at'
     const sortDir = qs.sort_dir === 'asc' ? 'asc' : 'desc'
     const offset  = (page - 1) * limit
-    const cols    = 'id,name,email,plan,credits,created_at'
+    const cols    = 'id,name,email,plan,credits,created_at,credits_expires_at'
 
     const params = {
       select: cols,
       order:  `${sortBy}.${sortDir}`,
       offset: String(offset),
       limit:  String(limit),
+    }
+    if (qs.paid === '1' || qs.paid === 'true') {
+      // Apenas usuários que pagaram (têm data de expiração definida)
+      params.credits_expires_at = 'not.is.null'
     }
     if (search) {
       // PostgREST exige parênteses no `or`. Remove chars que quebram o filtro.

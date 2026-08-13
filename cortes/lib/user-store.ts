@@ -127,26 +127,26 @@ export const useUserStore = create<UserState>((set, get) => ({
   syncCreditExpiry: async (row, email) => {
     let expiry = creditExpiryMs(row)
 
-    // Conta de teste do proprietário — garante um cronômetro a partir de hoje
-    // (uma única vez por navegador) mesmo sem pagamento real.
-    const isTest =
-      email === TEST_ACCOUNT_EMAIL &&
-      ls('nativos.testExpiryGranted', 'false') !== 'true'
-    if (expiry == null && isTest) {
+    const isTest = email === TEST_ACCOUNT_EMAIL
+
+    // Conta de teste do proprietário — garante cronômetro SEMPRE ativo:
+    // se não há prazo, ou se o prazo anterior já venceu, concede um novo
+    // (renova a cada vez, para o dono sempre conseguir testar a exibição).
+    if (isTest && (expiry == null || expiry <= Date.now())) {
       expiry = Date.now() + CREDIT_EXPIRY_DAYS * DAY_MS
-      lsSet('nativos.testExpiryGranted', 'true')
+      // Expiração de 3 meses à frente (teste) — regravada no banco
       try {
         const { data: { user: authUser } } = await supabase.auth.getUser()
         if (authUser) {
           await supabase
             .from('users')
-            .update({ credits_expires_at: new Date(expiry).toISOString() })
+            .update({ credits_expires_at: new Date(expiry).toISOString(), credits: EXPIRED_CREDIT_BALANCE })
             .eq('id', authUser.id)
         }
       } catch { /* coluna pode ainda não existir — estado local já basta */ }
     }
 
-    if (expiry != null && expiry <= Date.now()) {
+    if (!isTest && expiry != null && expiry <= Date.now()) {
       await get().resetExpiredCredits()
       return
     }

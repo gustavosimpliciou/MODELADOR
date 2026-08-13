@@ -1,7 +1,6 @@
 "use client"
 
 import * as THREE from 'three'
-import { supabase } from './supabase'
 import { useAppStore } from './store'
 import { useUserStore } from './user-store'
 import type { Part } from './parts-manager'
@@ -67,7 +66,7 @@ export interface ProjectRow {
 }
 
 export type SaveOutcome =
-  | { ok: true; project: ProjectRow }
+  | { ok: true; project: ProjectRow; local?: boolean }
   | { ok: false; msg: string; full?: boolean }
 
 // ─── Base64 helpers (browser) ────────────────────────────────────────────────
@@ -334,23 +333,66 @@ export async function restoreProject(data: SavedProjectData): Promise<void> {
   setStatus('loaded', `Projeto restaurado — ${restoredParts.length} parte(s)`)
 }
 
-// ─── Supabase CRUD ───────────────────────────────────────────────────────────
+// ─── Armazenamento local (IndexedDB — 100% no navegador) ─────────────────────
+// Projetos NUNCA vão ao banco: ficam no navegador do usuário (IndexedDB),
+// que suporta geometrias grandes sem limite de espaço como o localStorage.
+
+const DB_NAME = 'nativos.cutProjects'
+const DB_STORE = 'projects'
+
+function openDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1)
+    req.onupgradeneeded = () => {
+      const db = req.result
+      if (!db.objectStoreNames.contains(DB_STORE)) {
+        const store = db.createObjectStore(DB_STORE, { keyPath: 'id' })
+        store.createIndex('user_id', 'user_id', { unique: false })
+      }
+    }
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error ?? new Error('indexedDB failed'))
+    req.onblocked = () => reject(new Error('indexedDB blocked'))
+  })
+}
+
+function idbTx<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore) => IDBRequest): Promise<T> {
+  return new Promise<T>(async (resolve, reject) => {
+    try {
+      const db = await openDb()
+      const tx = db.transaction(DB_STORE, mode)
+      const req = fn(tx.objectStore(DB_STORE))
+      req.onsuccess = () => resolve(req.result as T)
+      req.onerror = () => reject(req.error ?? new Error('idb error'))
+      tx.oncomplete = () => db.close()
+      tx.onabort = () => reject(tx.error ?? new Error('idb abort'))
+      tx.onerror = () => reject(tx.error ?? new Error('idb error'))
+    } catch (e) {
+      reject(e)
+    }
+  })
+}
+
+async function idbGetAll(): Promise<ProjectRow[]> {
+  return idbTx<ProjectRow[]>('readonly', (store) => store.getAll())
+}
 
 function nowIso(): string {
   return new Date().toISOString()
+}
+
+function uid(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `proj-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
 export async function listProjects(): Promise<ProjectRow[]> {
   const user = useUserStore.getState().user
   if (!user) return []
   try {
-    const { data, error } = await supabase
-      .from('cut_projects')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('updated_at', { ascending: false })
-    if (error) throw error
-    return (data as ProjectRow[]) ?? []
+    const all = await idbGetAll()
+    return all
+      .filter((p) => p.user_id === user.id)
+      .sort((a, b) => (b.updated_at ?? '').localeCompare(a.updated_at ?? ''))
   } catch {
     return []
   }
@@ -364,12 +406,9 @@ export async function saveProject(name: string): Promise<SaveOutcome> {
     return { ok: false, msg: 'Não há modelo na cena para salvar.' }
   }
   try {
-    const { count, error: countError } = await supabase
-      .from('cut_projects')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', user.id)
-    if (countError) throw countError
-    if ((count ?? 0) >= MAX_SAVED_PROJECTS) {
+    const rows = await idbGetAll()
+    const mine = rows.filter((r) => r.user_id === user.id)
+    if (mine.length >= MAX_SAVED_PROJECTS) {
       return {
         ok: false,
         full: true,
@@ -378,16 +417,15 @@ export async function saveProject(name: string): Promise<SaveOutcome> {
     }
 
     const project: ProjectRow = {
-      id: globalThis.crypto?.randomUUID?.() ?? `proj-${Date.now()}`,
+      id: uid(),
       user_id: user.id,
       name: name.trim() || 'Projeto sem título',
       data: serializeProject(),
       created_at: nowIso(),
       updated_at: nowIso(),
     }
-    const { error } = await supabase.from('cut_projects').insert(project)
-    if (error) throw error
-    return { ok: true, project }
+    await idbTx('readwrite', (store) => store.put(project))
+    return { ok: true, project, local: true }
   } catch (e: any) {
     return { ok: false, msg: `Erro ao salvar: ${e?.message ?? 'desconhecido'}` }
   }
@@ -398,18 +436,17 @@ export async function overwriteProject(id: string, name?: string): Promise<SaveO
   const user = useUserStore.getState().user
   if (!user) return { ok: false, msg: 'Faça login para salvar projetos.' }
   try {
-    const finalName = name?.trim() || undefined
-    const { error } = await supabase
-      .from('cut_projects')
-      .update({
-        data: serializeProject(),
-        ...(finalName ? { name: finalName } : {}),
-        updated_at: nowIso(),
-      })
-      .eq('id', id)
-      .eq('user_id', user.id)
-    if (error) throw error
-    return { ok: true, project: null as unknown as ProjectRow }
+    const rows = await idbGetAll()
+    const idx  = rows.findIndex((r) => r.id === id && r.user_id === user.id)
+    if (idx === -1) return { ok: false, msg: 'Projeto não encontrado.' }
+    rows[idx] = {
+      ...rows[idx],
+      data: serializeProject(),
+      ...(name?.trim() ? { name: name.trim() } : {}),
+      updated_at: nowIso(),
+    }
+    await idbTx('readwrite', (store) => store.put(rows[idx]))
+    return { ok: true, project: rows[idx], local: true }
   } catch (e: any) {
     return { ok: false, msg: `Erro ao salvar: ${e?.message ?? 'desconhecido'}` }
   }
@@ -419,8 +456,8 @@ export async function deleteProject(id: string): Promise<boolean> {
   const user = useUserStore.getState().user
   if (!user) return false
   try {
-    const { error } = await supabase.from('cut_projects').delete().eq('id', id).eq('user_id', user.id)
-    return !error
+    await idbTx('readwrite', (store) => store.delete(id))
+    return true
   } catch {
     return false
   }

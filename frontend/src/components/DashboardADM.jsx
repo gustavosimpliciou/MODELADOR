@@ -641,10 +641,18 @@ function UsersPage({ compact = false }) {
   const [page, setPage]         = useState(1)
   const [sortBy, setSortBy]     = useState('created_at')
   const [sortDir, setSortDir]   = useState('desc')
+  const [paidOnly, setPaidOnly] = useState(false)
   const [modalUser, setModalUser] = useState(null)   // user row for credits modal
   const [toast, setToast]       = useState(null)
+  const [, setNow]              = useState(Date.now()) // tick p/ cronômetro ao vivo
   const searchRef               = useRef(null)
   const debounceRef             = useRef(null)
+
+  // Cronômetro vivo — atualiza a coluna Expiração a cada segundo
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
 
   const load = useCallback(async (opts = {}) => {
     setLoading(true); setError(null)
@@ -652,11 +660,13 @@ function UsersPage({ compact = false }) {
     const p = opts.page    ?? page
     const sb = opts.sortBy  ?? sortBy
     const sd = opts.sortDir ?? sortDir
+    const po = opts.paidOnly ?? paidOnly
     try {
       const params = new URLSearchParams({
         page: p, limit: PAGE_SIZE, search: q,
         sort_by: sb, sort_dir: sd,
       })
+      if (po) params.set('paid', '1')
       const result = await adminFetch(`/users?${params}`)
       setData(result)
     } catch (e) {
@@ -664,7 +674,7 @@ function UsersPage({ compact = false }) {
     } finally {
       setLoading(false)
     }
-  }, [search, page, sortBy, sortDir])
+  }, [search, page, sortBy, sortDir, paidOnly])
 
   useEffect(() => { load() }, []) // initial load
 
@@ -761,6 +771,16 @@ function UsersPage({ compact = false }) {
             Limpar
           </button>
         )}
+        <button
+          onClick={() => { setPaidOnly(v => !v); setPage(1); load({ paidOnly: !paidOnly, page: 1 }) }}
+          style={{
+            ...btnStyle({ variant: paidOnly ? 'primary' : 'ghost' }),
+            whiteSpace: 'nowrap',
+          }}
+          title="Apenas usuários que pagaram (têm data de expiração de créditos)"
+        >
+          {paidOnly ? '✓ ' : ''}Só pagantes
+        </button>
         <button onClick={() => load()} style={btnStyle({ variant: 'ghost' })}>
           ↻ Atualizar
         </button>
@@ -835,18 +855,37 @@ function UsersPage({ compact = false }) {
                 </Td>
                 <Td>
                   {(() => {
-                    const info = expiryInfo(u.credits_expires_at)
+                    if (!u.credits_expires_at) {
+                      return (
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-dim)' }}>
+                          —
+                        </span>
+                      )
+                    }
+                    const exp = new Date(u.credits_expires_at)
+                    const diff = exp.getTime() - Date.now()
+                    const overdue = diff <= 0
+                    const totalSec = Math.max(0, Math.floor(diff / 1000))
+                    const days  = Math.floor(totalSec / 86400)
+                    const hours = Math.floor((totalSec % 86400) / 3600)
+                    const mins  = Math.floor((totalSec % 3600) / 60)
+                    const secs  = totalSec % 60
+                    const pad2 = n => String(n).padStart(2, '0')
+                    const color = overdue ? '#e05050' : (days <= 3 ? '#ff9800' : '#4caf50')
+                    const text = overdue
+                      ? 'Expirado'
+                      : days > 0
+                        ? `${days}d ${pad2(hours)}:${pad2(mins)}:${pad2(secs)}`
+                        : `${pad2(hours)}:${pad2(mins)}:${pad2(secs)}`
                     return (
                       <span
-                        title={u.credits_expires_at
-                          ? `Expira em ${new Date(u.credits_expires_at).toLocaleString('pt-BR')}`
-                          : undefined}
+                        title={`Expira em ${exp.toLocaleString('pt-BR')}`}
                         style={{
                           fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 600,
-                          color: info.color, whiteSpace: 'nowrap',
+                          color, whiteSpace: 'nowrap',
                         }}
                       >
-                        {info.text}
+                        {text}
                       </span>
                     )
                   })()}
@@ -1496,22 +1535,6 @@ function formatBRL(value) {
  * sinaliza a urgência e o título completo fica disponível no tooltip.
  * Visível apenas no painel do admin.
  */
-function expiryInfo(iso) {
-  if (!iso) return { text: '—', color: 'var(--text-dim)', days: null, full: null }
-  const exp = new Date(iso)
-  if (Number.isNaN(exp.getTime())) return { text: '—', color: 'var(--text-dim)', days: null, full: null }
-  const diff = exp.getTime() - Date.now()
-  const days = Math.ceil(diff / 86_400_000)
-  const full = exp.toLocaleDateString('pt-BR', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-  })
-  if (diff <= 0) return { text: 'Expirado', color: '#e05050', days, full }
-  const text = days === 1 ? '1 dia' : `${days} dias`
-  if (days <= 7)  return { text, color: '#ff9800', days, full }
-  if (days <= 30) return { text, color: '#ffd600', days, full }
-  return { text, color: '#4caf50', days, full }
-}
-
 /** Normaliza status para exibição legível e cor. */
 function paymentStatusMeta(status = '') {
   const s = (status || '').toLowerCase()

@@ -61,7 +61,12 @@ export function ProjectsModal({ open, onClose, initialMode = 'list' }: ProjectsM
     const res = await saveProject(name)
     setBusy(false)
     if (res.ok) {
-      setNotice({ kind: 'ok', msg: 'Projeto salvo! Você pode retomar de onde parou a qualquer momento.' })
+      setNotice({
+        kind: 'ok',
+        msg: res.local
+          ? 'Projeto salvo! Será restaurado em "Projetos" mesmo depois de fechar o navegador (fica guardado nele).'
+          : 'Projeto salvo! Você pode retomar de onde parou a qualquer momento.',
+      })
       setName('')
       await refresh()
       trackEvent('cut_created', { tool: 'project_saved', name: res.project.name })
@@ -78,7 +83,12 @@ export function ProjectsModal({ open, onClose, initialMode = 'list' }: ProjectsM
     const res = await overwriteProject(p.id)
     setBusy(false)
     if (res.ok) {
-      setNotice({ kind: 'ok', msg: `"${p.name}" foi atualizado.` })
+      setNotice({
+        kind: 'ok',
+        msg: res.local
+          ? `"${p.name}" foi atualizado (guardado no navegador).`
+          : `"${p.name}" foi atualizado.`,
+      })
       await refresh()
     } else {
       setNotice({ kind: 'err', msg: res.msg })
