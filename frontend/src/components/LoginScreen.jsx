@@ -171,21 +171,45 @@ function RegisterForm({ onSuccess, onLogin }) {
   const [confirm, setConfirm]   = useState('')
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
+  const [emailSent, setEmailSent] = useState(false)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
-    if (password !== confirm) { setError('As senhas não coincidem'); return }
-    if (password.length < 6)  { setError('A senha deve ter pelo menos 6 caracteres'); return }
+    if (!name.trim())                 { setError('Informe seu nome'); return }
+    if (!email.trim())                { setError('Informe seu e-mail'); return }
+    if (password !== confirm)         { setError('As senhas não coincidem'); return }
+    if (password.length < 6)          { setError('A senha deve ter pelo menos 6 caracteres'); return }
     setLoading(true)
     try {
       const data = await authApi.register(name, email, password)
+      if (data.needsEmailVerification) { setEmailSent(true); return }
       onSuccess(data.token, data.user)
     } catch (err) {
       setError(err.message)
     } finally {
       setLoading(false)
     }
+  }
+
+  if (emailSent) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <SuccessMsg msg="Conta criada! Enviamos um link de confirmação para o seu e-mail. Clique no link para ativar sua conta." />
+        <p style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: '#999', lineHeight: 1.5 }}>
+          Não recebeu? Verifique a caixa de spam ou promocional. Você também pode solicitar o reenvio do e-mail fazendo login novamente.
+        </p>
+        <button type="button" onClick={onLogin} style={{
+          background: 'none', border: 'none', cursor: 'pointer',
+          fontFamily: 'var(--font-body)', fontSize: 12,
+          color: 'var(--accent)', padding: 0,
+          textDecoration: 'underline', textUnderlineOffset: 3,
+          textAlign: 'center', marginTop: 4,
+        }}>
+          Ir para o login
+        </button>
+      </div>
+    )
   }
 
   return (

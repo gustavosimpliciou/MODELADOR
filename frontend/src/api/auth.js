@@ -160,10 +160,15 @@ async function getOrCreateProfile(userId, email = '', name = '') {
 
 export const authApi = {
   register: async (name, email, password) => {
+    const emailClean = email.trim().toLowerCase()
+
     const { data, error } = await supabase.auth.signUp({
-      email: email.trim().toLowerCase(),
+      email: emailClean,
       password,
-      options: { data: { name: name.trim() } },
+      options: {
+        data: { name: name.trim() },
+        emailRedirectTo: window.location.origin,
+      },
     })
     if (error) throw new Error(error.message)
     if (!data.user) throw new Error('Erro ao criar conta')
@@ -180,7 +185,7 @@ export const authApi = {
       await supabase.from('users').insert({
         id:                      userId,
         name:                    name.trim(),
-        email:                   email.trim().toLowerCase(),
+        email:                   emailClean,
         password_hash:           '',
         credits:                 0,
         free_download_used:      false,
@@ -189,8 +194,13 @@ export const authApi = {
       })
     }
 
-    const profile = await getOrCreateProfile(userId, email.trim().toLowerCase(), name.trim())
-    return { token: data.session?.access_token ?? '', user: profile }
+    // Com confirmação de e-mail ativa, o Supabase não cria sessão até o e-mail ser verificado.
+    if (!data.session?.access_token) {
+      return { token: '', user: null, needsEmailVerification: true }
+    }
+
+    const profile = await getOrCreateProfile(userId, emailClean, name.trim())
+    return { token: data.session.access_token, user: profile }
   },
 
   login: async (identifier, password) => {
@@ -209,7 +219,13 @@ export const authApi = {
     }
 
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) throw new Error('Usuário ou senha incorretos')
+    if (error) {
+      const m = (error.message || '').toLowerCase()
+      if (m.includes('email') && (m.includes('confirm') || m.includes('verif'))) {
+        throw new Error('Seu e-mail ainda não foi confirmado. Verifique sua caixa de entrada (e o spam) e clique no link de confirmação.')
+      }
+      throw new Error('Usuário ou senha incorretos')
+    }
 
     const profile = await getOrCreateProfile(data.user.id, data.user.email, data.user.user_metadata?.name)
     return { token: data.session.access_token, user: profile }
