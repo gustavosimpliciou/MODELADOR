@@ -172,6 +172,9 @@ function RegisterForm({ onSuccess, onLogin }) {
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
   const [emailSent, setEmailSent] = useState(false)
+  const [alreadyExists, setAlreadyExists] = useState(false)
+  const [resending, setResending] = useState(false)
+  const [resent, setResent]     = useState('')
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -183,7 +186,11 @@ function RegisterForm({ onSuccess, onLogin }) {
     setLoading(true)
     try {
       const data = await authApi.register(name, email, password)
-      if (data.needsEmailVerification) { setEmailSent(true); return }
+      if (data.needsEmailVerification) {
+        setAlreadyExists(!!data.alreadyExists)
+        setEmailSent(true)
+        return
+      }
       onSuccess(data.token, data.user)
     } catch (err) {
       setError(err.message)
@@ -192,13 +199,49 @@ function RegisterForm({ onSuccess, onLogin }) {
     }
   }
 
+  const handleResend = async () => {
+    setResending(true)
+    setResent('')
+    setError('')
+    try {
+      const data = await authApi.resendConfirmation(email)
+      setResent(data.message)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setResending(false)
+    }
+  }
+
   if (emailSent) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <SuccessMsg msg="Conta criada! Enviamos um link de confirmação para o seu e-mail. Clique no link para ativar sua conta." />
+        <SuccessMsg msg={
+          alreadyExists
+            ? 'Este e-mail já possui uma conta cadastrada.'
+            : 'Conta criada! Enviamos um link de confirmação para o seu e-mail. Clique no link para ativar sua conta.'
+        } />
         <p style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: '#999', lineHeight: 1.5 }}>
-          Não recebeu? Verifique a caixa de spam ou promocional. Você também pode solicitar o reenvio do e-mail fazendo login novamente.
+          {alreadyExists
+            ? 'Se você ainda não confirmou o e-mail dessa conta, clique abaixo para receber um novo link de confirmação. Se já confirmou, basta entrar.'
+            : 'Não recebeu? Verifique a caixa de spam ou promocional.'}
         </p>
+        {resent && <SuccessMsg msg={resent} />}
+        <ErrorMsg msg={error} />
+        <button
+          type="button"
+          onClick={handleResend}
+          disabled={resending}
+          style={{
+            background: 'none', border: 'none', cursor: resending ? 'not-allowed' : 'pointer',
+            fontFamily: 'var(--font-body)', fontSize: 12,
+            color: 'var(--accent)', padding: 0,
+            textDecoration: 'underline', textUnderlineOffset: 3,
+            textAlign: 'center',
+          }}
+        >
+          {resending ? 'Enviando...' : 'Reenviar link de confirmação'}
+        </button>
         <button type="button" onClick={onLogin} style={{
           background: 'none', border: 'none', cursor: 'pointer',
           fontFamily: 'var(--font-body)', fontSize: 12,

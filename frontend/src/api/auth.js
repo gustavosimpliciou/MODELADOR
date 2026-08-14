@@ -170,7 +170,13 @@ export const authApi = {
         emailRedirectTo: window.location.origin,
       },
     })
-    if (error) throw new Error(error.message)
+    if (error) {
+      const m = (error.message || '').toLowerCase()
+      if (m.includes('already') && m.includes('register')) {
+        return { token: '', user: null, alreadyExists: true, needsEmailVerification: true }
+      }
+      throw new Error(error.message)
+    }
     if (!data.user) throw new Error('Erro ao criar conta')
 
     const userId = data.user.id
@@ -194,13 +200,26 @@ export const authApi = {
       })
     }
 
-    // Com confirmação de e-mail ativa, o Supabase não cria sessão até o e-mail ser verificado.
+    // Sem sessão → e-mail ainda precisa ser confirmado (ou a conta já existia).
     if (!data.session?.access_token) {
-      return { token: '', user: null, needsEmailVerification: true }
+      // identities vazio = nenhuma identidade NOVA foi criada → a conta já existia
+      // e o Supabase não envia o e-mail de confirmação nesse caso.
+      const alreadyExists = Array.isArray(data.user.identities) && data.user.identities.length === 0
+      return { token: '', user: null, alreadyExists, needsEmailVerification: true }
     }
 
     const profile = await getOrCreateProfile(userId, emailClean, name.trim())
     return { token: data.session.access_token, user: profile }
+  },
+
+  resendConfirmation: async (email) => {
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: email.trim().toLowerCase(),
+      options: { emailRedirectTo: window.location.origin },
+    })
+    if (error) throw new Error(error.message)
+    return { ok: true, message: 'Reenviamos o link de confirmação para o seu e-mail. Verifique também a caixa de spam.' }
   },
 
   login: async (identifier, password) => {
