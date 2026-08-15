@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useStore } from '../store/useStore'
 import { supabase } from '../lib/supabase'
 import { useIsMobile } from './MobileBlock'
+import * as XLSX from 'xlsx'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const PAGE_SIZE = 20
@@ -644,6 +645,7 @@ function UsersPage({ compact = false }) {
   const [paidOnly, setPaidOnly] = useState(false)
   const [modalUser, setModalUser] = useState(null)   // user row for credits modal
   const [toast, setToast]       = useState(null)
+  const [exporting, setExporting] = useState(false)
   const [, setNow]              = useState(Date.now()) // tick p/ cronômetro ao vivo
   const searchRef               = useRef(null)
   const debounceRef             = useRef(null)
@@ -711,6 +713,56 @@ function UsersPage({ compact = false }) {
     }))
     if (modalUser?.id === userId) setModalUser(mu => ({ ...mu, credits: newCredits }))
     showToast('Créditos atualizados com sucesso!')
+  }
+
+  // Exporta TODOS os usuários em .xlsx (colunas de análise: acessos, créditos, valor pago)
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      const result = await adminFetch('/export/users')
+      const users = result.users || []
+
+      const header = [
+        'Nome', 'E-mail', 'Plano', 'Créditos', 'Data de expiração',
+        'Data de cadastro', 'Acessos', 'Valor pago (R$)', 'Qtd. pagamentos',
+        'Usou download grátis', 'Comprou upgrade', 'ID',
+      ]
+
+      const rows = users.map(u => [
+        u.name,
+        u.email,
+        u.plan || 'free',
+        u.credits ?? 0,
+        u.credits_expires_at
+          ? new Date(u.credits_expires_at).toLocaleString('pt-BR')
+          : '',
+        u.created_at
+          ? new Date(u.created_at).toLocaleDateString('pt-BR')
+          : '',
+        u.accesses ?? 0,
+        (u.total_paid_reais ?? 0).toFixed(2).replace('.', ','),
+        u.paid_count ?? 0,
+        u.free_download_used ? 'Sim' : 'Não',
+        u.first_upgrade_purchased ? 'Sim' : 'Não',
+        u.id,
+      ])
+
+      const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
+      ws['!cols'] = [
+        { wch: 22 }, { wch: 30 }, { wch: 10 }, { wch: 10 }, { wch: 20 },
+        { wch: 14 }, { wch: 10 }, { wch: 16 }, { wch: 14 },
+        { wch: 20 }, { wch: 18 }, { wch: 40 },
+      ]
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Usuários')
+      const dateStr = new Date().toISOString().slice(0, 10)
+      XLSX.writeFile(wb, `usuarios-${dateStr}.xlsx`)
+      showToast(`Planilha gerada com ${users.length} usuários!`)
+    } catch (e) {
+      showToast(e.message || 'Erro ao exportar', 'error')
+    } finally {
+      setExporting(false)
+    }
   }
 
   const SortBtn = ({ col, label }) => {
@@ -783,6 +835,14 @@ function UsersPage({ compact = false }) {
         </button>
         <button onClick={() => load()} style={btnStyle({ variant: 'ghost' })}>
           ↻ Atualizar
+        </button>
+        <button
+          onClick={handleExport}
+          disabled={exporting}
+          style={{ ...btnStyle({ variant: 'ghost' }), whiteSpace: 'nowrap' }}
+          title="Exportar todos os usuários para planilha Excel (.xlsx)"
+        >
+          {exporting ? 'Gerando...' : '📥 Exportar XLSX'}
         </button>
       </div>
 

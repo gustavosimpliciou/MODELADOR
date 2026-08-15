@@ -9,6 +9,22 @@ const ADMIN_EMAIL          = 'nativos3d.adm@gmail.com'
 
 // ─── Supabase REST helpers ───────────────────────────────────────────────────
 
+/**
+ * Kiwify envia INTEGER em centavos (ex: 690 = R$ 6,90).
+ * Alguns registros antigos/manuais podem já estar em reais (ex: "6.90").
+ * Heurística:
+ * - string com ponto/vírgula → já está em reais
+ * - inteiro → centavos → divide por 100
+ */
+function toReais(raw) {
+  if (raw == null || raw === '') return null
+  const asStr = String(raw).trim().replace(',', '.')
+  const n = Number(asStr)
+  if (!Number.isFinite(n)) return null
+  if (asStr.includes('.')) return n          // já em reais (ex: 6.90)
+  return n / 100                             // centavos Kiwify (ex: 690 → 6.90)
+}
+
 function sbHeaders() {
   return {
     'Content-Type':  'application/json',
@@ -117,14 +133,16 @@ export const handler = async (event) => {
   // ── GET /stats ──────────────────────────────────────────────────────────────
   if (method === 'GET' && path === '/stats') {
     const [users, payments, allPaymentValues] = await Promise.all([
-      sbSelect('users', { select: 'id,name,email,credits,plan' }),
+      // Sem limite explícito o PostgREST trunca em 1000 linhas → total de
+      // usuários fica errado. 1M cobre qualquer base realista.
+      sbSelect('users', { select: 'id,name,email,credits,plan', limit: '1000000' }),
       sbSelect('payments', {
         select:  'id,user_id,product,value,status,created_at,kiwify_transaction_id',
         order:   'created_at.desc',
         limit:   20,
       }),
       // Todos os pagamentos só com value+status (para total de vendas)
-      sbSelect('payments', { select: 'value,status' }),
+      sbSelect('payments', { select: 'value,status', limit: '1000000' }),
     ])
 
     const total_users        = users.length
@@ -248,11 +266,13 @@ export const handler = async (event) => {
         select: 'id,created_at',
         created_at: `gte.${fromISO}`,
         order: 'created_at.asc',
+        limit: '1000000',
       }),
       sbSelect('payments', {
         select: 'id,value,status,created_at',
         created_at: `gte.${fromISO}`,
         order: 'created_at.asc',
+        limit: '1000000',
       }),
     ])
 
@@ -634,6 +654,69 @@ if (method === 'GET' && path === '/events/stats') {
       credits_added: grantCredits ? creditsToAdd : 0,
       new_credits: newCredits,
       plan: tier || target.plan,
+    })
+  }
+
+  // ── GET /export/users ───────────────────────────────────────────────────────
+  // Exporta TODOS os usuários com métricas para análise em planilha (.xlsx).
+  // O frontend gera o arquivo; aqui retornamos JSON pronto para as colunas.
+  if (method === 'GET' && path === '/export/users') {
+    const [users, events, payments] = await Promise.all([
+      sbSelect('users', {
+        select: 'id,name,email,plan,credits,credits_expires_at,created_at,free_download_used,first_upgrade_purchased',
+        limit: '1000000',
+      }),
+      sbSelect('user_events', {
+        select: 'user_id',
+        limit: '1000000',
+      }),
+      sbSelect('payments', {
+        select: 'user_id,value,status',
+        limit: '1000000',
+      }),
+    ])
+
+    // Quantidade de acessos por usuário (total de eventos registrados)
+    const accessCount = {}
+    for (const ev of events || []) {
+      if (!ev.user_id) continue
+      accessCount[ev.user_id] = (accessCount[ev.user_id] || 0) + 1
+    }
+
+    // Valor pago (em R$) e quantidade de pagamentos por usuário
+    const paidByUser = {}
+    const paidCount  = {}
+    for (const p of payments || []) {
+      if (!p.user_id) continue
+      const s = (p.status || '').toLowerCase()
+      const isMoney =
+        (s.includes('paid') || s.includes('approved') || s.includes('user_not_found')) &&
+        !s.includes('unrecognized_product')
+      if (!isMoney) continue
+      const v = toReais(p.value)
+      paidByUser[p.user_id] = (paidByUser[p.user_id] || 0) + (v && v > 0 ? v : 0)
+      paidCount[p.user_id]  = (paidCount[p.user_id]  || 0) + 1
+    }
+
+    const rows = (users || []).map(u => ({
+      id:           u.id,
+      name:         u.name || '',
+      email:        u.email || '',
+      plan:         u.plan || 'free',
+      credits:      u.credits || 0,
+      credits_expires_at: u.credits_expires_at || '',
+      created_at:   u.created_at || '',
+      accesses:     accessCount[u.id] || 0,
+      total_paid_reais: Math.round((paidByUser[u.id] || 0) * 100) / 100,
+      paid_count:   paidCount[u.id] || 0,
+      free_download_used: !!u.free_download_used,
+      first_upgrade_purchased: !!u.first_upgrade_purchased,
+    }))
+
+    return json(200, {
+      total: rows.length,
+      generated_at: new Date().toISOString(),
+      users: rows,
     })
   }
 
