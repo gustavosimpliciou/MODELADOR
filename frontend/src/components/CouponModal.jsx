@@ -131,7 +131,7 @@ export default function CouponModal({ open, onClose }) {
             setSuccess('')
           }}
           onKeyDown={(e) => e.key === 'Enter' && handleRedeem()}
-          placeholder="Digite o código (ex: GHOOST3D)"
+          placeholder="Digite o código do cupom"
           autoFocus
           style={{
             width: '100%', padding: '10px 12px', boxSizing: 'border-box',

@@ -1,5 +1,6 @@
 import { useStore } from '../store/useStore'
 import { useT } from '../i18n/useT'
+import CreditCountdown from './CreditCountdown'
 
 const marqueeStyle = `
 @keyframes marquee-scroll {
@@ -49,6 +50,9 @@ export default function Footer() {
             <FooterItem label={t('footer.mesh')} value={activeMesh.name.toUpperCase()} color="var(--accent)" />
           </>
         )}
+
+        {/* Cronômetro de créditos — mesmo visual do Cortes 3D */}
+        <CreditCountdown />
 
         {/* ── Marquee ticker ── */}
         <div style={{

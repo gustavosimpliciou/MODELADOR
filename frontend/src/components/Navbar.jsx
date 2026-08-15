@@ -4,7 +4,6 @@ import { useT } from '../i18n/useT'
 import { LANGUAGES } from '../i18n/translations'
 import { projectsApi } from '../api/projects'
 import CouponModal from './CouponModal'
-import CreditCountdown from './CreditCountdown'
 
 // ─── Tiny modals ──────────────────────────────────────────────────────
 
@@ -464,9 +463,6 @@ export default function Navbar({ onBackToSelector }) {
           </div>
         </button>
         )}
-
-        {/* Credit expiry countdown (plano pago / cupom) */}
-        {!user?.is_admin && <CreditCountdown />}
 
         {/* Cupom — bônus de boas-vindas (700 créditos / 20 dias) */}
         {user && !user.is_admin && (

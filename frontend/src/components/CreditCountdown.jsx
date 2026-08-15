@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
+import { Timer } from 'lucide-react'
 import { useStore } from '../store/useStore'
 
 const pad = (n) => String(Math.max(0, Math.floor(n))).padStart(2, '0')
 
 /**
- * Mini cronômetro regressivo dos créditos (plano pago ou cupom).
- * Aparece só quando `creditsExpiresAt` está ativo. Ao zerar, reseta o
- * saldo para EXPIRED_CREDIT_BALANCE (100) e mostra um aviso breve.
+ * Mini cronômetro regressivo dos créditos (plano pago ou cupom) — mesmo
+ * visual do Cronômetro do Cortes 3D. Aparece só quando `creditsExpiresAt`
+ * está ativo. Ao zerar, reseta o saldo para EXPIRED_CREDIT_BALANCE (100)
+ * e mostra um aviso breve.
  */
 export default function CreditCountdown() {
   const expiresAt = useStore((s) => s.creditsExpiresAt)
@@ -43,7 +45,7 @@ export default function CreditCountdown() {
     return (
       <span style={{
         fontFamily: 'var(--font-body)', fontSize: 11,
-        color: '#e05050', marginRight: 6, whiteSpace: 'nowrap',
+        color: '#e05050', whiteSpace: 'nowrap', flexShrink: 0,
       }}>
         Créditos expirados — saldo ajustado
       </span>
@@ -55,29 +57,35 @@ export default function CreditCountdown() {
   const hours    = Math.floor((totalSec % 86400) / 3600)
   const minutes  = Math.floor((totalSec % 3600) / 60)
   const seconds  = totalSec % 60
-  const urgent   = remaining <= 7 * 86400000
+  const urgent   = days <= 7
 
   return (
     <div
       title={`Expiração de créditos: ${days} dia(s) ${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s`}
       style={{
-        display: 'flex', alignItems: 'center', gap: 5,
-        padding: '3px 8px', marginRight: 6, marginLeft: 2,
-        background: 'rgba(255,106,0,0.07)',
-        border: '1px solid rgba(255,106,0,0.28)',
+        display: 'flex', alignItems: 'center', gap: 3,
+        padding: '2px 6px',
         borderRadius: 4,
-        fontFamily: 'var(--font-mono)', fontSize: 10.5,
-        color: urgent ? '#f0a040' : 'rgba(255,150,60,0.9)',
+        flexShrink: 0,
+        border: '1px solid rgba(255,106,0,0.22)',
+        background: 'rgba(255,106,0,0.06)',
+        color: urgent ? 'rgba(240,140,50,0.95)' : 'rgba(255,155,80,0.85)',
+        opacity: 0.85,
+        fontFamily: 'var(--font-mono)', fontSize: 10,
+        letterSpacing: '-0.02em',
+        fontVariantNumeric: 'tabular-nums',
         whiteSpace: 'nowrap',
+        cursor: 'default',
         animation: urgent ? 'pulse 1.5s ease-in-out infinite' : undefined,
       }}
     >
-      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="13" r="8"/>
-        <path d="M12 9v4l2 2M9 2h6"/>
-      </svg>
+      <Timer
+        width={10} height={10}
+        style={{ flexShrink: 0 }}
+        aria-hidden="true"
+      />
       <span>
-        {days > 0 ? `${days}d ` : ''}{pad(hours)}h {pad(minutes)}m {pad(seconds)}s
+        {days > 0 ? `${days}d ` : ''}{pad(hours)}h&nbsp;{pad(minutes)}m&nbsp;{pad(seconds)}s
       </span>
     </div>
   )
