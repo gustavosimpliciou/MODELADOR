@@ -12,6 +12,7 @@ import {
   LogOut,
   Save,
   Archive,
+  Ticket,
 } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { useUserStore, ADMIN_EMAIL } from '@/lib/user-store'
@@ -19,6 +20,7 @@ import { trackEvent } from '@/lib/events'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/lang-store'
 import { ConfigModal } from './config-modal'
+import { CouponModal } from './coupon-modal'
 
 interface TopBarProps {
   onExport?: () => void
@@ -53,6 +55,7 @@ export function TopBar({ onExport, onSave, onProjects }: TopBarProps) {
 
   const [configOpen, setConfigOpen] = useState(false)
   const [quitOpen,   setQuitOpen]   = useState(false)
+  const [couponOpen, setCouponOpen] = useState(false)
 
   // ── Ref estável para o <input type="file"> ───────────────────────────────────
   // O input fica sempre no DOM (offscreen, NÃO display:none) e é clicado via
@@ -294,6 +297,25 @@ export function TopBar({ onExport, onSave, onProjects }: TopBarProps) {
           </button>
         )}
 
+        {/* Cupom — bônus de boas-vindas (700 créditos / 20 dias) */}
+        {user && !isAdmin && (
+          <button
+            onClick={() => setCouponOpen(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all mr-2"
+            style={{
+              borderColor: 'oklch(0.70 0.22 42 / 40%)',
+              background:  'oklch(0.70 0.22 42 / 8%)',
+              color:       'oklch(0.70 0.22 42)',
+            }}
+            title={t.cupom}
+          >
+            <Ticket className="w-3.5 h-3.5" />
+            <span className="text-[11px] font-mono font-semibold uppercase tracking-wider">
+              {t.cupom}
+            </span>
+          </button>
+        )}
+
         {/* Config + Sair */}
         <div className="flex items-center gap-1">
           <button
@@ -320,6 +342,9 @@ export function TopBar({ onExport, onSave, onProjects }: TopBarProps) {
 
       {/* Config modal */}
       <ConfigModal open={configOpen} onClose={() => setConfigOpen(false)} />
+
+      {/* Cupom modal */}
+      <CouponModal open={couponOpen} onClose={() => setCouponOpen(false)} />
 
       {/* Quit confirmation */}
       {quitOpen && (

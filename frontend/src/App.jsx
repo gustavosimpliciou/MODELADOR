@@ -53,6 +53,7 @@ export default function App() {
             freeDownloadUsed:      isAdmin ? false  : (row.free_download_used ?? false),
             firstUpgradePurchased: row.first_upgrade_purchased ?? false,
             plan:                  row.plan ?? 'free',
+            creditsExpiresAt:      isAdmin ? null : (row.credits_expires_at ?? null),
           }
           loginUser(session.access_token, userData)
         } else {
@@ -70,6 +71,7 @@ export default function App() {
             id: u.id, name, email: u.email ?? '',
             credits: 0, freeDownloadUsed: false,
             firstUpgradePurchased: false, plan: 'free',
+            creditsExpiresAt: null,
           })
         }
       } catch {

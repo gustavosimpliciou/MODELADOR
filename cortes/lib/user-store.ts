@@ -80,6 +80,9 @@ interface UserState {
    * Deducts 40 credits on 'ok'; sets showUpgradeModal on 'upgrade_required'.
    */
   tryExport: () => Promise<'ok' | 'free' | 'upgrade_required'>
+
+  /** Resgata o cupom GHOOST3D no servidor (700 créditos / 20 dias / 1x por conta). */
+  redeemCoupon: (code: string) => Promise<{ ok: boolean; error?: string; credits?: number }>
 }
 
 export const useUserStore = create<UserState>((set, get) => ({
@@ -248,6 +251,32 @@ export const useUserStore = create<UserState>((set, get) => ({
     } catch {
       set({ showUpgradeModal: true })
       return 'upgrade_required'
+    }
+  },
+
+  redeemCoupon: async (code: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) return { ok: false, error: 'not_authenticated' }
+
+      const res = await fetch('/api/coupon', {
+        method:  'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          Authorization:   `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ code }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data?.ok) {
+        return { ok: false, error: data?.error || 'server_error' }
+      }
+
+      // Recarrega credits/expiry → o cronômetro aparece na status bar
+      await get().refreshCredits()
+      return { ok: true, credits: data.credits }
+    } catch {
+      return { ok: false, error: 'server_error' }
     }
   },
 }))

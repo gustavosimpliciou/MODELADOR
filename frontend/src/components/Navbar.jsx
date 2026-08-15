@@ -3,6 +3,8 @@ import { useStore } from '../store/useStore'
 import { useT } from '../i18n/useT'
 import { LANGUAGES } from '../i18n/translations'
 import { projectsApi } from '../api/projects'
+import CouponModal from './CouponModal'
+import CreditCountdown from './CreditCountdown'
 
 // ─── Tiny modals ──────────────────────────────────────────────────────
 
@@ -171,6 +173,7 @@ export default function Navbar({ onBackToSelector }) {
   const [showSaveDialog,  setShowSaveDialog]  = useState(false)
   const [isSaving,        setIsSaving]        = useState(false)
   const [saveOk,          setSaveOk]          = useState(false)
+  const [couponOpen,      setCouponOpen]      = useState(false)
 
   const creditsColor = !freeDownloadUsed
     ? 'var(--accent)'
@@ -462,6 +465,37 @@ export default function Navbar({ onBackToSelector }) {
         </button>
         )}
 
+        {/* Credit expiry countdown (plano pago / cupom) */}
+        {!user?.is_admin && <CreditCountdown />}
+
+        {/* Cupom — bônus de boas-vindas (700 créditos / 20 dias) */}
+        {user && !user.is_admin && (
+          <button
+            onClick={() => setCouponOpen(true)}
+            title="Cupom"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '4px 10px', marginRight: 10,
+              background: 'rgba(255,106,0,0.08)',
+              border: '1px solid rgba(255,106,0,0.4)',
+              borderRadius: 4, cursor: 'pointer', transition: 'all 0.15s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,106,0,0.16)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,106,0,0.08)' }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ff6a00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+              <path d="M2 9a3 3 0 0 1 0 6v3h20v-3a3 3 0 0 1 0-6V6H2v3z"/>
+              <path d="M13 6v2M13 10v2M13 14v2M13 18v2"/>
+            </svg>
+            <span style={{
+              fontFamily: 'var(--font-condensed)', fontSize: 10, fontWeight: 800,
+              letterSpacing: '0.1em', textTransform: 'uppercase', color: '#ff6a00',
+            }}>
+              Cupom
+            </span>
+          </button>
+        )}
+
         {/* Language selector */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: 2, padding: 2, marginRight: 10,
@@ -543,6 +577,9 @@ export default function Navbar({ onBackToSelector }) {
           onCancel={() => setShowSaveDialog(false)}
         />
       )}
+
+      {/* Coupon modal */}
+      <CouponModal open={couponOpen} onClose={() => setCouponOpen(false)} />
     </>
   )
 }

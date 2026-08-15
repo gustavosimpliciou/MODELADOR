@@ -13,6 +13,7 @@ function toUser(row) {
     freeDownloadUsed:      isAdmin ? false  : (row.free_download_used ?? false),
     firstUpgradePurchased: row.first_upgrade_purchased ?? false,
     plan:                  row.plan ?? 'free',
+    creditsExpiresAt:      isAdmin ? null : (row.credits_expires_at ?? null),
   }
 }
 

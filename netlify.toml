@@ -24,6 +24,12 @@
   to     = "/.netlify/functions/admin/:splat"
   status = 200
 
+# Cupom → Netlify Function (must be before SPA fallback)
+[[redirects]]
+  from   = "/api/coupon"
+  to     = "/.netlify/functions/coupon"
+  status = 200
+
 # ── Cortes 3D (Next.js static export) ────────────────────────────────────────
 #
 # REGRA CRÍTICA: NÃO usar force=true em /cortes/* pois impede o Netlify

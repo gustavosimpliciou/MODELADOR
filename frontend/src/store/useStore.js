@@ -18,6 +18,7 @@ export const meshDefaultParams = (mesh) => ({ ...DEFAULT_MESH_PARAMS, ...(mesh?.
 
 const LANG_KEY          = 'nativos.language'
 const CREDITS_KEY       = 'nativos.credits'
+const EXPIRY_KEY        = 'nativos.creditsExpiresAt'
 const FREE_USED_KEY     = 'nativos.freeDownloadUsed'
 const FIRST_UPGRADE_KEY = 'nativos.firstUpgradePurchased'
 const TOKEN_KEY         = 'nativos.token'
@@ -33,6 +34,15 @@ const initialLang = (() => {
 const ls    = (key, fallback) => { try { const v = localStorage.getItem(key); return v !== null ? v : fallback } catch (e) { return fallback } }
 const lsSet = (key, val)      => { try { localStorage.setItem(key, val) } catch (e) { void e } }
 const lsDel = (key)           => { try { localStorage.removeItem(key) } catch (e) { void e } }
+
+/** Lê um timestamp (ms) do localStorage; retorna null se ausente/inválido. */
+const lsExpiry = (key) => {
+  const n = parseInt(ls(key, ''), 10)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+/** Saldo ao qual o crédito cai quando a expiração zera (mesma regra do Cortes). */
+export const EXPIRED_CREDIT_BALANCE = 100
 
 // Fire-and-forget credits sync to Supabase
 const syncCredits = (_token, credits, freeDownloadUsed, firstUpgradePurchased) => {
@@ -59,10 +69,14 @@ export const useStore = create((set, get) => ({
     // is_admin and credits are already resolved server-side (or in toUser)
     const credits  = userData.credits
     const freeUsed = userData.freeDownloadUsed
+    const isAdmin  = !!userData.is_admin
+    const expiry   = isAdmin ? null : (userData.creditsExpiresAt ?? null)
     lsSet(TOKEN_KEY, token)
     lsSet(CREDITS_KEY, String(credits))
     lsSet(FREE_USED_KEY, String(freeUsed))
     lsSet(FIRST_UPGRADE_KEY, String(userData.firstUpgradePurchased))
+    if (expiry != null) lsSet(EXPIRY_KEY, String(expiry))
+    else                lsDel(EXPIRY_KEY)
     set({
       token,
       user: userData,
@@ -70,6 +84,7 @@ export const useStore = create((set, get) => ({
       credits,
       freeDownloadUsed: freeUsed,
       firstUpgradePurchased: userData.firstUpgradePurchased,
+      creditsExpiresAt: expiry,
     })
     trackEvent('login', { plan: userData.plan || 'free' }, { name: userData.name })
   },
@@ -77,10 +92,11 @@ export const useStore = create((set, get) => ({
   logout: () => {
     trackEvent('logout')
     supabase.auth.signOut().catch(() => {})
-    ;[TOKEN_KEY, CREDITS_KEY, FREE_USED_KEY, FIRST_UPGRADE_KEY].forEach(lsDel)
+    ;[TOKEN_KEY, CREDITS_KEY, FREE_USED_KEY, FIRST_UPGRADE_KEY, EXPIRY_KEY].forEach(lsDel)
     set({
       token: null, user: null, authChecked: true,
       credits: 0, freeDownloadUsed: false, firstUpgradePurchased: false,
+      creditsExpiresAt: null,
     })
   },
 
@@ -93,11 +109,17 @@ export const useStore = create((set, get) => ({
 
   // ─── Credits / plan ──────────────────────────────────────────────
   credits: parseInt(ls(CREDITS_KEY, '0'), 10),
+  creditsExpiresAt: lsExpiry(EXPIRY_KEY),
   freeDownloadUsed: ls(FREE_USED_KEY, 'false') === 'true',
   firstUpgradePurchased: ls(FIRST_UPGRADE_KEY, 'false') === 'true',
   showUpgradeModal: false,
 
   setShowUpgradeModal: (v) => set({ showUpgradeModal: v }),
+  setCreditsExpiresAt: (ms) => {
+    if (ms != null) lsSet(EXPIRY_KEY, String(ms))
+    else            lsDel(EXPIRY_KEY)
+    set({ creditsExpiresAt: ms })
+  },
 
   // Opens the real Kiwify checkout in a new tab (payment happens on Kiwify;
   // credits/plan are only granted once the /api/webhook/kiwify call lands).
@@ -140,6 +162,7 @@ export const useStore = create((set, get) => ({
         freeDownloadUsed:      isAdmin ? false  : (row.free_download_used ?? false),
         firstUpgradePurchased: row.first_upgrade_purchased ?? false,
         plan:                  row.plan ?? 'free',
+        creditsExpiresAt:      isAdmin ? null : (row.credits_expires_at ?? null),
       }
       lsSet(CREDITS_KEY, String(userData.credits))
       lsSet(FREE_USED_KEY, String(userData.freeDownloadUsed))
@@ -150,7 +173,86 @@ export const useStore = create((set, get) => ({
         freeDownloadUsed: userData.freeDownloadUsed,
         firstUpgradePurchased: userData.firstUpgradePurchased,
       })
+      await get().syncCreditExpiry(row)
     } catch (e) { void e }
+  },
+
+  // Sincroniza a expiração a partir da linha do usuário. Se o prazo já
+  // venceu, reseta o saldo (EXPIRED_CREDIT_BALANCE). Admin fica sem cronômetro.
+  syncCreditExpiry: async (row) => {
+    const s = get()
+    if (s.user?.is_admin) {
+      lsDel(EXPIRY_KEY)
+      set({ creditsExpiresAt: null })
+      return
+    }
+    const raw = row?.credits_expires_at
+    const ms  = raw ? Date.parse(raw) : NaN
+    const expiry = Number.isFinite(ms) ? ms : null
+
+    if (expiry != null && expiry <= Date.now()) {
+      await get().resetExpiredCredits()
+      return
+    }
+
+    if (expiry != null) lsSet(EXPIRY_KEY, String(expiry))
+    else                lsDel(EXPIRY_KEY)
+    set({ creditsExpiresAt: expiry })
+  },
+
+  // Zera o prazo vencido: saldo vai para EXPIRED_CREDIT_BALANCE (regra do Cortes).
+  resetExpiredCredits: async () => {
+    const s = get()
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      if (authUser) {
+        await supabase.from('users').update({
+          credits: EXPIRED_CREDIT_BALANCE,
+          credits_expires_at: null,
+        }).eq('id', authUser.id)
+        try {
+          await supabase.from('credit_history').insert({
+            id: globalThis.crypto?.randomUUID?.() ?? `exp-${Date.now()}`,
+            user_id: authUser.id,
+            type: 'expiry_reset',
+            credits: EXPIRED_CREDIT_BALANCE - (s.credits || 0),
+            description: `Crédito expirado — saldo ajustado para ${EXPIRED_CREDIT_BALANCE}`,
+            created_at: new Date().toISOString(),
+          })
+        } catch { /* não bloqueia o reset */ }
+      }
+    } catch { /* não bloqueia o reset */ }
+
+    lsSet(CREDITS_KEY, String(EXPIRED_CREDIT_BALANCE))
+    lsDel(EXPIRY_KEY)
+    set({ credits: EXPIRED_CREDIT_BALANCE, creditsExpiresAt: null })
+  },
+
+  // Resgata o cupom GHOOST3D no servidor (700 créditos / 20 dias / 1x por conta).
+  redeemCoupon: async (code) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) return { ok: false, error: 'not_authenticated' }
+
+      const res = await fetch('/api/coupon', {
+        method:  'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization:  `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ code }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data?.ok) {
+        return { ok: false, error: data?.error || 'server_error' }
+      }
+
+      await get().refreshCredits()
+      trackEvent('coupon_redeemed', { credits: data.credits, expires_in_days: 20 })
+      return { ok: true, credits: data.credits }
+    } catch (e) {
+      return { ok: false, error: 'server_error' }
+    }
   },
 
   // Returns 'free' | 'ok' | 'upgrade_required'.
