@@ -1019,6 +1019,7 @@ const EVENT_META = {
   project_saved:    { label: 'Projeto salvo',    color: '#00bcd4' },
   project_loaded:   { label: 'Projeto aberto',   color: '#26a69a' },
   upgrade:          { label: 'Upgrade',          color: '#ffd600' },
+  coupon_redeemed:  { label: 'Cupom usado',      color: '#fff176' },
 }
 
 const TOOL_META = {
@@ -1093,6 +1094,13 @@ function detailsLine(evt, details = {}) {
       const parts = []
       if (d.plan) parts.push(`plano ${d.plan}`)
       if (d.href) parts.push(d.href)
+      return parts.join(' · ')
+    }
+    case 'coupon_redeemed': {
+      const parts = []
+      if (d.code) parts.push(`Cupom ${d.code}`)
+      if (d.credits) parts.push(`+${d.credits} créditos`)
+      if (d.expires_in_days) parts.push(`${d.expires_in_days} dias de validade`)
       return parts.join(' · ')
     }
     default: {
@@ -1206,6 +1214,7 @@ function ActivitiesLogPage({ compact = false }) {
         <StatCard label="Uploads hoje" value={counts.upload || 0} accent="#2196f3" icon={<span>⬆</span>} />
         <StatCard label="Logins hoje" value={counts.login || 0} accent="#4caf50" icon={<span>→</span>} />
         <StatCard label="Usuários ativos hoje" value={stats?.today?.active_users || 0} accent="#00bcd4" icon={<span>●</span>} />
+        <StatCard label="Cupons usados hoje" value={counts.coupon_redeemed || 0} accent="#fff176" icon={<span>🎟</span>} />
       </div>
 
       {/* ── Painel de hoje vs 7d ─────────────────────────────────── */}
@@ -1216,6 +1225,7 @@ function ActivitiesLogPage({ compact = false }) {
           <StatCard label="Uploads 7 dias" value={last7.upload || 0} accent="#2196f3" icon={<span>⬆</span>} />
           <StatCard label="Logins 7 dias" value={last7.login || 0} accent="#4caf50" icon={<span>→</span>} />
           <StatCard label="Ativos 7 dias" value={stats?.last_7d?.active_users || 0} accent="#00bcd4" icon={<span>●</span>} />
+          <StatCard label="Cupons usados 7 dias" value={last7.coupon_redeemed || 0} accent="#fff176" icon={<span>🎟</span>} />
           <StatCard label="Upgrades 7 dias" value={last7.upgrade || 0} accent="#ffd600" icon={<span>⭐</span>} />
         </div>
       </Section>
@@ -1334,6 +1344,81 @@ function ActivitiesLogPage({ compact = false }) {
 
 
 // ─── Credits Modal ────────────────────────────────────────────────────────────
+function CreditHistorySection({ userId }) {
+  const [items, setItems] = useState(null) // null = carregando
+
+  useEffect(() => {
+    let alive = true
+    if (!userId) { setItems([]); return }
+    setItems(null)
+    supabase
+      .from('credit_history')
+      .select('id, type, credits, description, created_at')
+      .eq('user_id', userId)
+      .eq('type', 'coupon')
+      .order('created_at', { ascending: false })
+      .limit(50)
+      .then(({ data, error }) => { if (alive) setItems(error ? [] : (data || [])) })
+      .catch(() => { if (alive) setItems([]) })
+    return () => { alive = false }
+  }, [userId])
+
+  if (items === null) {
+    return (
+      <div style={{ padding: '10px 0', fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--text-dim)' }}>
+        Carregando cupons…
+      </div>
+    )
+  }
+
+  if (!items.length) {
+    return (
+      <div style={{
+        padding: '12px 14px',
+        background: 'var(--panel)', border: '1px dashed var(--line)',
+        borderRadius: 6, fontFamily: 'var(--font-body)', fontSize: 12,
+        color: 'var(--text-dim)', textAlign: 'center',
+      }}>
+        Nenhum cupom resgatado por este usuário.
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {items.map((c) => (
+        <div key={c.id} style={{
+          display: 'flex', flexDirection: 'column', gap: 3,
+          padding: '10px 12px',
+          background: 'rgba(255,106,0,0.05)',
+          border: '1px solid rgba(255,106,0,0.22)',
+          borderRadius: 6,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <span style={{
+              fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 700,
+              letterSpacing: '0.06em', color: '#ff6a00',
+            }}>
+              {c.description?.match(/Cupom ([A-Z0-9]+)/)?.[1] || 'CUPOM'}
+            </span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 700, color: '#00b894' }}>
+              +{c.credits}
+            </span>
+          </div>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-dim)' }}>
+            Usado em: {c.created_at
+              ? new Date(c.created_at).toLocaleString('pt-BR', {
+                  day: '2-digit', month: '2-digit', year: 'numeric',
+                  hour: '2-digit', minute: '2-digit',
+                })
+              : '—'}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function CreditsModal({ user, onClose, onSuccess }) {
   const [op, setOp]           = useState('add') // 'add' | 'remove' | 'set'
   const [amount, setAmount]   = useState('')
@@ -1454,6 +1539,12 @@ function CreditsModal({ user, onClose, onSuccess }) {
               ? new Date(user.credits_expires_at).toLocaleDateString('pt-BR')
               : '—'}
           />
+        </div>
+
+        {/* Cupons resgatados */}
+        <div>
+          <label style={labelStyle}>Cupons resgatados</label>
+          <CreditHistorySection userId={user.id} />
         </div>
 
         {/* Operation tabs */}
