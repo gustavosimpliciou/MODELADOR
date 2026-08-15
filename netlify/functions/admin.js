@@ -50,9 +50,13 @@ async function sbSelect(table, params = {}) {
 async function sbSelectAll(table, params = {}, batchSize = 1000) {
   const all = []
   let offset = 0
+  const q = { ...params }
+  // Ordem estável para paginação não duplicar/saltar linhas na fronteira
+  // entre páginas (offset sem order pode repetir o último registro da página).
+  if (!q.order) q.order = 'id'
   for (;;) {
     const page = await sbSelect(table, {
-      ...params,
+      ...q,
       offset: String(offset),
       limit:  String(batchSize),
     })
