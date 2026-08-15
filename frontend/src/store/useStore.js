@@ -41,6 +41,21 @@ const lsExpiry = (key) => {
   return Number.isFinite(n) && n > 0 ? n : null
 }
 
+/**
+ * Normaliza uma data de expiração (ISO string do Supabase OU timestamp em ms)
+ * para timestamp em ms (número). Retorna null se ausente/inválido.
+ * Evita o bug de subtrair string de Date.now() → NaN no cronômetro.
+ */
+const toExpiryMs = (value) => {
+  if (value == null) return null
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value === 'string') {
+    const t = Date.parse(value)
+    return Number.isFinite(t) ? t : null
+  }
+  return null
+}
+
 /** Saldo ao qual o crédito cai quando a expiração zera (mesma regra do Cortes). */
 export const EXPIRED_CREDIT_BALANCE = 100
 
@@ -70,7 +85,7 @@ export const useStore = create((set, get) => ({
     const credits  = userData.credits
     const freeUsed = userData.freeDownloadUsed
     const isAdmin  = !!userData.is_admin
-    const expiry   = isAdmin ? null : (userData.creditsExpiresAt ?? null)
+    const expiry   = isAdmin ? null : toExpiryMs(userData.creditsExpiresAt)
     lsSet(TOKEN_KEY, token)
     lsSet(CREDITS_KEY, String(credits))
     lsSet(FREE_USED_KEY, String(freeUsed))
@@ -116,9 +131,10 @@ export const useStore = create((set, get) => ({
 
   setShowUpgradeModal: (v) => set({ showUpgradeModal: v }),
   setCreditsExpiresAt: (ms) => {
-    if (ms != null) lsSet(EXPIRY_KEY, String(ms))
-    else            lsDel(EXPIRY_KEY)
-    set({ creditsExpiresAt: ms })
+    const normalized = toExpiryMs(ms)
+    if (normalized != null) lsSet(EXPIRY_KEY, String(normalized))
+    else                    lsDel(EXPIRY_KEY)
+    set({ creditsExpiresAt: normalized })
   },
 
   // Opens the real Kiwify checkout in a new tab (payment happens on Kiwify;

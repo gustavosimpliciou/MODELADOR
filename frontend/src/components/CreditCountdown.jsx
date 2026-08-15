@@ -37,6 +37,7 @@ export default function CreditCountdown() {
   }, [expiresAt, resetExpiredCredits])
 
   if (expiresAt == null) return null
+  if (!Number.isFinite(expiresAt)) return null
 
   const remaining = expiresAt - Date.now()
   if (remaining <= 0 && !justExpired) return null
