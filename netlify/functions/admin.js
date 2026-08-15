@@ -41,6 +41,30 @@ async function sbSelect(table, params = {}) {
   return res.json()
 }
 
+/**
+ * Busca TODAS as linhas de uma tabela paginando em lotes.
+ * Necessário porque o Supabase limita cada resposta a ~1000 linhas
+ * (db-max-rows), mesmo passando limit=1000000. Ex: 1055 usuários →
+ * 1ª página 1000 + 2ª página 55.
+ */
+async function sbSelectAll(table, params = {}, batchSize = 1000) {
+  const all = []
+  let offset = 0
+  for (;;) {
+    const page = await sbSelect(table, {
+      ...params,
+      offset: String(offset),
+      limit:  String(batchSize),
+    })
+    const rows = page || []
+    all.push(...rows)
+    if (rows.length < batchSize) break
+    offset += batchSize
+    if (offset > 100000000) break // trava de segurança
+  }
+  return all
+}
+
 async function sbSelectCount(table, params = {}) {
   const qs  = new URLSearchParams(params).toString()
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${qs}`, {
@@ -134,15 +158,15 @@ export const handler = async (event) => {
   if (method === 'GET' && path === '/stats') {
     const [users, payments, allPaymentValues] = await Promise.all([
       // Sem limite explícito o PostgREST trunca em 1000 linhas → total de
-      // usuários fica errado. 1M cobre qualquer base realista.
-      sbSelect('users', { select: 'id,name,email,credits,plan', limit: '1000000' }),
+      // usuários fica errado. sbSelectAll pagina por lotes até pegar todos.
+      sbSelectAll('users', { select: 'id,name,email,credits,plan' }),
       sbSelect('payments', {
         select:  'id,user_id,product,value,status,created_at,kiwify_transaction_id',
         order:   'created_at.desc',
         limit:   20,
       }),
       // Todos os pagamentos só com value+status (para total de vendas)
-      sbSelect('payments', { select: 'value,status', limit: '1000000' }),
+      sbSelectAll('payments', { select: 'value,status' }),
     ])
 
     const total_users        = users.length
@@ -262,17 +286,15 @@ export const handler = async (event) => {
     }
 
     const [usersRows, paymentsRows] = await Promise.all([
-      sbSelect('users', {
+      sbSelectAll('users', {
         select: 'id,created_at',
         created_at: `gte.${fromISO}`,
         order: 'created_at.asc',
-        limit: '1000000',
       }),
-      sbSelect('payments', {
+      sbSelectAll('payments', {
         select: 'id,value,status,created_at',
         created_at: `gte.${fromISO}`,
         order: 'created_at.asc',
-        limit: '1000000',
       }),
     ])
 
@@ -662,17 +684,14 @@ if (method === 'GET' && path === '/events/stats') {
   // O frontend gera o arquivo; aqui retornamos JSON pronto para as colunas.
   if (method === 'GET' && path === '/export/users') {
     const [users, events, payments] = await Promise.all([
-      sbSelect('users', {
+      sbSelectAll('users', {
         select: 'id,name,email,plan,credits,credits_expires_at,created_at,free_download_used,first_upgrade_purchased',
-        limit: '1000000',
       }),
-      sbSelect('user_events', {
+      sbSelectAll('user_events', {
         select: 'user_id',
-        limit: '1000000',
       }),
-      sbSelect('payments', {
+      sbSelectAll('payments', {
         select: 'user_id,value,status',
-        limit: '1000000',
       }),
     ])
 
