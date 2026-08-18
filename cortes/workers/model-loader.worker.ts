@@ -180,7 +180,6 @@ function simplifyGeometry(
       return null
     }
 
-    const ratio = targetFaceCount / currentFaces
     const modifier = new SimplifyModifier()
     const simplified = modifier.modify(geo, Math.round(targetFaceCount))
 
