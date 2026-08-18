@@ -20,6 +20,7 @@ import { STLLoader }  from 'three/examples/jsm/loaders/STLLoader.js'
 import { OBJLoader }  from 'three/examples/jsm/loaders/OBJLoader.js'
 import { PLYLoader }  from 'three/examples/jsm/loaders/PLYLoader.js'
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { SimplifyModifier } from 'three/examples/jsm/modifiers/SimplifyModifier.js'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -158,6 +159,59 @@ function computeFaceNormals(positions: Float32Array): Float32Array {
   return normals
 }
 
+// ─── Decimação (SimplifyModifier) ────────────────────────────────────────────
+function simplifyGeometry(
+  positions: Float32Array,
+  normals: Float32Array | null,
+  uvs: Float32Array | null,
+  indices: Uint32Array,
+  targetFaceCount: number
+): { positions: Float32Array; normals: Float32Array | null; uvs: Float32Array | null; indices: Uint32Array } | null {
+  try {
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+    if (normals) geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3))
+    if (uvs)     geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2))
+    geo.setIndex(new THREE.BufferAttribute(indices, 1))
+
+    const currentFaces = indices.length / 3
+    if (currentFaces <= targetFaceCount) {
+      geo.dispose()
+      return null
+    }
+
+    const ratio = targetFaceCount / currentFaces
+    const modifier = new SimplifyModifier()
+    const simplified = modifier.modify(geo, Math.round(targetFaceCount))
+
+    if (!simplified) {
+      geo.dispose()
+      return null
+    }
+
+    const outPos = (simplified.getAttribute('position') as THREE.BufferAttribute).array as Float32Array
+    const outNorm = simplified.getAttribute('normal')
+      ? (simplified.getAttribute('normal') as THREE.BufferAttribute).array as Float32Array
+      : null
+    const outUV = simplified.getAttribute('uv')
+      ? (simplified.getAttribute('uv') as THREE.BufferAttribute).array as Float32Array
+      : null
+    const outIdx = simplified.index!
+      ? (simplified.index as THREE.BufferAttribute).array as Uint32Array
+      : null
+
+    geo.dispose()
+    simplified.dispose()
+
+    if (!outIdx) return null
+
+    return { positions: outPos, normals: outNorm, uvs: outUV, indices: outIdx }
+  } catch (e) {
+    console.warn('[worker] Falha na decimação:', e)
+    return null
+  }
+}
+
 // mergeVertices via THREE para criar índice Uint32 correto
 function indexGeometry(positions: Float32Array, normals: Float32Array | null, uvs: Float32Array | null, tolerance = 1e-6): {
   positions: Float32Array
@@ -275,26 +329,45 @@ self.onmessage = function (e: MessageEvent) {
       tmpGeo.dispose()
     }
 
+    // ── 6. Decimação opcional para malhas muito pesadas (> 200k faces) ──
+    const faceCount = indices.length / 3
+    let finalPositions = iPos
+    let finalNormalsArr = finalNormals
+    let finalUVs = iUVs
+    let finalIndices = indices
+
+    if (faceCount > 200000) {
+      progress(`Simplificando malha (${faceCount.toLocaleString()} → ~100k faces)...`, 75)
+      const simplified = simplifyGeometry(iPos, finalNormals, iUVs, indices, 100000)
+      if (simplified) {
+        finalPositions = simplified.positions
+        finalNormalsArr = simplified.normals
+        finalUVs = simplified.uvs
+        finalIndices = simplified.indices
+        console.log(`[worker] Decimação: ${faceCount} → ${finalIndices.length / 3} faces`)
+      }
+    }
+
     progress('Finalizando...', 90)
 
-    const faceCount   = indices.length / 3
-    const vertexCount = iPos.length / 3
+    const finalFaceCount   = finalIndices.length / 3
+    const finalVertexCount = finalPositions.length / 3
 
-    // ── 6. Transferir buffers (zero-copy) ─────────────────────────────────
-    const transferList: Transferable[] = [iPos.buffer, indices.buffer]
-    if (finalNormals) transferList.push(finalNormals.buffer)
-    if (iUVs)         transferList.push(iUVs.buffer)
+    // ── 7. Transferir buffers (zero-copy) ─────────────────────────────────
+    const transferList: Transferable[] = [finalPositions.buffer, finalIndices.buffer]
+    if (finalNormalsArr) transferList.push(finalNormalsArr.buffer)
+    if (finalUVs)         transferList.push(finalUVs.buffer)
 
     // postMessage with transfer list — cast away Window overload conflict
     ;(self as unknown as { postMessage(data: unknown, transfer: Transferable[]): void }).postMessage(
       {
         type: 'done',
-        positions: iPos,
-        normals: finalNormals,
-        uvs: iUVs,
-        indices,
-        faceCount,
-        vertexCount,
+        positions: finalPositions,
+        normals: finalNormalsArr,
+        uvs: finalUVs,
+        indices: finalIndices,
+        faceCount: finalFaceCount,
+        vertexCount: finalVertexCount,
         hadNormals,
         ext,
       },
