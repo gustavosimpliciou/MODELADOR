@@ -166,6 +166,11 @@ interface WorkerResult {
   hadNormals: boolean
 }
 
+interface PreviewResult {
+  geometry:   THREE.BufferGeometry
+  isPreview:  true
+}
+
 function loadViaWorker(
   buffer: ArrayBuffer,
   ext: string,
@@ -173,19 +178,43 @@ function loadViaWorker(
 ): Promise<WorkerResult> {
   return new Promise((resolve, reject) => {
     let worker: Worker
+    let previewMesh: THREE.Mesh | null = null
 
     try {
       worker = new Worker(
         new URL('../workers/model-loader.worker.ts', import.meta.url),
       )
     } catch {
-      // Worker não disponível (SSR, etc.) — fallback síncrono na thread principal
       resolve(loadSyncFallback(buffer, ext))
       return
     }
 
     worker.onmessage = (e: MessageEvent) => {
       const msg = e.data
+
+      // ── Preview instantâneo (chega em ~50-100ms) ──
+      if (msg.type === 'preview') {
+        const geo = new THREE.BufferGeometry()
+        geo.setAttribute('position', new THREE.BufferAttribute(msg.positions as Float32Array, 3))
+        if (msg.normals) geo.setAttribute('normal', new THREE.BufferAttribute(msg.normals as Float32Array, 3))
+        if (msg.uvs) geo.setAttribute('uv', new THREE.BufferAttribute(msg.uvs as Float32Array, 2))
+        // preview sem índice (non-indexed é OK para render rápido)
+        geo.computeBoundingBox()
+        geo.computeBoundingSphere()
+
+        // Material leve para preview
+        const previewMat = new THREE.MeshStandardMaterial({
+          color: 0x888888, roughness: 0.6, metalness: 0.1,
+          side: THREE.DoubleSide, flatShading: true,
+        })
+        previewMesh = new THREE.Mesh(geo, previewMat)
+        previewMesh.name = 'preview'
+
+        // Callback especial: preview pronto
+        onProgress?.({ stage: 'Preview pronto', percent: 15 })
+        ;(onProgress as any)?.({ type: 'preview', mesh: previewMesh })
+        return
+      }
 
       if (msg.type === 'progress') {
         onProgress?.({ stage: msg.stage, percent: msg.percent })
@@ -194,6 +223,7 @@ function loadViaWorker(
 
       if (msg.type === 'error') {
         worker.terminate()
+        if (previewMesh) { previewMesh.geometry.dispose(); previewMesh.material.dispose() }
         reject(new Error(msg.message))
         return
       }
@@ -202,20 +232,16 @@ function loadViaWorker(
         worker.terminate()
 
         const geo = new THREE.BufferGeometry()
-
-        // Reconstruir geometria a partir dos TypedArrays transferidos
         geo.setAttribute('position', new THREE.BufferAttribute(msg.positions as Float32Array, 3))
+        if (msg.normals) geo.setAttribute('normal', new THREE.BufferAttribute(msg.normals as Float32Array, 3))
+        if (msg.uvs) geo.setAttribute('uv', new THREE.BufferAttribute(msg.uvs as Float32Array, 2))
+        if (msg.indices) geo.setIndex(new THREE.BufferAttribute(msg.indices as Uint32Array, 1))
 
-        if (msg.normals) {
-          geo.setAttribute('normal', new THREE.BufferAttribute(msg.normals as Float32Array, 3))
-        }
-
-        if (msg.uvs) {
-          geo.setAttribute('uv', new THREE.BufferAttribute(msg.uvs as Float32Array, 2))
-        }
-
-        if (msg.indices) {
-          geo.setIndex(new THREE.BufferAttribute(msg.indices as Uint32Array, 1))
+        // Swap suave: se tinha preview, descarta e usa geometria final
+        if (previewMesh) {
+          previewMesh.geometry.dispose()
+          previewMesh.material.dispose()
+          previewMesh = null
         }
 
         resolve({ geometry: geo, hadNormals: !!msg.hadNormals })
@@ -224,15 +250,10 @@ function loadViaWorker(
 
     worker.onerror = (err) => {
       worker.terminate()
-      // Fallback síncrono se o worker falhar por qualquer motivo
-      try {
-        resolve(loadSyncFallback(buffer, ext))
-      } catch (fallbackErr) {
-        reject(fallbackErr)
-      }
+      if (previewMesh) { previewMesh.geometry.dispose(); previewMesh.material.dispose() }
+      try { resolve(loadSyncFallback(buffer, ext)) } catch (fallbackErr) { reject(fallbackErr) }
     }
 
-    // Transfere o buffer zero-copy para o worker
     worker.postMessage({ type: 'load', buffer, ext }, [buffer])
   })
 }
