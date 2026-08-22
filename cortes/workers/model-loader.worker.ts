@@ -10,6 +10,8 @@
  * GLB/GLTF → thread principal (usa FileLoader)
  */
 
+import * as THREE from 'three'
+
 // Carrega meshoptimizer dinamicamente (WASM)
 let meshopt: any = null
 async function loadMeshopt() {
