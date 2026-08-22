@@ -13,9 +13,25 @@
 
 import * as THREE from 'three'
 
-// ─── meshoptimizer pré-carregado (WASM) ───────────────────────────────────────
+// ─── meshoptimizer pré-carregado (WASM) com timeout ───────────────────────────
 let meshopt: any = null
-const meshoptPromise = import('meshoptimizer').then(mod => { meshopt = mod.default ?? mod; return meshopt })
+let meshoptReady = false
+let meshoptFailed = false
+
+const meshoptPromise = (async () => {
+  try {
+    const mod = await Promise.race([
+      import('meshoptimizer'),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('meshoptimizer timeout 5s')), 5000))
+    ])
+    meshopt = mod.default ?? mod
+    meshoptReady = true
+    console.log('[worker] meshoptimizer WASM carregado')
+  } catch (e) {
+    meshoptFailed = true
+    console.warn('[worker] meshoptimizer falhou, usando fallback:', e)
+  }
+})()
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function progress(stage: string, percent: number) {
@@ -141,26 +157,41 @@ function computeFaceNormals(positions: Float32Array): Float32Array {
   return normals
 }
 
-// Decimação meshoptimizer (WASM pré-carregado)
+// Decimação meshoptimizer (WASM) com timeout e fallback
 async function decimateMeshopt(
   positions: Float32Array, indices: Uint32Array, targetFaces: number
 ): Promise<{ positions: Float32Array; indices: Uint32Array } | null> {
+  // Se meshoptimizer falhou no load, pula direto pro fallback
+  if (meshoptFailed) return null
+
   try {
-    await meshoptPromise
+    // Timeout pro meshoptimizer ficar pronto (max 3s)
+    await Promise.race([
+      meshoptPromise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('meshoptimizer init timeout')), 3000))
+    ])
+
+    if (!meshoptReady || !meshopt) return null
+
     const vertexCount = positions.length / 3
     const currentFaces = indices.length / 3
     if (currentFaces <= targetFaces) return null
 
-    const simplifiedIdx = meshopt.simplify(
-      new Uint32Array(indices), positions, vertexCount, targetFaces, 1e-2
-    )
+    // Timeout na própria decimação (max 3s)
+    const simplifiedIdx = await Promise.race([
+      (async () => meshopt.simplify(
+        new Uint32Array(indices), positions, vertexCount, targetFaces, 1e-2
+      ))(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('simplify timeout 3s')), 3000))
+    ])
+
     if (!simplifiedIdx || simplifiedIdx.length / 3 >= currentFaces) return null
 
     const newPos = meshopt.remapVertexBuffer(positions, simplifiedIdx)
     const optIdx = meshopt.optimizeVertexCache(simplifiedIdx)
     return { positions: newPos, indices: optIdx }
   } catch (e) {
-    console.warn('[worker] meshoptimizer falhou, fallback SimplifyModifier:', e)
+    console.warn('[worker] meshoptimizer timeout/erro, fallback:', e)
     return null
   }
 }
@@ -283,17 +314,32 @@ self.onmessage = async function (e: MessageEvent) {
     progress('Calculando normais...', 60)
     const normals = computeFaceNormals(iPos)
 
-    // ── ESTÁGIO 2: Decimação meshoptimizer ──────────────────────────────────
+    // ── ESTÁGIO 2: Decimação com timeout total (max 5s) ──────────────────────
     let finalPositions = iPos, finalIndices = indices
     if (indices.length / 3 > 200000) {
-      progress('Otimizando (meshoptimizer WASM)...', 70)
+      progress('Otimizando...', 70)
       const targetFaces = Math.min(100000, Math.max(50000, Math.floor(indices.length / 3 * 0.07)))
-      let simplified = await decimateMeshopt(iPos, indices, targetFaces)
-      if (!simplified) simplified = simplifyFallback(iPos, indices, targetFaces)
+
+      // Timeout total do estágio de otimização (5s)
+      let simplified = await Promise.race([
+        decimateMeshopt(iPos, indices, targetFaces),
+        new Promise<null>((_, reject) => setTimeout(() => reject(new Error('otimização timeout 5s')), 5000))
+      ]).catch(() => null)
+
+      if (!simplified) {
+        console.warn('[worker] meshoptimizer timeout, tentando fallback SimplifyModifier...')
+        simplified = await Promise.race([
+          simplifyFallback(iPos, indices, targetFaces),
+          new Promise<null>((_, reject) => setTimeout(() => reject(new Error('fallback timeout 3s')), 3000))
+        ]).catch(() => null)
+      }
+
       if (simplified) {
         finalPositions = simplified.positions
         finalIndices = simplified.indices
         console.log(`[worker] Decimação: ${indices.length / 3} → ${finalIndices.length / 3} faces`)
+      } else {
+        console.warn('[worker] Sem decimação — usando geometria indexada original')
       }
     }
 
