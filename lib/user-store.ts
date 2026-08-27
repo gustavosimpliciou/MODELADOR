@@ -40,9 +40,15 @@ interface UserState {
   /**
    * Gate an export action behind the credit system.
    * Returns 'ok' | 'free' | 'upgrade_required'.
-   * Deducts 40 credits on 'ok'; sets showUpgradeModal on 'upgrade_required'.
+   * ONLY checks availability — does NOT deduct credits.
    */
   tryExport: () => Promise<'ok' | 'free' | 'upgrade_required'>
+
+  /**
+   * Confirm successful export and deduct credits / mark free download used.
+   * Call this AFTER the download completes successfully.
+   */
+  confirmExport: (result: 'ok' | 'free') => Promise<void>
 }
 
 export const useUserStore = create<UserState>((set, get) => ({
@@ -95,11 +101,7 @@ export const useUserStore = create<UserState>((set, get) => ({
 
     // ── Guest (not logged in) — one free download ────────────────────
     if (!s.user) {
-      if (!s.freeDownloadUsed) {
-        lsSet('nativos.freeDownloadUsed', 'true')
-        set({ freeDownloadUsed: true })
-        return 'free'
-      }
+      if (!s.freeDownloadUsed) return 'free'
       set({ showUpgradeModal: true })
       return 'upgrade_required'
     }
@@ -116,13 +118,8 @@ export const useUserStore = create<UserState>((set, get) => ({
         .single()
       if (error) throw error
 
-      // First free download
-      if (!row.free_download_used) {
-        await supabase.from('users').update({ free_download_used: true }).eq('id', authUser.id)
-        lsSet('nativos.freeDownloadUsed', 'true')
-        set({ freeDownloadUsed: true })
-        return 'free'
-      }
+      // First free download available
+      if (!row.free_download_used) return 'free'
 
       const credits = row.credits ?? 0
       if (credits < EXPORT_COST) {
@@ -130,15 +127,53 @@ export const useUserStore = create<UserState>((set, get) => ({
         return 'upgrade_required'
       }
 
-      const newCredits = credits - EXPORT_COST
-      await supabase.from('users').update({ credits: newCredits }).eq('id', authUser.id)
-      lsSet('nativos.credits',          String(newCredits))
-      lsSet('nativos.freeDownloadUsed', 'true')
-      set({ credits: newCredits, freeDownloadUsed: true })
       return 'ok'
     } catch {
       set({ showUpgradeModal: true })
       return 'upgrade_required'
+    }
+  },
+
+  confirmExport: async (result: 'ok' | 'free') => {
+    const s = get()
+
+    // Admin bypass — nothing to do
+    if (s.user?.is_admin) return
+
+    // Guest (not logged in) — mark free download used locally
+    if (!s.user) {
+      if (result === 'free') {
+        lsSet('nativos.freeDownloadUsed', 'true')
+        set({ freeDownloadUsed: true })
+      }
+      return
+    }
+
+    // Authenticated user — update server
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      if (!authUser) return
+
+      const { data: row, error } = await supabase
+        .from('users')
+        .select('credits, free_download_used')
+        .eq('id', authUser.id)
+        .single()
+      if (error) throw error
+
+      if (result === 'free' && !row.free_download_used) {
+        await supabase.from('users').update({ free_download_used: true }).eq('id', authUser.id)
+        lsSet('nativos.freeDownloadUsed', 'true')
+        set({ freeDownloadUsed: true })
+      } else if (result === 'ok') {
+        const credits = (row.credits ?? 0) - EXPORT_COST
+        await supabase.from('users').update({ credits }).eq('id', authUser.id)
+        lsSet('nativos.credits', String(credits))
+        set({ credits })
+      }
+    } catch {
+      // Non-blocking — if confirmation fails, user keeps credits
+      // They can retry export which will re-check availability
     }
   },
 }))

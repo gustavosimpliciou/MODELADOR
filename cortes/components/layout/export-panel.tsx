@@ -21,6 +21,7 @@ const EXPORT_COST = 40
 export function ExportPanel({ open, onClose }: ExportPanelProps) {
   const { parts, setStatus } = useAppStore()
   const tryExport         = useUserStore((s) => s.tryExport)
+  const confirmExport     = useUserStore((s) => s.confirmExport)
   const credits           = useUserStore((s) => s.credits)
   const user              = useUserStore((s) => s.user)
   const freeDownloadUsed  = useUserStore((s) => s.freeDownloadUsed)
@@ -85,9 +86,14 @@ export function ExportPanel({ open, onClose }: ExportPanelProps) {
         fileCount: visibleParts.length === 1 ? 1 : visibleParts.length,
         zip: visibleParts.length > 1,
       })
+      
+      // Confirm export only after successful download
+      await confirmExport(result)
+      
       if (result !== 'free') onClose()
     } catch (err: any) {
       setStatus('error', `Erro ao exportar: ${err.message}`)
+      // Do NOT confirm export — credits are preserved
     } finally {
       setExporting(false)
     }
