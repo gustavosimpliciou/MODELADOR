@@ -24,6 +24,11 @@ function detectPlan(productName, productId) {
   return null
 }
 
+const PAID_STATUSES = new Set([
+  'paid', 'approved', 'completed', 'confirmed', 'success',
+  'order_approved', 'payment_approved', 'payment_confirmed'
+])
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
@@ -54,8 +59,9 @@ export default async function handler(req, res) {
   const eventType   = (body.webhook_event_type || '').toLowerCase()
   const orderId     = body.order_id || body.order_ref || ''
 
-  if (orderStatus !== 'paid' && eventType !== 'order_approved') {
-    return res.status(200).json({ ok: true, ignored: true, order_status: orderStatus })
+  const isPaid = PAID_STATUSES.has(orderStatus) || PAID_STATUSES.has(eventType)
+  if (!isPaid) {
+    return res.status(200).json({ ok: true, ignored: true, order_status: orderStatus, event_type: eventType })
   }
 
   // ─── Dados do cliente + tracking (user_id do app) ─────────────────
@@ -63,7 +69,8 @@ export default async function handler(req, res) {
   const email    = (customer.email || '').trim().toLowerCase()
   const tracking = body.TrackingParameters || body.tracking_parameters || {}
   const trackedUserId = (
-    tracking.src || tracking.sck || tracking.utm_content || tracking.utm_term || ''
+    tracking.src || tracking.sck || tracking.utm_content || tracking.utm_term ||
+    tracking.user_id || tracking.external_id || tracking.customer_id || tracking.subscriber_id || ''
   ).toString().trim() || null
 
   // ─── Identificar plano ────────────────────────────────────────────
@@ -76,6 +83,17 @@ export default async function handler(req, res) {
   const now = new Date().toISOString()
   const commissions = body.Commissions || {}
   const value = commissions.charge_amount || commissions.product_base_price || ''
+
+  // Use Kiwify's order_date if available for accurate expiry calculation
+  const paidRaw = body.order_date || body.OrderDate || body.payment_date || now
+  let paidAt
+  try {
+    paidAt = new Date(paidRaw)
+    if (isNaN(paidAt.getTime())) paidAt = new Date(now)
+  } catch {
+    paidAt = new Date(now)
+  }
+  const credits_expires_at = new Date(paidAt.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString()
 
   if (!tier) {
     await sb.from('payments').insert({
@@ -129,26 +147,45 @@ export default async function handler(req, res) {
   const creditsToAdd  = PLAN_CREDITS[tier]
   const newCredits    = (user.credits || 0) + creditsToAdd
 
-  await sb.from('users').update({
-    credits:                 newCredits,
-    plan:                    tier,
-    first_upgrade_purchased: true,
-  }).eq('id', user.id)
+  const originalCredits = user.credits || 0
+  const originalPlan = user.plan || 'free'
+  const originalExpiry = user.credits_expires_at || null
 
-  await sb.from('payments').insert({
-    id: crypto.randomUUID(), user_id: user.id,
-    kiwify_transaction_id: orderId,
-    product: productName || productId,
-    value, status: orderStatus || eventType || 'paid',
-    created_at: now,
-  }).catch(() => {})
+  try {
+    await sb.from('users').update({
+      credits:                 newCredits,
+      plan:                    tier,
+      first_upgrade_purchased: true,
+      credits_expires_at,
+    }).eq('id', user.id)
 
-  await sb.from('credit_history').insert({
-    id: crypto.randomUUID(), user_id: user.id,
-    type: 'purchase', credits: creditsToAdd,
-    description: `Compra aprovada: ${productName || productId} (pedido ${orderId})`,
-    created_at: now,
-  }).catch(() => {})
+    await sb.from('payments').insert({
+      id: crypto.randomUUID(), user_id: user.id,
+      kiwify_transaction_id: orderId,
+      product: productName || productId,
+      value, status: orderStatus || eventType || 'paid',
+      created_at: now,
+    })
+
+    await sb.from('credit_history').insert({
+      id: crypto.randomUUID(), user_id: user.id,
+      type: 'purchase', credits: creditsToAdd,
+      description: `Compra aprovada: ${productName || productId} (pedido ${orderId})`,
+      created_at: now,
+    })
+
+  } catch (e) {
+    console.error(`Kiwify webhook: erro ao creditar usuário ${user.id} (order ${orderId}):`, e)
+    // Rollback: tenta reverter créditos se user foi atualizado
+    try {
+      await sb.from('users').update({
+        credits: originalCredits,
+        plan: originalPlan,
+        credits_expires_at: originalExpiry,
+      }).eq('id', user.id)
+    } catch (_) {}
+    return res.status(500).json({ error: 'Erro interno ao processar pagamento' })
+  }
 
   return res.status(200).json({
     ok: true, credits_added: creditsToAdd, plan: tier,

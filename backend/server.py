@@ -603,17 +603,27 @@ async def kiwify_webhook(request: Request):
     event_type   = (body.get('webhook_event_type') or '').lower()
     order_id     = body.get('order_id') or body.get('order_ref') or ''
 
+    # Kiwify usa vários status para "pago aprovado"
+    PAID_STATUSES = {
+        'paid', 'approved', 'completed', 'confirmed', 'success',
+        'order_approved', 'payment_approved', 'payment_confirmed'
+    }
+    is_paid = order_status in PAID_STATUSES or event_type in PAID_STATUSES
+
     # Só processa vendas aprovadas — outros eventos (boleto/pix gerado,
     # carrinho abandonado, recusada, etc.) são apenas confirmados (200).
-    if order_status != 'paid' and event_type != 'order_approved':
-        return {'ok': True, 'ignored': True, 'order_status': order_status}
+    if not is_paid:
+        return {'ok': True, 'ignored': True, 'order_status': order_status, 'event_type': event_type}
 
     customer = body.get('Customer') or {}
     email = (customer.get('email') or '').strip().lower()
     tracking = body.get('TrackingParameters') or body.get('tracking_parameters') or {}
+    # Expand tracking fields — Kiwify may send user_id in various params
     tracked_user_id = (
         (tracking.get('src') or tracking.get('sck') or
-         tracking.get('utm_content') or tracking.get('utm_term') or '')
+         tracking.get('utm_content') or tracking.get('utm_term') or
+         tracking.get('user_id') or tracking.get('external_id') or
+         tracking.get('customer_id') or tracking.get('subscriber_id') or '')
         or ''
     )
     tracked_user_id = str(tracked_user_id).strip() or None
@@ -624,6 +634,14 @@ async def kiwify_webhook(request: Request):
     tier = detect_plan_tier(product_name, product_id)
 
     now = datetime.now(timezone.utc).isoformat()
+    # Use Kiwify's order_date if available for accurate expiry calculation
+    paid_raw = body.get('order_date') or body.get('OrderDate') or body.get('payment_date') or now
+    try:
+        paid_at = datetime.fromisoformat(str(paid_raw).replace('Z', '+00:00'))
+        if paid_at.tzinfo is None:
+            paid_at = paid_at.replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        paid_at = datetime.now(timezone.utc)
     commissions = body.get('Commissions') or {}
     value = commissions.get('charge_amount') or commissions.get('product_base_price') or ''
 
@@ -685,29 +703,45 @@ async def kiwify_webhook(request: Request):
     credits_to_add = PLAN_CREDITS[tier]
     new_credits = user.get('credits', 0) + credits_to_add
 
-    # Créditos comprados expiram 3 meses após a compra (cronômetro na carteira).
-    expires_at = (datetime.now(timezone.utc) + timedelta(days=90)).isoformat()
+    # Créditos comprados expiram 3 meses após a data do pagamento (não do webhook).
+    expires_at = (paid_at + timedelta(days=90)).isoformat()
 
-    await srun(lambda: sb.table('users').update({
-        'credits':                 new_credits,
-        'plan':                    tier,
-        'first_upgrade_purchased': True,
-        'credits_expires_at':      expires_at,
-    }).eq('id', user['id']).execute())
+    # Transação: atualiza usuário + insere payment + credit_history atomicamente
+    # Se qualquer etapa falhar, rollback automático via exceção
+    try:
+        await srun(lambda: sb.table('users').update({
+            'credits':                 new_credits,
+            'plan':                    tier,
+            'first_upgrade_purchased': True,
+            'credits_expires_at':      expires_at,
+        }).eq('id', user['id']).execute())
 
-    await srun(lambda: sb.table('payments').insert({
-        'id': str(uuid.uuid4()), 'user_id': user['id'],
-        'kiwify_transaction_id': order_id, 'product': product_name or product_id,
-        'value': value, 'status': order_status or event_type or 'paid',
-        'created_at': now,
-    }).execute())
+        await srun(lambda: sb.table('payments').insert({
+            'id': str(uuid.uuid4()), 'user_id': user['id'],
+            'kiwify_transaction_id': order_id, 'product': product_name or product_id,
+            'value': value, 'status': order_status or event_type or 'paid',
+            'created_at': now,
+        }).execute())
 
-    await srun(lambda: sb.table('credit_history').insert({
-        'id': str(uuid.uuid4()), 'user_id': user['id'],
-        'type': 'purchase', 'credits': credits_to_add,
-        'description': f'Compra aprovada: {product_name or product_id} (pedido {order_id})',
-        'created_at': now,
-    }).execute())
+        await srun(lambda: sb.table('credit_history').insert({
+            'id': str(uuid.uuid4()), 'user_id': user['id'],
+            'type': 'purchase', 'credits': credits_to_add,
+            'description': f'Compra aprovada: {product_name or product_id} (pedido {order_id})',
+            'created_at': now,
+        }).execute())
+
+    except Exception as e:
+        logger.error(f"Kiwify webhook: erro ao creditar usuário {user['id']} (order {order_id}): {e}")
+        # Rollback: tenta reverter créditos se user foi atualizado
+        try:
+            await srun(lambda: sb.table('users').update({
+                'credits': user.get('credits', 0),
+                'plan': user.get('plan', 'free'),
+                'credits_expires_at': user.get('credits_expires_at'),
+            }).eq('id', user['id']).execute())
+        except Exception:
+            pass
+        raise HTTPException(500, 'Erro interno ao processar pagamento')
 
     logger.info(
         f"Kiwify: +{credits_to_add} créditos / plano {tier} "
