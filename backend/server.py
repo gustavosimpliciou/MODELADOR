@@ -163,6 +163,56 @@ async def get_or_create_profile(user_id: str, email: str, name: str = '') -> dic
         await srun(lambda: sb.table('users').insert(row).execute())
     except Exception as e:
         logger.warning(f"Could not insert profile for {user_id}: {e}")
+        return row
+
+    # Auto-link orphaned payments for this email
+    try:
+        orphan_res = await srun(
+            lambda: sb.table('payments')
+                .select('*')
+                .eq('status', 'paid_user_not_found')
+                .ilike('product', f'%|||buyer:{email}%')
+                .execute()
+        )
+        for payment in (orphan_res.data or []):
+            product_name = payment.get('product', '').split('|||buyer:')[0]
+            tier = detect_plan_tier(product_name, '')
+            if not tier:
+                continue
+            credits_to_add = PLAN_CREDITS[tier]
+            new_credits = credits_to_add  # new user starts at 0
+            now = datetime.now(timezone.utc).isoformat()
+
+            paid_at_str = payment.get('created_at')
+            try:
+                paid_at = datetime.fromisoformat(str(paid_at_str).replace('Z', '+00:00'))
+            except (ValueError, TypeError):
+                paid_at = datetime.now(timezone.utc)
+            expires_at = (paid_at + timedelta(days=90)).isoformat()
+
+            await srun(lambda: sb.table('users').update({
+                'credits':                 new_credits,
+                'plan':                    tier,
+                'first_upgrade_purchased': True,
+                'credits_expires_at':      expires_at,
+            }).eq('id', user_id).execute())
+
+            await srun(lambda: sb.table('payments').update({
+                'user_id': user_id,
+                'status': 'paid_linked_auto',
+            }).eq('id', payment['id']).execute())
+
+            await srun(lambda: sb.table('credit_history').insert({
+                'id': str(uuid.uuid4()), 'user_id': user_id,
+                'type': 'purchase', 'credits': credits_to_add,
+                'description': f'Compra vinculada automaticamente no cadastro: {product_name} (pedido {payment.get("kiwify_transaction_id")})',
+                'created_at': now,
+            }).execute())
+
+            logger.info(f"Auto-vinculou pagamento {payment.get('kiwify_transaction_id')} ao novo usuário {user_id} (+{credits_to_add} créditos)")
+    except Exception as e:
+        logger.warning(f"Erro ao auto-vincular pagamentos para {user_id}: {e}")
+
     return row
 
 
@@ -682,7 +732,7 @@ async def kiwify_webhook(request: Request):
     if user is None:
         logger.warning(
             f"Webhook Kiwify: usuário não encontrado "
-            f"(email={email}, tracked={tracked_user_id}, order={order_id})"
+            f"(email={email}, tracked={tracked_user_id}, order={order_id}, product={product_name})"
         )
         product_stored = (
             f"{product_name or product_id}|||buyer:{email}" if email
@@ -699,6 +749,12 @@ async def kiwify_webhook(request: Request):
             'ok': True, 'ignored': True, 'reason': 'usuário não encontrado',
             'email': email or None, 'tracked_user_id': tracked_user_id,
         }
+
+    # User found — log resolution method for debugging
+    logger.info(
+        f"Kiwify webhook: usuário resolvido via {resolved_by} "
+        f"(email={email}, tracked={tracked_user_id}, order={order_id})"
+    )
 
     credits_to_add = PLAN_CREDITS[tier]
     new_credits = user.get('credits', 0) + credits_to_add
@@ -970,6 +1026,116 @@ async def admin_update_user_credits(
         'new_credits':      new_credits,
         'change':           change,
     }
+
+
+# ─── Admin: Orphaned payments (paid but user not found) ────────────────
+class LinkPaymentInput(BaseModel):
+    user_id: str
+    payment_id: str
+
+
+@admin_router.get('/orphaned-payments')
+async def admin_orphaned_payments(current_user: dict = Depends(require_admin)):
+    """List payments with status 'paid_user_not_found' — payments made but user not linked."""
+    require_db()
+    res = await srun(
+        lambda: sb.table('payments')
+            .select('id,kiwify_transaction_id,product,value,status,created_at')
+            .eq('status', 'paid_user_not_found')
+            .order('created_at', desc=True)
+            .execute()
+    )
+    payments = res.data or []
+    # Try to extract email from product field (format: "Product|||buyer:email@x.com")
+    for p in payments:
+        prod = p.get('product', '')
+        if '|||buyer:' in prod:
+            p['buyer_email'] = prod.split('|||buyer:')[1]
+        else:
+            p['buyer_email'] = None
+    return {'orphaned_payments': payments}
+
+
+@admin_router.post('/link-payment')
+async def admin_link_payment(
+    body: LinkPaymentInput,
+    current_user: dict = Depends(require_admin),
+):
+    """Link an orphaned payment to a user, crediting them and updating payment record."""
+    require_db()
+
+    # Verify payment exists and is orphaned
+    pay_res = await srun(
+        lambda: sb.table('payments')
+            .select('*')
+            .eq('id', body.payment_id)
+            .eq('status', 'paid_user_not_found')
+            .execute()
+    )
+    if not pay_res.data:
+        raise HTTPException(404, 'Pagamento órfão não encontrado')
+    payment = pay_res.data[0]
+
+    # Verify user exists
+    user_res = await srun(
+        lambda: sb.table('users').select('*').eq('id', body.user_id).execute()
+    )
+    if not user_res.data:
+        raise HTTPException(404, 'Usuário não encontrado')
+    user = user_res.data[0]
+
+    # Detect tier from product
+    product_name = payment.get('product', '').split('|||buyer:')[0]
+    tier = detect_plan_tier(product_name, '')
+    if not tier:
+        raise HTTPException(400, 'Não foi possível identificar o plano do produto')
+
+    credits_to_add = PLAN_CREDITS[tier]
+    new_credits = (user.get('credits', 0) or 0) + credits_to_add
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Use payment's created_at for expiry if available
+    paid_at_str = payment.get('created_at')
+    try:
+        paid_at = datetime.fromisoformat(str(paid_at_str).replace('Z', '+00:00'))
+    except (ValueError, TypeError):
+        paid_at = datetime.now(timezone.utc)
+    expires_at = (paid_at + timedelta(days=90)).isoformat()
+
+    try:
+        # Update user credits
+        await srun(lambda: sb.table('users').update({
+            'credits':                 new_credits,
+            'plan':                    tier,
+            'first_upgrade_purchased': True,
+            'credits_expires_at':      expires_at,
+        }).eq('id', body.user_id).execute())
+
+        # Update payment with user_id and new status
+        await srun(lambda: sb.table('payments').update({
+            'user_id': body.user_id,
+            'status': 'paid_linked_manual',
+        }).eq('id', body.payment_id).execute())
+
+        # Insert credit history
+        await srun(lambda: sb.table('credit_history').insert({
+            'id': str(uuid.uuid4()), 'user_id': body.user_id,
+            'type': 'purchase', 'credits': credits_to_add,
+            'description': f'Compra vinculada manualmente: {product_name} (pedido {payment.get("kiwify_transaction_id")})',
+            'created_at': now,
+        }).execute())
+
+        logger.info(f"Admin vinculou pagamento {payment.get('kiwify_transaction_id')} ao usuário {body.user_id} (+{credits_to_add} créditos)")
+
+        return {
+            'ok': True,
+            'credits_added': credits_to_add,
+            'new_credits': new_credits,
+            'plan': tier,
+        }
+    except Exception as e:
+        logger.error(f"Erro ao vincular pagamento {body.payment_id} ao usuário {body.user_id}: {e}")
+        raise HTTPException(500, 'Erro ao vincular pagamento')
 
 
 # ─── Health ───────────────────────────────────────────────────────────
