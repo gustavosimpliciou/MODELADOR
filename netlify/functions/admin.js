@@ -219,13 +219,17 @@ export const handler = async (event) => {
 
     // Total de vendas em dinheiro (pagamentos que chegaram na Kiwify)
     // Inclui paid / approved e também paid_user_not_found (o dinheiro caiu, só não linkou usuário)
+    const PAID_STATUSES = new Set([
+      'paid', 'approved', 'completed', 'confirmed', 'success',
+      'order_approved', 'payment_approved', 'payment_confirmed',
+      'paid_linked_auto', 'paid_linked_manual',
+    ])
     let total_revenue = 0
     let total_paid_count = 0
     for (const p of (allPaymentValues || [])) {
       const s = (p.status || '').toLowerCase()
       const isMoneyIn =
-        s.includes('paid') ||
-        s.includes('approved') ||
+        PAID_STATUSES.has(s) ||
         s.includes('user_not_found') // dinheiro caiu, usuário não encontrado
       if (!isMoneyIn) continue
       if (s.includes('unrecognized_product')) continue
@@ -333,13 +337,19 @@ export const handler = async (event) => {
       if (k && usersByDay[k] != null) usersByDay[k] += 1
     }
 
+    const PAID_STATUSES = new Set([
+      'paid', 'approved', 'completed', 'confirmed', 'success',
+      'order_approved', 'payment_approved', 'payment_confirmed',
+      'paid_linked_auto', 'paid_linked_manual',
+    ])
+
     for (const p of paysInRange) {
       const k = dayKey(p.created_at)
       if (!k || !paymentsByDay[k]) continue
       const s = (p.status || '').toLowerCase()
       const isMoney =
-        (s.includes('paid') || s.includes('approved') || s.includes('user_not_found')) &&
-        !s.includes('unrecognized_product')
+        PAID_STATUSES.has(s) ||
+        (s.includes('user_not_found') && !s.includes('unrecognized_product'))
       if (!isMoney) continue
       const v = toReais(p.value)
       paymentsByDay[k].count += 1

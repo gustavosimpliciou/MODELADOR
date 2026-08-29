@@ -870,10 +870,16 @@ async def admin_stats(current_user: dict = Depends(require_admin)):
 
     total_revenue = 0.0
     total_paid_count = 0
+    # Same paid statuses used in webhook
+    PAID_STATUSES = {
+        'paid', 'approved', 'completed', 'confirmed', 'success',
+        'order_approved', 'payment_approved', 'payment_confirmed',
+        'paid_linked_auto', 'paid_linked_manual',
+    }
     for p in all_vals:
         s = (p.get('status') or '').lower()
         is_money = (
-            'paid' in s or 'approved' in s or 'user_not_found' in s
+            s in PAID_STATUSES or 'user_not_found' in s
         ) and 'unrecognized_product' not in s
         if not is_money:
             continue
