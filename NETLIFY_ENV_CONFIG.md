@@ -13,7 +13,7 @@
 | `SUPABASE_URL` | `https://blqvsglspdayrznnbzzf.supabase.co` | URL do projeto Supabase |
 | `SUPABASE_KEY` | `sua_service_role_key` | **Service Role Key** do Supabase (Settings → API) |
 | `SUPABASE_SERVICE_KEY` | `sua_service_role_key` | Mesmo valor que `SUPABASE_KEY` (usado pelo webhook) |
-| `KIWIFY_WEBHOOK_TOKEN` | `seu_token_secreto` | Token compartilhado com a Kiwify (gere um aleatório forte) |
+| `KIWIFY_WEBHOOK_TOKEN` | `abw1j1a77ay` | Token compartilhado com a Kiwify |
 
 ---
 
