@@ -104,7 +104,20 @@ export const useUserStore = create<UserState>((set, get) => ({
 
   goToCheckout: (url) => {
     set({ showUpgradeModal: false })
-    window.open(url, '_blank', 'noopener,noreferrer')
+    try {
+      const checkoutUrl = new URL(url)
+      const s = get()
+      if (s.user?.email) checkoutUrl.searchParams.set('email', s.user.email)
+      if (s.user?.name) checkoutUrl.searchParams.set('name', s.user.name)
+      // user_id no parâmetro de tracking da Kiwify (volta no webhook)
+      if (s.user?.id) {
+        checkoutUrl.searchParams.set('src', s.user.id)
+        checkoutUrl.searchParams.set('sck', s.user.id)
+      }
+      window.open(checkoutUrl.toString(), '_blank', 'noopener,noreferrer')
+    } catch {
+      window.open(url, '_blank', 'noopener,noreferrer')
+    }
   },
 
   refreshCredits: async () => {
