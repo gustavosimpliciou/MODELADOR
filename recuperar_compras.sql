@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════
--- RECUPERAR COMPRAS PASSADAS - Executar no Supabase SQL Editor
+-- RECUPERAR COMPRAS PASSADAS - Versão com ON CONFLICT (evita duplicatas)
 -- ═══════════════════════════════════════════════════════════════════════
 
 -- Créditos por plano:
@@ -20,7 +20,13 @@ INSERT INTO public.payments (
   '6900',
   'paid',
   '2026-01-15T10:30:00Z'
-);
+)
+ON CONFLICT (kiwify_transaction_id) DO UPDATE SET
+  user_id = EXCLUDED.user_id,
+  product = EXCLUDED.product,
+  value = EXCLUDED.value,
+  status = 'paid',
+  created_at = EXCLUDED.created_at;
 
 UPDATE public.users 
 SET credits = credits + 1500,
@@ -37,7 +43,8 @@ VALUES (
   1500,
   'Compra aprovada: PREMIUM (pedido loylznV) - INSERIDO MANUALMENTE',
   NOW()
-);
+)
+ON CONFLICT DO NOTHING;
 
 -- ═══════════════════════════════════════════════════════════════════════
 -- COMPRA 2: EASY - 200 créditos
@@ -52,7 +59,13 @@ INSERT INTO public.payments (
   '600',
   'paid',
   '2026-01-16T14:20:00Z'
-);
+)
+ON CONFLICT (kiwify_transaction_id) DO UPDATE SET
+  user_id = EXCLUDED.user_id,
+  product = EXCLUDED.product,
+  value = EXCLUDED.value,
+  status = 'paid',
+  created_at = EXCLUDED.created_at;
 
 UPDATE public.users 
 SET credits = credits + 200,
@@ -69,7 +82,8 @@ VALUES (
   200,
   'Compra aprovada: EASY (pedido jOKtICj) - INSERIDO MANUALMENTE',
   NOW()
-);
+)
+ON CONFLICT DO NOTHING;
 
 -- ═══════════════════════════════════════════════════════════════════════
 -- COMPRA 3: EASY - 200 créditos
@@ -84,7 +98,13 @@ INSERT INTO public.payments (
   '600',
   'paid',
   '2026-01-16T14:20:00Z'
-);
+)
+ON CONFLICT (kiwify_transaction_id) DO UPDATE SET
+  user_id = EXCLUDED.user_id,
+  product = EXCLUDED.product,
+  value = EXCLUDED.value,
+  status = 'paid',
+  created_at = EXCLUDED.created_at;
 
 UPDATE public.users 
 SET credits = credits + 200,
@@ -101,7 +121,8 @@ VALUES (
   200,
   'Compra aprovada: EASY (pedido w3TS3ET) - INSERIDO MANUALMENTE',
   NOW()
-);
+)
+ON CONFLICT DO NOTHING;
 
 -- ═══════════════════════════════════════════════════════════════════════
 -- COMPRA 4: PRO (MEDIUM) - 565 créditos
@@ -117,7 +138,13 @@ INSERT INTO public.payments (
   '2500',
   'paid',
   '2026-01-16T14:20:00Z'
-);
+)
+ON CONFLICT (kiwify_transaction_id) DO UPDATE SET
+  user_id = EXCLUDED.user_id,
+  product = EXCLUDED.product,
+  value = EXCLUDED.value,
+  status = 'paid',
+  created_at = EXCLUDED.created_at;
 
 UPDATE public.users 
 SET credits = credits + 565,
@@ -134,7 +161,8 @@ VALUES (
   565,
   'Compra aprovada: PRO (MEDIUM) (pedido 0t8cs3I) - INSERIDO MANUALMENTE',
   NOW()
-);
+)
+ON CONFLICT DO NOTHING;
 
 -- ═══════════════════════════════════════════════════════════════════════
 -- COMPRA 5: EASY - 200 créditos
@@ -149,7 +177,13 @@ INSERT INTO public.payments (
   '600',
   'paid',
   '2026-01-16T14:20:00Z'
-);
+)
+ON CONFLICT (kiwify_transaction_id) DO UPDATE SET
+  user_id = EXCLUDED.user_id,
+  product = EXCLUDED.product,
+  value = EXCLUDED.value,
+  status = 'paid',
+  created_at = EXCLUDED.created_at;
 
 UPDATE public.users 
 SET credits = credits + 200,
@@ -166,7 +200,8 @@ VALUES (
   200,
   'Compra aprovada: EASY (pedido A4o4XIt) - INSERIDO MANUALMENTE',
   NOW()
-);
+)
+ON CONFLICT DO NOTHING;
 
 -- ═══════════════════════════════════════════════════════════════════════
 -- VERIFICAÇÃO - Execute após inserir para confirmar
