@@ -49,7 +49,7 @@ Adicione estas 4 variáveis:
 
 ### URL do Webhook (Produção - Netlify)
 ```
-https://SEU_SITE.netlify.app/api/webhook/kiwify?token=SEU_TOKEN_GERADO_NO_PASSO_1
+https://SEU_SITE.netlify.app/api/webhook/kiwify?token=abw1j1a77ay
 ```
 
 **Substitua:**
@@ -142,8 +142,8 @@ ORDER BY created_at DESC;
 ## 8. Checklist Final
 
 - [ ] Token gerado e salvo em local seguro
-- [ ] `KIWIFY_WEBHOOK_TOKEN` no Netlify = Token gerado
-- [ ] `KIWIFY_WEBHOOK_TOKEN` no backend `.env` = Token gerado
+- [ ] `KIWIFY_WEBHOOK_TOKEN` no Netlify = `abw1j1a77ay`
+- [ ] `KIWIFY_WEBHOOK_TOKEN` no backend `.env` = `abw1j1a77ay`
 - [ ] `SUPABASE_KEY` (service_role) no Netlify
 - [ ] `SUPABASE_SERVICE_KEY` no Netlify (mesmo valor)
 - [ ] Webhook URL na Kiwify aponta para Netlify + `?token=TOKEN`
