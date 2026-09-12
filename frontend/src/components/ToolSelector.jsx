@@ -25,8 +25,8 @@ export default function ToolSelector({ onSelectModelador, onSelectDashboard }) {
       position: 'relative',
       overflow: 'hidden',
     }}>
-      {/* Animação de partículas (idêntica à tela inicial do Site Geneseez) */}
-      <ParticleAnimation isDark={false} containerMode={true} />
+      {/* Animação de partículas (idêntica à tela inicial do Site Geneseez) — tela cheia */}
+      <ParticleAnimation isDark={false} background />
 
       {/* Header */}
       <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, position: 'relative', zIndex: 1 }}>

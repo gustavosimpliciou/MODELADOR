@@ -1,12 +1,20 @@
 import { useEffect, useRef } from 'react'
 
-export default function ParticleAnimation({ isDark = false, containerMode = false }) {
+// Animação de partículas copiada do Site Geneseez (Hero).
+// Modo `background`: ocupa a tela inteira do elemento pai (absolute inset-0),
+// responde a resize e segue o mouse na tela inteira — ideal como fundo da
+// tela de escolha de ferramenta.
+export default function ParticleAnimation({ isDark = false, containerMode = false, background = false }) {
   const canvasRef = useRef(null)
   const containerRef = useRef(null)
   const particlesRef = useRef([])
   const activationPointsRef = useRef([])
   const lastParticleTimeRef = useRef(0)
-  const mousePositionRef = useRef({ x: 0, y: 0 })
+
+  // `background` = tela cheia atrás do conteúdo (usa a lógica full-screen do original:
+  // 50 partículas, distância 200, mouse na janela inteira), mas renderizado como
+  // absolute atrás (z-0) em vez de fixed por cima (z-10).
+  const useWindowSize = !containerMode || background
 
   useEffect(() => {
     if (!canvasRef.current || !containerRef.current) return
@@ -15,37 +23,50 @@ export default function ParticleAnimation({ isDark = false, containerMode = fals
     const ctx = canvas.getContext('2d', { alpha: true })
     const container = containerRef.current
     const particles = particlesRef.current
-    const maxParticles = containerMode ? 20 : 50
-    const maxDistance = containerMode ? 100 : 200
+    const maxParticles = useWindowSize ? 50 : 20
+    const maxDistance = useWindowSize ? 200 : 100
     const fadeTime = 2500
-    const particleInterval = containerMode ? 40 : 60
-    const numActivationPoints = containerMode ? 6 : 10
+    const particleInterval = useWindowSize ? 60 : 40
+    const numActivationPoints = useWindowSize ? 10 : 6
 
     let animationFrameId
-    let containerRect
+    let containerRect = null
 
     const resizeCanvas = () => {
-      if (containerMode) {
-        containerRect = container.getBoundingClientRect()
-        canvas.width = containerRect.width
-        canvas.height = containerRect.height
-        canvas.style.width = `${containerRect.width}px`
-        canvas.style.height = `${containerRect.height}px`
+      const dpr = Math.min(window.devicePixelRatio || 1, 2)
+      if (useWindowSize) {
+        // Tela inteira — responsivo a qualquer resize/orientação
+        const w = window.innerWidth
+        const h = window.innerHeight
+        canvas.width = Math.floor(w * dpr)
+        canvas.height = Math.floor(h * dpr)
+        canvas.style.width = `${w}px`
+        canvas.style.height = `${h}px`
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+        containerRect = { width: w, height: h, left: 0, top: 0 }
       } else {
-        canvas.width = window.innerWidth
-        canvas.height = window.innerHeight
-        canvas.style.width = `${window.innerWidth}px`
-        canvas.style.height = `${window.innerHeight}px`
+        containerRect = container.getBoundingClientRect()
+        const w = Math.max(1, Math.floor(containerRect.width))
+        const h = Math.max(1, Math.floor(containerRect.height))
+        canvas.width = Math.floor(w * dpr)
+        canvas.height = Math.floor(h * dpr)
+        canvas.style.width = `${w}px`
+        canvas.style.height = `${h}px`
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       }
 
       initializeActivationPoints()
     }
 
     const getContainerDimensions = () => {
-      if (containerMode) {
-        return { w: containerRect?.width || 400, h: containerRect?.height || 400 }
+      if (useWindowSize) {
+        return { w: window.innerWidth, h: window.innerHeight }
       }
-      return { w: window.innerWidth, h: window.innerHeight * 0.8 }
+      if (containerRect && containerRect.width > 0) {
+        return { w: containerRect.width, h: containerRect.height }
+      }
+      const r = container.getBoundingClientRect()
+      return { w: r.width || 400, h: r.height || 400 }
     }
 
     const getRandomPosition = (section) => {
@@ -88,11 +109,11 @@ export default function ParticleAnimation({ isDark = false, containerMode = fals
       constructor(x, y) {
         this.x = x
         this.y = y
-        this.vx = (Math.random() - 0.5) * (containerMode ? 1.0 : 1.5)
-        this.vy = (Math.random() - 0.5) * (containerMode ? 1.0 : 1.5)
+        this.vx = (Math.random() - 0.5) * (useWindowSize ? 1.5 : 1.0)
+        this.vy = (Math.random() - 0.5) * (useWindowSize ? 1.5 : 1.0)
         this.opacity = 0.9
-        // Partículas um pouco menores que o original (original: 1.5–3.5px em containerMode)
-        this.size = Math.random() * (containerMode ? 1.4 : 2) + 1.0
+        // Um pouco menores que o original (original full: 1.5–4.5px)
+        this.size = Math.random() * (useWindowSize ? 2 : 1.4) + 1.0
         this.createdAt = Date.now()
         this.element = document.createElement('div')
         this.element.className = isDark ? 'particle-dark' : 'particle'
@@ -206,42 +227,22 @@ export default function ParticleAnimation({ isDark = false, containerMode = fals
       animationFrameId = requestAnimationFrame(animate)
     }
 
+    // Segue o mouse na TELA INTEIRA (sem restrição de bounds quando full-screen)
     const handleMouseMove = (e) => {
-      if (containerMode) {
-        const rect = container.getBoundingClientRect()
-        containerRect = rect
-        const x = e.clientX - rect.left
-        const y = e.clientY - rect.top
-
-        if (x >= 0 && x <= rect.width && y >= 0 && y <= rect.height) {
-          mousePositionRef.current = { x, y }
-          for (let i = 0; i < 5; i++) {
-            createParticle(
-              x + (Math.random() - 0.5) * 80,
-              y + (Math.random() - 0.5) * 80
-            )
-          }
-        }
-      } else {
-        mousePositionRef.current = { x: e.clientX, y: e.clientY }
+      if (useWindowSize) {
         for (let i = 0; i < 5; i++) {
           createParticle(
             e.clientX + (Math.random() - 0.5) * 80,
             e.clientY + (Math.random() - 0.5) * 80
           )
         }
-      }
-    }
-
-    const handleTouchMove = (e) => {
-      if (containerMode) {
+      } else {
         const rect = container.getBoundingClientRect()
         containerRect = rect
-        const x = e.touches[0].clientX - rect.left
-        const y = e.touches[0].clientY - rect.top
+        const x = e.clientX - rect.left
+        const y = e.clientY - rect.top
 
         if (x >= 0 && x <= rect.width && y >= 0 && y <= rect.height) {
-          mousePositionRef.current = { x, y }
           for (let i = 0; i < 5; i++) {
             createParticle(
               x + (Math.random() - 0.5) * 80,
@@ -249,13 +250,32 @@ export default function ParticleAnimation({ isDark = false, containerMode = fals
             )
           }
         }
-      } else {
-        mousePositionRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+      }
+    }
+
+    const handleTouchMove = (e) => {
+      const t = e.touches[0]
+      if (!t) return
+      if (useWindowSize) {
         for (let i = 0; i < 5; i++) {
           createParticle(
-            e.touches[0].clientX + (Math.random() - 0.5) * 80,
-            e.touches[0].clientY + (Math.random() - 0.5) * 80
+            t.clientX + (Math.random() - 0.5) * 80,
+            t.clientY + (Math.random() - 0.5) * 80
           )
+        }
+      } else {
+        const rect = container.getBoundingClientRect()
+        containerRect = rect
+        const x = t.clientX - rect.left
+        const y = t.clientY - rect.top
+
+        if (x >= 0 && x <= rect.width && y >= 0 && y <= rect.height) {
+          for (let i = 0; i < 5; i++) {
+            createParticle(
+              x + (Math.random() - 0.5) * 80,
+              y + (Math.random() - 0.5) * 80
+            )
+          }
         }
       }
     }
@@ -265,6 +285,13 @@ export default function ParticleAnimation({ isDark = false, containerMode = fals
     window.addEventListener('mousemove', handleMouseMove, { passive: true })
     window.addEventListener('touchmove', handleTouchMove, { passive: true })
     window.addEventListener('resize', resizeCanvas)
+    window.addEventListener('orientationchange', resizeCanvas)
+
+    let resizeObserver = null
+    if (!useWindowSize && typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => resizeCanvas())
+      resizeObserver.observe(container)
+    }
 
     resizeCanvas()
     animate()
@@ -272,8 +299,10 @@ export default function ParticleAnimation({ isDark = false, containerMode = fals
     return () => {
       cancelAnimationFrame(animationFrameId)
       window.removeEventListener('resize', resizeCanvas)
+      window.removeEventListener('orientationchange', resizeCanvas)
       window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('touchmove', handleTouchMove)
+      if (resizeObserver) resizeObserver.disconnect()
 
       particles.forEach(particle => {
         if (particle.element.parentNode) {
@@ -282,7 +311,24 @@ export default function ParticleAnimation({ isDark = false, containerMode = fals
       })
       particlesRef.current = []
     }
-  }, [isDark, containerMode])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDark, containerMode, background, useWindowSize])
+
+  if (background) {
+    return (
+      <div
+        ref={containerRef}
+        aria-hidden="true"
+        style={{
+          position: 'absolute', inset: 0, zIndex: 0,
+          overflow: 'hidden', pointerEvents: 'none',
+          width: '100%', height: '100%',
+        }}
+      >
+        <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />
+      </div>
+    )
+  }
 
   if (containerMode) {
     return (
