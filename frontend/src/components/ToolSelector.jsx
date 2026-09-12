@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useStore } from '../store/useStore'
+import ParticleAnimation from './ParticleAnimation'
 
 export default function ToolSelector({ onSelectModelador, onSelectDashboard }) {
   const user = useStore((s) => s.user)
@@ -21,9 +22,14 @@ export default function ToolSelector({ onSelectModelador, onSelectDashboard }) {
       alignItems: 'center', justifyContent: 'center',
       gap: 48,
       animation: 'fadeIn 0.4s ease both',
+      position: 'relative',
+      overflow: 'hidden',
     }}>
+      {/* Animação de partículas (idêntica à tela inicial do Site Geneseez) */}
+      <ParticleAnimation isDark={false} containerMode={true} />
+
       {/* Header */}
-      <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+      <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, position: 'relative', zIndex: 1 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <img
             src="/logo.png"
@@ -62,6 +68,7 @@ export default function ToolSelector({ onSelectModelador, onSelectDashboard }) {
         display: 'flex', gap: 24,
         flexWrap: 'wrap', justifyContent: 'center',
         padding: '0 24px',
+        position: 'relative', zIndex: 1,
       }}>
         {/* Modelador 3D */}
         <ToolCard
@@ -112,6 +119,7 @@ export default function ToolSelector({ onSelectModelador, onSelectDashboard }) {
           color: 'var(--text-dim)', background: 'none',
           border: 'none', cursor: 'pointer', padding: '6px 12px',
           borderRadius: 4, transition: 'color 0.15s',
+          position: 'relative', zIndex: 1,
         }}
         onMouseEnter={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
         onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-dim)'}
@@ -128,6 +136,7 @@ export default function ToolSelector({ onSelectModelador, onSelectDashboard }) {
           color: 'var(--text-dim)', background: 'none',
           border: 'none', cursor: 'pointer', padding: '6px 12px',
           borderRadius: 4, transition: 'color 0.15s',
+          position: 'relative', zIndex: 1,
         }}
         onMouseEnter={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
         onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-dim)'}

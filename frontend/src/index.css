@@ -99,6 +99,30 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .fade-in { animation: fadeIn 0.25s ease both; }
+
+/* Particle Animation - White particles for dark backgrounds (copiado do Site Geneseez) */
+.particle {
+  position: absolute;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.8) 10%, rgba(255, 255, 255, 0.1) 80%);
+  border-radius: 50%;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  z-index: 15;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.4);
+  transition: opacity 0.5s ease-out;
+}
+
+/* Particle Animation - Black particles for light backgrounds */
+.particle-dark {
+  position: absolute;
+  background: radial-gradient(circle, rgba(0, 0, 0, 0.6) 10%, rgba(0, 0, 0, 0.05) 80%);
+  border-radius: 50%;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  z-index: 15;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.2);
+  transition: opacity 0.5s ease-out;
+}
 .label-upper {
   font-family: var(--font-condensed);
   font-size: 10px;
