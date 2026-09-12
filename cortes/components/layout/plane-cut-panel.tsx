@@ -1,10 +1,12 @@
 "use client"
 
 import { useMemo, useRef, useCallback, useState } from 'react'
-import { Scissors, FlipHorizontal2, Square, Infinity as InfinityIcon, Minus, ChevronUp, GripHorizontal, Move, RotateCcw } from 'lucide-react'
+import { Scissors, FlipHorizontal2, Square, Infinity as InfinityIcon, Minus, ChevronUp, GripHorizontal, Move, RotateCcw, X } from 'lucide-react'
 import * as THREE from 'three'
 import { useAppStore } from '@/lib/store'
-import { solidPlaneCut, planeFromAxisOffset, type PlaneAxis } from '@/lib/solid-plane-cut'
+import { planeFromAxisOffset, type PlaneAxis } from '@/lib/solid-plane-cut'
+import { runPlaneCutAsync, isCancelled, type AsyncCutProgress } from '@/lib/plane-cut-async'
+import { formatBytes, profileLine } from '@/lib/cut-telemetry'
 // plate-cut imports removed — Placa de Limitação não executa cortes
 import { trackEvent } from '@/lib/events'
 import { cn } from '@/lib/utils'
@@ -190,6 +192,14 @@ export function PlaneCutPanel() {
   const [fixedPos, setFixedPos] = useState<{ left: number; top: number } | null>(null)
   const headerDrag = useRef<{ startX: number; startY: number; origLeft: number; origTop: number } | null>(null)
 
+  // ─── Corte assíncrono: progresso real + cancelamento imediato ───────────────
+  // O processamento pesado roda no Worker (fora da UI thread): a câmera,
+  // o zoom e este painel continuam responsivos durante o corte de 1–3M faces.
+  const [cutting, setCutting] = useState(false)
+  const [cutProgress, setCutProgress] = useState<AsyncCutProgress | null>(null)
+  const [cutSummary, setCutSummary] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+
   const onHeaderPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     // Não inicia drag em cliques em botões filhos
     if ((e.target as HTMLElement).closest('button')) return
@@ -235,31 +245,59 @@ export function PlaneCutPanel() {
 
   const axisInfo = AXES.find((a) => a.id === cutPlaneAxis)!
 
-  // ─── Executar corte por plano infinito ───────────────────────────────────────
+  // ─── Executar corte por plano infinito (assíncrono, não trava a UI) ─────────
 
-  const handleExecuteInfinite = () => {
-    if (!modelMesh) return
+  const handleCancelCut = useCallback(() => {
+    abortRef.current?.abort()
+  }, [])
+
+  const handleExecuteInfinite = async () => {
+    if (!modelMesh || cutting) return
+    const geo = modelMesh.geometry as THREE.BufferGeometry
+    const triCount = geo.index ? geo.index.count / 3 : (geo.getAttribute('position') as THREE.BufferAttribute).count / 3
     pushHistory()
-    setStatus('cutting', 'Executando corte de sólido (watertight)...')
+    setCutSummary(null)
+    setCutting(true)
+    setCutProgress({ stage: 'Preparando modelo…', pct: 0, facesDone: 0, facesTotal: triCount, elapsedMs: 0, etaMs: null, mode: triCount > 1_500_000 ? 'extreme' : triCount > 500_000 ? 'high' : 'normal', usedWorker: true })
+    setStatus('cutting', 'Cortando modelo…')
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
 
-    requestAnimationFrame(() => setTimeout(() => {
-      const geo = modelMesh.geometry as THREE.BufferGeometry
+    try {
       if (!geo.boundingBox) geo.computeBoundingBox()
       const bbox = geo.boundingBox!
-
       const { normal, point } = planeFromAxisOffset(bbox, cutPlaneAxis, cutPlaneOffset, cutPlaneFlip)
 
-      let result
-      try {
-        result = solidPlaneCut(geo, normal, point)
-      } catch (err) {
+      const result = await runPlaneCutAsync(geo, normal, point, {
+        signal: ctrl.signal,
+        onProgress: (p) => setCutProgress(p),
+      })
+
+      const secs = (result.metrics.stageMs.total / 1000).toFixed(1)
+      const inFaces = result.metrics.inputFaces.toLocaleString('pt-BR')
+      const outFaces = (result.metrics.outputPosFaces + result.metrics.outputNegFaces).toLocaleString('pt-BR')
+      setCutSummary(
+        `✓ Corte concluído — ${inFaces} → ${outFaces} faces em ${secs}s ` +
+        `(${result.usedWorker ? 'worker' : 'compatível'} · ${result.mode}) · ` +
+        `pico ${formatBytes(result.metrics.peakTempBytes)} · ${profileLine(result.metrics)}`,
+      )
+      applyResult(result.positive, result.negative, normal,
+        `Corte concluído — ${result.capLoops} contorno(s) · ${result.capTriangles.toLocaleString('pt-BR')} triângulos de tampa · ${secs}s`)
+    } catch (err) {
+      if (isCancelled(err)) {
+        setCutSummary('Corte cancelado pelo usuário.')
+        setStatus('loaded', 'Corte cancelado.')
+      } else if (err instanceof Error && err.message === 'NO_INTERSECTION') {
+        setStatus('error', 'O plano não intercepta o modelo. Ajuste a posição do corte.')
+      } else {
         console.error('[PlaneCut] Erro:', err)
         setStatus('error', 'Falha ao cortar o sólido.')
-        return
       }
-
-      applyResult(result.positive, result.negative, normal, `Corte concluído — ${result.capLoops} contorno(s) · ${result.capTriangles.toLocaleString()} triângulos de tampa`)
-    }, 20))
+    } finally {
+      abortRef.current = null
+      setCutting(false)
+      setCutProgress(null)
+    }
   }
 
   // ─── Executar corte por placa finita ─────────────────────────────────────────
@@ -506,13 +544,59 @@ export function PlaneCutPanel() {
 
                   <button
                     onClick={handleExecuteInfinite}
-                    className="flex items-center justify-center gap-1.5 flex-1 px-3 py-1.5 rounded-xl text-[11px] font-mono font-semibold text-background hover:opacity-90 transition-all duration-150"
+                    disabled={cutting}
+                    className="flex items-center justify-center gap-1.5 flex-1 px-3 py-1.5 rounded-xl text-[11px] font-mono font-semibold text-background hover:opacity-90 transition-all duration-150 disabled:opacity-50"
                     style={{ background: axisInfo.color, boxShadow: `0 0 14px ${axisInfo.glow}` }}
                   >
                     <Scissors className="w-3 h-3" />
-                    Cortar
+                    {cutting ? 'Cortando…' : 'Cortar'}
                   </button>
                 </div>
+
+                {/* ── Progresso real + cancelamento (nunca congela a UI) ─────── */}
+                {cutting && cutProgress && (
+                  <div className="flex flex-col gap-1 rounded-xl px-2.5 py-2"
+                    style={{ background: 'oklch(0.12 0 0)', border: '1px solid oklch(0.20 0 0)' }}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[8px] font-mono uppercase tracking-widest" style={{ color: 'oklch(0.55 0 0)' }}>
+                        {cutProgress.stage}
+                      </span>
+                      <span className="text-[10px] font-mono tabular-nums font-medium" style={{ color: axisInfo.color }}>
+                        {Math.round(cutProgress.pct)}%
+                      </span>
+                    </div>
+                    <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'oklch(0.16 0 0)' }}>
+                      <div className="h-full rounded-full transition-all duration-150"
+                        style={{ width: `${Math.min(100, Math.max(0, cutProgress.pct))}%`, background: axisInfo.color }} />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[8px] font-mono tabular-nums" style={{ color: 'oklch(0.40 0 0)' }}>
+                        {cutProgress.facesDone.toLocaleString('pt-BR')} / {cutProgress.facesTotal.toLocaleString('pt-BR')} faces
+                        {' · '}{(cutProgress.elapsedMs / 1000).toFixed(1)}s
+                        {cutProgress.etaMs != null && cutProgress.etaMs > 500
+                          ? ` · resta ~${(cutProgress.etaMs / 1000).toFixed(1)}s`
+                          : ''}
+                        {' · '}{cutProgress.mode}{cutProgress.usedWorker ? ' · worker' : ' · compatível'}
+                      </span>
+                      <button
+                        onClick={handleCancelCut}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-mono"
+                        style={{ background: 'oklch(0.20 0.08 25)', color: 'oklch(0.75 0.15 25)', border: '1px solid oklch(0.35 0.12 25)' }}
+                        title="Cancelar o corte sem fechar a página"
+                      >
+                        <X className="w-2.5 h-2.5" />
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {cutSummary && !cutting && (
+                  <div className="rounded-lg px-2.5 py-1.5 text-[8px] font-mono leading-relaxed"
+                    style={{ background: 'oklch(0.11 0.03 145)', color: 'oklch(0.60 0.10 145)', border: '1px solid oklch(0.22 0.08 145)' }}>
+                    {cutSummary}
+                  </div>
+                )}
               </>
             )}
 
