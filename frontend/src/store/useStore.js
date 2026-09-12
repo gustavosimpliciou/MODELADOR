@@ -244,7 +244,7 @@ export const useStore = create((set, get) => ({
     set({ credits: EXPIRED_CREDIT_BALANCE, creditsExpiresAt: null })
   },
 
-  // Resgata o cupom GHOOST3D no servidor (700 créditos / 20 dias / 1x por conta).
+  // Resgata o cupom GHOOST3D no servidor (350 créditos / 20 dias / 1x por conta).
   redeemCoupon: async (code) => {
     try {
       const { data: { session } } = await supabase.auth.getSession()

@@ -5,14 +5,14 @@
 //  - confere o token de sessão do usuário via Supabase Auth
 //  - exige conta NOVA (sem upgrade: first_upgrade_purchased = false)
 //  - limita a 1 uso por conta (credit_history.type = 'coupon')
-//  - concede 700 créditos com expiração de 20 dias (credits_expires_at)
+//  - concede 350 créditos com expiração de 20 dias (credits_expires_at)
 //  - registra em credit_history e user_events
 
 const SUPABASE_URL         = process.env.SUPABASE_URL         || 'https://blqvsglspdayrznnbzzf.supabase.co'
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_KEY         || ''
 
 const COUPON_CODE    = 'GHOOST3D'
-const COUPON_CREDITS = 700
+const COUPON_CREDITS = 350
 const COUPON_DAYS    = 20
 const DAY_MS         = 86400000
 
