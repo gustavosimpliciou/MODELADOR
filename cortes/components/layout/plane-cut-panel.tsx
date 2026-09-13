@@ -201,6 +201,12 @@ export function PlaneCutPanel() {
   const [cutSummary, setCutSummary] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
+  // Hook ANTES do early return abaixo: hooks depois de `return null`
+  // quebram a ordem do React (erro #310) e derrubam a página inteira.
+  const handleCancelCut = useCallback(() => {
+    abortRef.current?.abort()
+  }, [])
+
   const onHeaderPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     // Não inicia drag em cliques em botões filhos
     if ((e.target as HTMLElement).closest('button')) return
@@ -247,10 +253,6 @@ export function PlaneCutPanel() {
   const axisInfo = AXES.find((a) => a.id === cutPlaneAxis)!
 
   // ─── Executar corte por plano infinito (assíncrono, não trava a UI) ─────────
-
-  const handleCancelCut = useCallback(() => {
-    abortRef.current?.abort()
-  }, [])
 
   const handleExecuteInfinite = async () => {
     if (!modelMesh || cutting) return
