@@ -74,3 +74,19 @@ export function cloneMeshTransform(
   m.scale.copy(src.scale)
   return m
 }
+
+/**
+ * Libera os buffers GPU de uma malha (geometria + material).
+ * Seguro chamar em malhas referenciadas pelo histórico: o `dispose()` do
+ * three.js remove apenas os buffers da GPU — os atributos JS permanecem e
+ * são reenviados automaticamente se a malha voltar a renderizar (undo).
+ */
+export function disposeMeshGPU(mesh: THREE.Mesh | null | undefined): void {
+  if (!mesh) return
+  try { mesh.geometry.dispose() } catch { /* já liberada */ }
+  try {
+    const mat = mesh.material as THREE.Material | THREE.Material[] | null
+    if (Array.isArray(mat)) mat.forEach((m) => { try { m.dispose() } catch {} })
+    else mat?.dispose()
+  } catch { /* já liberado */ }
+}

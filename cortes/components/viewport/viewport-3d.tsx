@@ -182,8 +182,18 @@ function SmartCutInteraction() {
     }
     const mat = modelMesh.material as THREE.MeshStandardMaterial
     colorAttrRef.current = ensureColorAttribute(modelMesh.geometry, mat)
-    // Construir cache de adjacência com ângulo atual (adiado para não travar o frame)
-    setTimeout(() => buildAdjacencyCache(modelMesh.geometry, sharpAngle ?? 35), 80)
+    // Construir cache de adjacência com ângulo atual (adiado para não travar o frame).
+    // Em malhas gigantes (>400k faces) a construção é cara: deixa para o primeiro
+    // clique (smartSelect constrói sob demanda) em vez de travar a UI após o corte.
+    setTimeout(() => {
+      try {
+        const g = modelMesh.geometry as THREE.BufferGeometry
+        const posCount = (g.getAttribute('position') as THREE.BufferAttribute)?.count ?? 0
+        const faceCount = g.index ? g.index.count / 3 : posCount / 3
+        if (faceCount > 400_000) return
+        buildAdjacencyCache(modelMesh.geometry, sharpAngle ?? 35)
+      } catch { /* seleção constrói sob demanda */ }
+    }, 80)
   }, [modelMesh, sharpAngle])
 
   // Invalida o hover cache sempre que os parâmetros de seleção ou a placa mudam
@@ -210,9 +220,19 @@ function SmartCutInteraction() {
   }, [setSelectionMode])
 
   // ── Raycast ──────────────────────────────────────────────────────────────────
+  // GUARDA ANTI-CONGELAMENTO: sem BVH (boundsTree) o raycast cai em brute-force
+  // O(n) — numa malha de 500k+ faces cada hover trava a aba por segundos até o
+  // navegador matá-la. Malhas grandes sem índice nunca passam daqui.
   const raycastFace = useCallback(
     (clientX: number, clientY: number): number | null => {
       if (!modelMesh) return null
+      const geo = modelMesh.geometry as THREE.BufferGeometry
+      const hasBVH = !!(geo as unknown as { boundsTree?: unknown }).boundsTree
+      if (!hasBVH) {
+        const posCount = (geo.getAttribute('position') as THREE.BufferAttribute)?.count ?? 0
+        const faceCount = geo.index ? geo.index.count / 3 : posCount / 3
+        if (faceCount > 200_000) return null
+      }
       const rect = gl.domElement.getBoundingClientRect()
       mouseNDC.current.set(
         ((clientX - rect.left) / rect.width)  *  2 - 1,
@@ -576,6 +596,15 @@ export function Viewport3D() {
         setStatus('error', 'Modelo não suportado')
         return
       }
+      // Libera a GPU do modelo anterior ANTES de registrar o novo
+      // (cada re-upload vazava a malha inteira nos buffers da GPU).
+      try {
+        const { disposeMeshGPU } = await import('@/lib/parts-manager')
+        const prev = useAppStore.getState()
+        prev.parts.forEach((p) => disposeMeshGPU(p.mesh))
+        prev.cutParts.forEach((cp) => disposeMeshGPU(cp.mesh))
+        try { prev.originalGeometry?.dispose() } catch {}
+      } catch { /* limpeza é best-effort */ }
       registerModelAsPart(mesh, info.name)
       setModelInfo(info)
       setOriginalGeometry(mesh.geometry.clone())

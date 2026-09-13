@@ -6,6 +6,7 @@ import * as THREE from 'three'
 import { useAppStore } from '@/lib/store'
 import { planeFromAxisOffset, type PlaneAxis } from '@/lib/solid-plane-cut'
 import { runPlaneCutAsync, isCancelled, type AsyncCutProgress } from '@/lib/plane-cut-async'
+import { disposeMeshGPU } from '@/lib/parts-manager'
 import { formatBytes, profileLine } from '@/lib/cut-telemetry'
 // plate-cut imports removed — Placa de Limitação não executa cortes
 import { trackEvent } from '@/lib/events'
@@ -320,6 +321,12 @@ export function PlaneCutPanel() {
       setStatus('error', 'O plano não intercepta o modelo. Ajuste a posição do corte.')
       return
     }
+
+    // Libera a GPU da malha substituída (cada corte vazava o modelo inteiro).
+    // O histórico guarda a referência JS — o three reenvia os atributos se o
+    // usuário desfizer a operação, então o undo continua funcionando.
+    const prevMesh = modelMesh
+    if (prevMesh) disposeMeshGPU(prevMesh)
 
     const mainMat = (modelMesh!.material as THREE.MeshStandardMaterial).clone()
     mainMat.side = THREE.DoubleSide
