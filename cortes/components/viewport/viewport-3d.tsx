@@ -15,6 +15,7 @@ import {
   type LimitationPlate,
 } from '@/lib/smart-cut'
 import { plateCutParamsFromTransform } from '@/lib/plate-cut'
+import { needsSpatialIndex } from '@/lib/geo-index'
 
 // ─── Constrói LimitationPlate a partir do estado do store ─────────────────────
 function buildLimitationPlates(
@@ -180,18 +181,32 @@ function SmartCutInteraction() {
       hoverCache.current   = null
       return
     }
+    // Geometria nova → o cache de hover da malha anterior é inválido
+    // (sem isto, o hover pinta faces obsoletas e "nada aparece").
+    hoverCache.current = null
+    hoveredRef.current = new Set()
     const mat = modelMesh.material as THREE.MeshStandardMaterial
     colorAttrRef.current = ensureColorAttribute(modelMesh.geometry, mat)
     // Construir cache de adjacência com ângulo atual (adiado para não travar o frame).
     // Em malhas gigantes (>400k faces) a construção é cara: deixa para o primeiro
     // clique (smartSelect constrói sob demanda) em vez de travar a UI após o corte.
-    setTimeout(() => {
+    // + AUTO-CURA do índice espacial: qualquer malha que chegue sem BVH
+    // (projeto salvo antigo, undo, caminho futuro) é indexada aqui — sem BVH
+    // o SmartCut fica mudo em malhas grandes. Silencioso para não apagar
+    // mensagens de status relevantes (ex.: resumo do corte).
+    setTimeout(async () => {
       try {
         const g = modelMesh.geometry as THREE.BufferGeometry
         const posCount = (g.getAttribute('position') as THREE.BufferAttribute)?.count ?? 0
         const faceCount = g.index ? g.index.count / 3 : posCount / 3
-        if (faceCount > 400_000) return
-        buildAdjacencyCache(modelMesh.geometry, sharpAngle ?? 35)
+        if (faceCount <= 400_000) {
+          try { buildAdjacencyCache(modelMesh.geometry, sharpAngle ?? 35) } catch {}
+        }
+        const { hasBoundsTree, ensureBoundsTree } = await import('@/lib/geo-index')
+        if (!hasBoundsTree(g) && faceCount > 0) {
+          await ensureBoundsTree(g)
+          invalidate()
+        }
       } catch { /* seleção constrói sob demanda */ }
     }, 80)
   }, [modelMesh, sharpAngle])
@@ -222,17 +237,13 @@ function SmartCutInteraction() {
   // ── Raycast ──────────────────────────────────────────────────────────────────
   // GUARDA ANTI-CONGELAMENTO: sem BVH (boundsTree) o raycast cai em brute-force
   // O(n) — numa malha de 500k+ faces cada hover trava a aba por segundos até o
-  // navegador matá-la. Malhas grandes sem índice nunca passam daqui.
+  // navegador matá-la. Malhas grandes sem índice nunca passam daqui (a
+  // auto-cura no efeito acima constrói o índice em instantes).
   const raycastFace = useCallback(
     (clientX: number, clientY: number): number | null => {
       if (!modelMesh) return null
       const geo = modelMesh.geometry as THREE.BufferGeometry
-      const hasBVH = !!(geo as unknown as { boundsTree?: unknown }).boundsTree
-      if (!hasBVH) {
-        const posCount = (geo.getAttribute('position') as THREE.BufferAttribute)?.count ?? 0
-        const faceCount = geo.index ? geo.index.count / 3 : posCount / 3
-        if (faceCount > 200_000) return null
-      }
+      if (needsSpatialIndex(geo)) return null
       const rect = gl.domElement.getBoundingClientRect()
       mouseNDC.current.set(
         ((clientX - rect.left) / rect.width)  *  2 - 1,
@@ -345,8 +356,15 @@ function SmartCutInteraction() {
 
       const faceIndex = raycastFace(e.clientX, e.clientY)
 
-      // Clique no vazio com modo neutro → limpar tudo
+      // Clique no vazio com modo neutro → limpar tudo.
+      // Exceção: se a malha ainda está sem índice espacial, o raycast foi
+      // ignorado de propósito — não apaga a seleção, só avisa (o índice
+      // chega sozinho em instantes pela auto-cura).
       if (faceIndex === null) {
+        if (needsSpatialIndex(modelMesh.geometry as THREE.BufferGeometry)) {
+          setStatus('loading', 'Indexando malha para seleção… clique de novo em instantes.')
+          return
+        }
         if (!modKeys.current.ctrl && !modKeys.current.alt) {
           const prev = selectedRef.current
           if (prev.size > 0) pushHistory()

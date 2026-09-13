@@ -3,6 +3,7 @@
 import * as THREE from 'three'
 import { useAppStore } from './store'
 import { useUserStore } from './user-store'
+import { buildBoundsTreeSafe, faceCountOf } from './geo-index'
 import type { Part } from './parts-manager'
 import type { CutPart, ModelInfo } from './store'
 
@@ -267,6 +268,17 @@ export async function restoreProject(data: SavedProjectData): Promise<void> {
     try { (mesh.geometry as THREE.BufferGeometry).computeVertexNormals() } catch {}
     try { (mesh.geometry as THREE.BufferGeometry).computeBoundingBox() } catch {}
     try { (mesh.geometry as THREE.BufferGeometry).computeBoundingSphere() } catch {}
+    // Reconstrói o índice espacial: geometria salva não carrega BVH, e sem
+    // ele o SmartCut fica mudo em malhas grandes (raycast bloqueado).
+    // Só indexa malhas relevantes; pequenas continuam instantâneas.
+    try {
+      const g = mesh.geometry as THREE.BufferGeometry
+      if (faceCountOf(g) >= 50_000) {
+        setLoadProgress(Math.round(((i + 1) / total) * 70), `Indexando peças ${i + 1}/${total}...`)
+        await yieldToUI()
+      }
+      buildBoundsTreeSafe(g)
+    } catch { /* seleção constrói sob demanda no viewport */ }
     meshById.set(sp.id, mesh)
     restoredParts.push({
       id: sp.id,

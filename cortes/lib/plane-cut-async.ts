@@ -25,6 +25,7 @@
 import * as THREE from 'three'
 import { MeshBVH, type SerializedBVH } from 'three-mesh-bvh'
 import { buildLoopsNumeric, buildCapsFromLoops } from './plane-cut-caps'
+import { buildBoundsTreeSafe } from './geo-index'
 import { solidPlaneCutFast, pickChunk } from './plane-cut-fast'
 import { CutProfiler, heapUsedBytes, type CutMetrics } from './cut-telemetry'
 
@@ -397,16 +398,6 @@ function geometryFromArrays(pos: Float32Array, nrm: Float32Array): THREE.BufferG
   geo.computeBoundingBox()
   geo.computeBoundingSphere()
   return geo
-}
-
-/** Constrói o BVH com tolerância a falha (segue sem índice se falhar). */
-function buildBoundsTreeSafe(geo: THREE.BufferGeometry): void {
-  try {
-    ;(geo as THREE.BufferGeometry & { boundsTree?: MeshBVH }).boundsTree =
-      new MeshBVH(geo, { maxLeafSize: 10, strategy: 0 })
-  } catch (err) {
-    console.warn('[PlaneCut] BVH indisponível nesta malha:', err)
-  }
 }
 
 /** Limpeza pós-corte: nenhuma normal NaN/Infinity/zero chega ao renderer. */
