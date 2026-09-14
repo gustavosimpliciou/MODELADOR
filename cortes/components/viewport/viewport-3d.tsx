@@ -386,8 +386,35 @@ function SmartCutInteraction() {
 
       setStatus('selecting', 'SmartCut selecionando...')
 
-      // Roda na mesma microtask para não bloquear o frame
-      const region = smartSelect(modelMesh.geometry, faceIndex, { sharpAngle: sharpAngle ?? 35, mode: cutMode }, limitationPlatesRef.current)
+      // WYSIWYG PONTUAL: o clique confirma EXATAMENTE a pré-seleção amarela
+      // exibida na tela — nunca recalcula por baixo dos panos. Sem isto, se o
+      // mouse deslizou 1 pixel entre o último hover e o clique, o raycast pega
+      // outra face e a seleção "erra" o que o usuário viu.
+      // Ordem de preferência:
+      //   1. cache do hover bate (mesma face/parâmetros) → o conjunto exibido;
+      //   2. face clicada está dentro do conjunto exibido → ele mesmo;
+      //   3. senão → calcula novo (e atualiza o cache p/ o próximo hover).
+      const angle = sharpAngle ?? 35
+      const cached = hoverCache.current
+      let region: Set<number>
+      if (
+        cached &&
+        cached.face === faceIndex &&
+        cached.mode === cutMode &&
+        cached.angle === angle &&
+        hoveredRef.current.size > 0
+      ) {
+        region = cached.result
+      } else if (hoveredRef.current.has(faceIndex)) {
+        region = hoveredRef.current
+      } else {
+        region = smartSelect(
+          modelMesh.geometry, faceIndex,
+          { sharpAngle: angle, mode: cutMode },
+          limitationPlatesRef.current,
+        )
+        hoverCache.current = { face: faceIndex, mode: cutMode, angle, result: region }
+      }
 
       let next: Set<number>
       if (mode === 'add') {
