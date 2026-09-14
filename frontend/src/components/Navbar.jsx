@@ -464,7 +464,7 @@ export default function Navbar({ onBackToSelector }) {
         </button>
         )}
 
-        {/* Cupom — bônus de boas-vindas (350 créditos / 20 dias) */}
+        {/* Cupom — bônus de boas-vindas (360 créditos / 20 dias) */}
         {user && !user.is_admin && (
           <button
             onClick={() => setCouponOpen(true)}

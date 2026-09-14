@@ -26,7 +26,7 @@ export default function CouponModal({ open, onClose }) {
     const result = await redeemCoupon(code.trim())
     setLoading(false)
     if (result.ok) {
-      setSuccess(`${(result.credits ?? 350).toLocaleString('pt-BR')} créditos adicionados! Expiração em 20 dias.`)
+      setSuccess(`${(result.credits ?? 360).toLocaleString('pt-BR')} créditos adicionados! Expiração em 20 dias.`)
       setCode('')
       onClose()
     } else {
@@ -115,7 +115,7 @@ export default function CouponModal({ open, onClose }) {
             fontFamily: 'var(--font-condensed)', fontSize: 26, fontWeight: 900,
             letterSpacing: '0.06em', color: '#ff6a00',
           }}>
-            350 CRÉDITOS
+            360 CRÉDITOS
           </span>
           <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: '#888' }}>
             válidos por 20 dias
