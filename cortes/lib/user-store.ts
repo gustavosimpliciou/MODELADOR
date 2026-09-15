@@ -81,7 +81,7 @@ interface UserState {
    */
   tryExport: () => Promise<'ok' | 'free' | 'upgrade_required'>
 
-  /** Resgata o cupom GHOOST3D no servidor (360 créditos / 20 dias / 1x por conta). */
+  /** Resgata o cupom GHOOST3D no servidor (valor surpresa / 1x por conta; o vencimento do plano prevalece). */
   redeemCoupon: (code: string) => Promise<{ ok: boolean; error?: string; credits?: number }>
 }
 

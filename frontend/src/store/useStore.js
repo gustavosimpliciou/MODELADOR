@@ -244,7 +244,9 @@ export const useStore = create((set, get) => ({
     set({ credits: EXPIRED_CREDIT_BALANCE, creditsExpiresAt: null })
   },
 
-  // Resgata o cupom GHOOST3D no servidor (360 créditos / 20 dias / 1x por conta).
+  // Resgata o cupom GHOOST3D no servidor (valor surpresa / 1x por conta).
+  // Regra do cronômetro (servidor): o vencimento nunca retrocede — com plano
+  // ativo, o cronômetro do plano prevalece sobre os 20 dias do cupom.
   redeemCoupon: async (code) => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -264,8 +266,8 @@ export const useStore = create((set, get) => ({
       }
 
       await get().refreshCredits()
-      trackEvent('coupon_redeemed', { credits: data.credits, expires_in_days: 20 })
-      return { ok: true, credits: data.credits }
+      trackEvent('coupon_redeemed', { credits: data.credits, expires_at: data.expiresAt ?? null })
+      return { ok: true, credits: data.credits, expiresAt: data.expiresAt ?? null }
     } catch (e) {
       return { ok: false, error: 'server_error' }
     }
