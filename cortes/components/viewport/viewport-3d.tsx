@@ -6,7 +6,7 @@ import { OrbitControls, Grid } from '@react-three/drei'
 import * as THREE from 'three'
 import { useAppStore } from '@/lib/store'
 import {
-  smartSelect,
+  smartSelectFilled,
   buildAdjacencyCache,
   ensureColorAttribute,
   paintFaces,
@@ -279,7 +279,7 @@ function SmartCutInteraction() {
         if (c && c.face === faceIndex && c.mode === cutMode && c.angle === angle) {
           newHovered = c.result
         } else {
-          newHovered = smartSelect(modelMesh.geometry, faceIndex, { sharpAngle: angle, mode: cutMode }, limitationPlatesRef.current)
+          newHovered = smartSelectFilled(modelMesh.geometry, faceIndex, { sharpAngle: angle, mode: cutMode }, limitationPlatesRef.current)
           hoverCache.current = { face: faceIndex, mode: cutMode, angle, result: newHovered }
         }
       }
@@ -408,7 +408,7 @@ function SmartCutInteraction() {
       } else if (hoveredRef.current.has(faceIndex)) {
         region = hoveredRef.current
       } else {
-        region = smartSelect(
+        region = smartSelectFilled(
           modelMesh.geometry, faceIndex,
           { sharpAngle: angle, mode: cutMode },
           limitationPlatesRef.current,
