@@ -89,268 +89,6 @@ function segmentCrossesPlate(
   return Math.abs(lx) <= p.halfWidth && Math.abs(ly) <= p.halfHeight
 }
 
-// ─── Costura de micro-fendas e T-junctions ────────────────────────────────────
-// A solda exata por posição não liga: (a) lábios de fenda com gap > 0,
-// (b) vértices-T no meio de arestas, (c) duplicatas separadas pela fronteira
-// da célula de quantização. Sem isto a seleção "quebra" em polígonos
-// isolados no meio de superfícies contínuas. Estratégia em 3 passes:
-//
-//  1. Arestas de borda (incidência 1) via sort nativo de chaves 64-bit.
-//  2. UIDs de borda a menos de `tol` são FUNDIDOS (DSU) — remap in-place.
-//  3. Vértice de borda próximo ao MEIO de aresta de borda (T-junction)
-//     gera link extra entre as faces (mapa `extras`, aplicado na adjList).
-//
-// Tudo limitado: E_b > 2M (malha patológica) → só vale a solda exata.
-interface StitchResult {
-  /** face → vizinhos extras por snap (só T-junctions reais) */
-  extras: Map<number, number[]>
-}
-
-function stitchWeldGaps(
-  pos: Float32Array,
-  faceVerts: Int32Array,
-  faceCount: number,
-  uidCount: number,
-  uidRepVert: Int32Array,
-  faceNormals: Float32Array,
-  tol: number,
-): StitchResult {
-  const empty: StitchResult = { extras: new Map() }
-  if (!(tol > 0) || faceCount <= 0 || uidCount <= 0) return empty
-
-  // ── Pass 1: arestas de borda ─────────────────────────────────────────────
-  // Chave não-direcionada de 64 bits (uid < 2^32) em BigUint64Array + sort
-  // nativo: O(E log E) sem Map gigante (9M arestas de soup = 72MB transiente).
-  const E = faceCount * 3
-  const B32 = BigInt(32)
-  const keys = new BigUint64Array(E)
-  for (let f = 0; f < faceCount; f++) {
-    const o = f * 3
-    const a = faceVerts[o], b = faceVerts[o + 1], c = faceVerts[o + 2]
-    const ekey = (u: number, v: number): bigint =>
-      (BigInt(Math.min(u, v)) << B32) | BigInt(Math.max(u, v))
-    keys[o]     = ekey(a, b)
-    keys[o + 1] = ekey(b, c)
-    keys[o + 2] = ekey(c, a)
-  }
-  keys.sort()
-  // Conta ocorrências em 1 passada; aresta de borda = contagem exatamente 1
-  // (2 = interna, 3+ = não-manifold).
-  const bA: number[] = []
-  const bB: number[] = []
-  let i = 0
-  const MASK32 = (BigInt(1) << B32) - BigInt(1)
-  while (i < E) {
-    let j = i + 1
-    while (j < E && keys[j] === keys[i]) j++
-    if (j - i === 1) {
-      const k = keys[i]
-      bA.push(Number(k >> B32))
-      bB.push(Number(k & MASK32))
-    }
-    i = j
-  }
-  // keys liberado aqui (escopo) — GC coleta antes das fases pesadas
-  const Eb = bA.length
-  if (Eb === 0 || Eb > 2_000_000) return empty
-
-  const isB = new Uint8Array(uidCount)
-  for (let e = 0; e < Eb; e++) { isB[bA[e]] = 1; isB[bB[e]] = 1 }
-  let B = 0
-  for (let v = 0; v < uidCount; v++) B += isB[v]
-  if (B === 0 || B > 1_500_000) return empty
-
-  // ── Normal média por UID de borda (gate anti-parede) ──────────────────────
-  // Lábios opostos de uma parede fina têm normais OPOSTAS (dot ≈ −1) e NUNCA
-  // fundem; lábios da mesma fenda têm normais coerentes (dot > 0) e fundem.
-  // Sem este gate, a fusão por distância atravessa paredes e a seleção
-  // "dispersa" pela peça toda após o corte (bordas por toda parte).
-  const uidNrm = new Map<number, [number, number, number]>()
-  for (let f = 0; f < faceCount; f++) {
-    const nx = faceNormals[f * 3], ny = faceNormals[f * 3 + 1], nz = faceNormals[f * 3 + 2]
-    for (let c = 0; c < 3; c++) {
-      const u = faceVerts[f * 3 + c]
-      if (!isB[u]) continue
-      const acc = uidNrm.get(u)
-      if (acc) { acc[0] += nx; acc[1] += ny; acc[2] += nz }
-      else uidNrm.set(u, [nx, ny, nz])
-    }
-  }
-  const uidDot = (a: number, b: number): number => {
-    const na = uidNrm.get(a), nb = uidNrm.get(b)
-    if (!na || !nb) return 0
-    return na[0] * nb[0] + na[1] * nb[1] + na[2] * nb[2]
-  }
-
-  // ── DSU sobre UIDs ───────────────────────────────────────────────────────
-  const parent = new Int32Array(uidCount)
-  for (let v = 0; v < uidCount; v++) parent[v] = v
-  const find = (x: number): number => {
-    let r = x
-    while (parent[r] !== r) r = parent[r]
-    while (parent[x] !== r) { const t = parent[x]; parent[x] = r; x = t }
-    return r
-  }
-  // Representante posicional por raiz (qualquer vértice serve: estão < tol).
-  const repVert = new Int32Array(uidCount)
-  repVert.set(uidRepVert)
-  const union = (x: number, y: number): void => {
-    const rx = find(x), ry = find(y)
-    if (rx === ry) return
-    if (rx < ry) { parent[ry] = rx } else { parent[rx] = ry }
-  }
-  const posOf = (uid: number, out: number[]): void => {
-    const rv = repVert[find(uid)]
-    const r = rv >= 0 ? rv : 0
-    out[0] = pos[r * 3]; out[1] = pos[r * 3 + 1]; out[2] = pos[r * 3 + 2]
-  }
-
-  // ── Grade espacial dos UIDs de borda (célula ≥ tol → 27 células bastam) ──
-  const cs = Math.max(tol, 1e-9)
-  const invCs = 1 / cs
-  const cellKey = (x: number, y: number, z: number): string =>
-    `${Math.floor(x * invCs)},${Math.floor(y * invCs)},${Math.floor(z * invCs)}`
-  const grid = new Map<string, number[]>()
-  const bUids: number[] = []
-  const p = [0, 0, 0]
-  for (let v = 0; v < uidCount; v++) {
-    if (!isB[v]) continue
-    bUids.push(v)
-    posOf(v, p)
-    const k = cellKey(p[0], p[1], p[2])
-    let arr = grid.get(k)
-    if (!arr) { arr = []; grid.set(k, arr) }
-    arr.push(v)
-  }
-
-  // ── Pass 2: funde UIDs de borda dentro de `tol` ──────────────────────────
-  const tol2 = tol * tol
-  const q = [0, 0, 0]
-  for (const v of bUids) {
-    posOf(v, p)
-    const cx = Math.floor(p[0] * invCs), cy = Math.floor(p[1] * invCs), cz = Math.floor(p[2] * invCs)
-    for (let dx = -1; dx <= 1; dx++) {
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dz = -1; dz <= 1; dz++) {
-          const arr = grid.get(`${cx + dx},${cy + dy},${cz + dz}`)
-          if (!arr) continue
-          for (let k2 = 0; k2 < arr.length; k2++) {
-            const ou = arr[k2]
-            if (ou === v || find(ou) === find(v)) continue
-            posOf(ou, q)
-            const ddx = p[0] - q[0], ddy = p[1] - q[1], ddz = p[2] - q[2]
-            if (ddx * ddx + ddy * ddy + ddz * ddz >= tol2) continue
-            // Paredes opostas (normais contrárias) nunca fundem.
-            if (uidDot(v, ou) <= 0) continue
-            union(v, ou)
-          }
-        }
-      }
-    }
-  }
-
-  // Remap in-place dos vértices das faces para as raízes fundidas.
-  for (let k3 = 0; k3 < faceVerts.length; k3++) faceVerts[k3] = find(faceVerts[k3])
-  // Borda por RAIZ fundida (a raiz herda a borda de qualquer membro).
-  const bRoot = new Uint8Array(uidCount)
-  for (let v = 0; v < uidCount; v++) if (isB[v]) bRoot[find(v)] = 1
-  // Remapeia as arestas de borda para o espaço fundido (descarta colapsadas).
-  const rA: number[] = []
-  const rB: number[] = []
-  for (let e = 0; e < Eb; e++) {
-    const a = find(bA[e]), b = find(bB[e])
-    if (a === b) continue
-    rA.push(a); rB.push(b)
-  }
-
-  // ── Pass 3: snap vértice→aresta (T-junction no meio da aresta) ───────────
-  // Grade dos pontos médios das arestas de borda; para cada vértice de borda,
-  // testa distância ponto-segmento < tol contra arestas próximas que NÃO
-  // compartilham o vértice. Gera links extras face↔face (aplicados na adjList
-  // com custo diedro real, como continuação suave da superfície).
-  const extras = new Map<number, number[]>()
-  if (rA.length > 0) {
-    const egrid = new Map<string, number[]>()
-    const mx = [0, 0, 0]
-    const pa = [0, 0, 0], pb = [0, 0, 0]
-    for (let e = 0; e < rA.length; e++) {
-      posOf(rA[e], pa); posOf(rB[e], pb)
-      mx[0] = (pa[0] + pb[0]) / 2; mx[1] = (pa[1] + pb[1]) / 2; mx[2] = (pa[2] + pb[2]) / 2
-      const k = cellKey(mx[0], mx[1], mx[2])
-      let arr = egrid.get(k)
-      if (!arr) { arr = []; egrid.set(k, arr) }
-      arr.push(e)
-    }
-    // Faces por UID fundido — índice local temporário (só UIDs de borda).
-    const facesOf = new Map<number, number[]>()
-    for (let f = 0; f < faceCount; f++) {
-      for (let c = 0; c < 3; c++) {
-        const u = faceVerts[f * 3 + c]
-        if (!bRoot[u]) continue
-        let arr = facesOf.get(u)
-        if (!arr) { arr = []; facesOf.set(u, arr) }
-        if (arr.length === 0 || arr[arr.length - 1] !== f) arr.push(f)
-      }
-    }
-    let extrasDisabled = false
-    const linkExtra = (f: number, nb: number): void => {
-      if (f === nb || extrasDisabled) return
-      // Link entre faces de normais opostas = atravessamento de parede:
-      // descarta (mesmo gate da fusão — seleção nunca "dispersa").
-      const dot =
-        faceNormals[f * 3] * faceNormals[nb * 3] +
-        faceNormals[f * 3 + 1] * faceNormals[nb * 3 + 1] +
-        faceNormals[f * 3 + 2] * faceNormals[nb * 3 + 2]
-      if (dot <= 0) return
-      let arr = extras.get(f)
-      if (!arr) { arr = []; extras.set(f, arr) }
-      if (!arr.includes(nb)) {
-        arr.push(nb)
-        // Válvula de segurança: explosão de links = tolerância inadequada
-        // para esta malha → descarta tudo de vez e vale só a solda exata.
-        if (extras.size > 100_000) { extras.clear(); extrasDisabled = true }
-      }
-    }
-    for (const v of bUids) {
-      const rv = find(v)
-      posOf(rv, p)
-      const cx = Math.floor(p[0] * invCs), cy = Math.floor(p[1] * invCs), cz = Math.floor(p[2] * invCs)
-      const vFaces = facesOf.get(rv)
-      if (!vFaces || vFaces.length === 0) continue
-      for (let dx = -1; dx <= 1; dx++) {
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dz = -1; dz <= 1; dz++) {
-            const arr = egrid.get(`${cx + dx},${cy + dy},${cz + dz}`)
-            if (!arr) continue
-            for (let k4 = 0; k4 < arr.length; k4++) {
-              const e = arr[k4]
-              const ea = rA[e], eb = rB[e]
-              if (ea === rv || eb === rv) continue // compartilha vértice: já ligado
-              posOf(ea, pa); posOf(eb, pb)
-              // Distância ponto-segmento (e parâmetro t: exige interior, não ponta).
-              const abx = pb[0] - pa[0], aby = pb[1] - pa[1], abz = pb[2] - pa[2]
-              const len2 = abx * abx + aby * aby + abz * abz
-              if (len2 < 1e-24) continue
-              const t = ((p[0] - pa[0]) * abx + (p[1] - pa[1]) * aby + (p[2] - pa[2]) * abz) / len2
-              if (t <= 0.05 || t >= 0.95) continue // perto das pontas: pass 2 cobre
-              const cxp = pa[0] + t * abx - p[0]
-              const cyp = pa[1] + t * aby - p[1]
-              const czp = pa[2] + t * abz - p[2]
-              if (cxp * cxp + cyp * cyp + czp * czp >= tol2) continue
-              const eFaces = facesOf.get(ea)
-              const eFacesB = facesOf.get(eb)
-              if (eFaces) for (const ff of vFaces) for (const nn of eFaces) { linkExtra(ff, nn); linkExtra(nn, ff) }
-              if (eFacesB) for (const ff of vFaces) for (const nn of eFacesB) { linkExtra(ff, nn); linkExtra(nn, ff) }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  return { extras }
-}
-
 // ─── Cache de adjacência ──────────────────────────────────────────────────────
 interface GeomCache {
   /** adjList[f] = índices das faces vizinhas */
@@ -365,8 +103,6 @@ interface GeomCache {
   compSize: Int32Array
   /** número total de ilhas */
   compCount: number
-  /** vértices soldados por face (3 por face, pós-costura) — p/ vizinhança por aresta */
-  faceVerts: Int32Array
   built: boolean
 }
 
@@ -422,56 +158,16 @@ export function buildAdjacencyCache(
 
   const posToUID  = new Map<number, number>()
   const faceVerts = new Int32Array(faceCount * 3)
-  // Primeiro vértice bruto de cada UID (representante p/ costura de fendas).
-  const uidRepList: number[] = []
 
   for (let f = 0; f < faceCount; f++) {
     for (let c = 0; c < 3; c++) {
       const raw = idxAttr ? idxAttr.getX(f*3+c) : f*3+c
       const key = posKeyNum(raw)
       let uid = posToUID.get(key)
-      if (uid === undefined) {
-        uid = posToUID.size
-        posToUID.set(key, uid)
-        uidRepList.push(raw)
-      }
+      if (uid === undefined) { uid = posToUID.size; posToUID.set(key, uid) }
       faceVerts[f*3+c] = uid
     }
   }
-  const uidRepVert = Int32Array.from(uidRepList)
-
-  // ── Tolerância de costura a partir da aresta MEDIANA (amostra espaçada) ───
-  // Mediana (não média) + amostra distribuída: imune a outliers como os
-  // triângulos gigantes da tampa do corte, que inflavam a média e deixavam
-  // a tolerância grande demais → fusão através de paredes finas → seleção
-  // "dispersa" pela peça toda. Teto relativo: tol ≤ 30% da aresta mediana
-  // (fendas, nunca paredes) e absoluto de 0.5mm.
-  const idxArr = idxAttr ? (idxAttr.array as ArrayLike<number>) : null
-  let avgEdge = 0.1
-  {
-    const samples: number[] = []
-    const step = Math.max(1, Math.floor(faceCount / 4096))
-    for (let f = 0; f < faceCount && samples.length < 12288; f += step) {
-      const a = idxArr ? idxArr[f * 3] : f * 3
-      const b = idxArr ? idxArr[f * 3 + 1] : f * 3 + 1
-      const c = idxArr ? idxArr[f * 3 + 2] : f * 3 + 2
-      samples.push(
-        Math.hypot(pos[a*3]-pos[b*3], pos[a*3+1]-pos[b*3+1], pos[a*3+2]-pos[b*3+2]),
-        Math.hypot(pos[b*3]-pos[c*3], pos[b*3+1]-pos[c*3+1], pos[b*3+2]-pos[c*3+2]),
-        Math.hypot(pos[c*3]-pos[a*3], pos[c*3+1]-pos[a*3+1], pos[c*3+2]-pos[a*3+2]),
-      )
-    }
-    if (samples.length > 0) {
-      samples.sort((x, y) => x - y)
-      avgEdge = samples[Math.floor(samples.length / 2)] || 0.1
-    }
-  }
-  // 15% da MEDIANA, piso 1e-5, teto 0.5mm. Junto do gate de normal abaixo,
-  // isso costura fendas sem nunca atravessar paredes (sempre < 1 aresta).
-  const stitchTol = Math.max(1e-5, Math.min(0.5, avgEdge * 0.15))
-
-  // ── Costura de micro-fendas e T-junctions (remap in-place + links extras) ─
-  const { extras } = stitchWeldGaps(pos, faceVerts, faceCount, posToUID.size, uidRepVert, faceNormals, stitchTol)
 
   // ── vertFaces: lista invertida uid→[faces] ────────────────────────────────
   const uniq = posToUID.size
@@ -491,33 +187,22 @@ export function buildAdjacencyCache(
   // ── Construir adjList e edgeCost ──────────────────────────────────────────
   const adjList:  Int32Array[]   = new Array(faceCount)
   const edgeCost: Float32Array[] = new Array(faceCount)
-  // Scratch EXPANSÍVEL: o fixo de 512 descartava vizinhos em vértices-pólo
-  // de malhas densas (centenas de faces no mesmo vértice) e quebrava a
-  // seleção em "polígonos isolados". Cresce sob demanda, sem realocar por face.
-  let tmp = new Int32Array(1024)
+  const tmp   = new Int32Array(512)
   // Scratch Uint8Array para deduplicação O(1) — substitui inner loop O(n)
   const seen  = new Uint8Array(faceCount)
   const RAD2DEG = 180 / Math.PI
 
   for (let f = 0; f < faceCount; f++) {
     let cnt = 0
-    const collect = (nb: number): void => {
-      if (nb === f || seen[nb]) return
-      seen[nb] = 1
-      if (cnt >= tmp.length) {
-        const grown = new Int32Array(tmp.length * 2)
-        grown.set(tmp)
-        tmp = grown
-      }
-      tmp[cnt++] = nb
-    }
     for (let c = 0; c < 3; c++) {
       const v = faceVerts[f*3+c]
-      for (let j = vfOff[v]; j < vfOff[v+1]; j++) collect(vfList[j])
+      for (let j = vfOff[v]; j < vfOff[v+1]; j++) {
+        const nb = vfList[j]
+        if (nb === f || seen[nb]) continue
+        seen[nb] = 1
+        if (cnt < tmp.length) tmp[cnt++] = nb
+      }
     }
-    // Links extras da costura de T-junctions (fora da solda por vértice).
-    const ex = extras.get(f)
-    if (ex) for (let k = 0; k < ex.length; k++) collect(ex[k])
     // Limpa seen apenas nas entradas que escrevemos — O(k) não O(n)
     for (let k = 0; k < cnt; k++) seen[tmp[k]] = 0
 
@@ -572,7 +257,7 @@ export function buildAdjacencyCache(
 
   geomCache.set(geometry, {
     adjList, edgeCost, faceNormals, faceCount,
-    compLabel, compSize, compCount, faceVerts, built: true,
+    compLabel, compSize, compCount, built: true,
   })
 }
 
@@ -810,18 +495,17 @@ export const DEFAULT_CONTOUR: ContourRefineOptions = {
 }
 
 /** Área de cada triângulo da malha (metade do módulo do produto vetorial). */
-function computeFaceAreasUncached(geometry: THREE.BufferGeometry): Float32Array {
+function computeFaceAreas(geometry: THREE.BufferGeometry): Float32Array {
   const pos = geometry.getAttribute('position') as THREE.BufferAttribute
   const idx = geometry.index
   const p   = pos.array as Float32Array
-  const idxArr = idx ? (idx.array as ArrayLike<number>) : null
   const faceCount = idx ? idx.count / 3 : pos.count / 3
   const areas = new Float32Array(faceCount)
 
   for (let f = 0; f < faceCount; f++) {
-    const a = idxArr ? idxArr[f*3]   : f*3
-    const b = idxArr ? idxArr[f*3+1] : f*3+1
-    const c = idxArr ? idxArr[f*3+2] : f*3+2
+    const a = idx ? idx.getX(f*3)   : f*3
+    const b = idx ? idx.getX(f*3+1) : f*3+1
+    const c = idx ? idx.getX(f*3+2) : f*3+2
     const abx = p[b*3]-p[a*3], aby = p[b*3+1]-p[a*3+1], abz = p[b*3+2]-p[a*3+2]
     const acx = p[c*3]-p[a*3], acy = p[c*3+1]-p[a*3+1], acz = p[c*3+2]-p[a*3+2]
     const cx = aby*acz - abz*acy
@@ -829,18 +513,6 @@ function computeFaceAreasUncached(geometry: THREE.BufferGeometry): Float32Array 
     const cz = abx*acy - aby*acx
     areas[f] = 0.5 * Math.sqrt(cx*cx + cy*cy + cz*cz)
   }
-  return areas
-}
-
-// Áreas por face com cache (o cálculo direto é O(F) com getX — caro demais
-// para rodar a cada hover; o cache torna o preenchimento por frame viável).
-const faceAreaCache = new WeakMap<THREE.BufferGeometry, Float32Array>()
-
-function computeFaceAreas(geometry: THREE.BufferGeometry): Float32Array {
-  const cached = faceAreaCache.get(geometry)
-  if (cached) return cached
-  const areas = computeFaceAreasUncached(geometry)
-  faceAreaCache.set(geometry, areas)
   return areas
 }
 
@@ -1020,31 +692,18 @@ export function refineSelectionForPrint(
 /**
  * Inverte a rotulação (value → value^1) de componentes conexos do lado `value`
  * cuja área total seja menor que `minArea`. Usa a adjacência 1-ring da malha.
- * Scratch reutilizável por adjList (evita 5MB de alocação por chamada — o
- * preenchimento roda a cada hover na seleção rápida).
  */
-const compScratch = new WeakMap<Int32Array[], { visited: Uint8Array; stack: Int32Array }>()
 function removeSmallComponents(
   inSel: Uint8Array,
   value: number,
   adjList: Int32Array[],
   areas: Float32Array,
-  minArea: number,
-  // Quando presente, componentes absorvidos (value 0→1) precisam ENCOSTAR
-  // na máscara `touch` (seleção original). Evita que a pré-visualização
-  // acenda pontos distantes da região ("seleção dispersa").
-  touch: Uint8Array | null = null,
+  minArea: number
 ): void {
   if (minArea <= 0) return
   const faceCount = inSel.length
-  let scratch = compScratch.get(adjList)
-  if (!scratch || scratch.visited.length !== faceCount) {
-    scratch = { visited: new Uint8Array(faceCount), stack: new Int32Array(faceCount) }
-    compScratch.set(adjList, scratch)
-  } else {
-    scratch.visited.fill(0)
-  }
-  const { visited, stack } = scratch
+  const visited = new Uint8Array(faceCount)
+  const stack = new Int32Array(faceCount)
 
   for (let start = 0; start < faceCount; start++) {
     if (visited[start] || inSel[start] !== value) continue
@@ -1053,7 +712,6 @@ function removeSmallComponents(
     visited[start] = 1
     const comp: number[] = []
     let area = 0
-    let touches = false
     while (sp > 0) {
       const f = stack[--sp]
       comp.push(f)
@@ -1061,14 +719,13 @@ function removeSmallComponents(
       const adj = adjList[f]
       for (let i = 0; i < adj.length; i++) {
         const nb = adj[i]
-        if (touch && touch[nb]) touches = true
         if (!visited[nb] && inSel[nb] === value) {
           visited[nb] = 1
           stack[sp++] = nb
         }
       }
     }
-    if (area < minArea && (!touch || touches)) {
+    if (area < minArea) {
       for (const f of comp) inSel[f] = value ^ 1
     }
   }
@@ -1122,11 +779,8 @@ export function autoFillMicroFragments(
   const inSel = new Uint8Array(faceCount)
   for (const f of selected) inSel[f] = 1
 
-  // 1. Absorve ilhas não-selecionadas pequenas (buracos minúsculos → dentro),
-  //    SOMENTE as encostadas na seleção (máscara original) — sem acender
-  //    pontos distantes na pré-visualização.
-  const touch = inSel.slice()
-  removeSmallComponents(inSel, 0, adjList, areas, minArea, touch)
+  // 1. Absorve ilhas não-selecionadas pequenas (buracos minúsculos → dentro)
+  removeSmallComponents(inSel, 0, adjList, areas, minArea)
   // 2. Remove cacos selecionados pequenos isolados do corpo principal
   removeSmallComponents(inSel, 1, adjList, areas, minArea)
 
@@ -1146,179 +800,6 @@ export function autoFillMicroFragments(
     addedFaces,
     removedFaces,
   }
-}
-
-/**
- * Seleção rápida com preenchimento: `smartSelect` + absorção de
- * micro-furos/cacos + alisamento da fronteira. É o que o hover E o clique
- * da seleção rápida usam — os dois caminhos devolvem exatamente o mesmo
- * conjunto (WYSIWYG), bem preenchido e sem falhas, em qualquer topologia.
- * A ideia original (Dijkstra por budget / ilha) é preservada; o fill só
- * fecha fragmentos minúsculos e o smooth só tira dentes da borda.
- */
-export function smartSelectFilled(
-  geometry: THREE.BufferGeometry,
-  clickedFaceIndex: number,
-  options: Partial<SmartCutOptions> = {},
-  limitationPlates: LimitationPlate[] = [],
-  minAreaFraction = 0.005,
-): Set<number> {
-  const raw = smartSelect(geometry, clickedFaceIndex, options, limitationPlates)
-  if (raw.size === 0) return raw
-  const filled = autoFillMicroFragments(geometry, raw, minAreaFraction).cleaned
-  return smoothSelectionBoundary(geometry, filled)
-}
-
-export interface BoundarySmoothOptions {
-  /** Passadas de votação (padrão 2 — cada uma tira 1 "degrau" da escada). */
-  iterations?: number
-  /** Fração do anel em desacordo para inverter (padrão 0.8 — só dentes). */
-  flipRatio?: number
-  /** Arestas mais vivas que isto (graus) nunca invertem (padrão 42). */
-  featureAngle?: number
-}
-
-// Máscara de relevo por geometria (faces sobre aresta viva resistem ao alisamento).
-const featureMaskCache = new WeakMap<THREE.BufferGeometry, { angle: number; mask: Uint8Array }>()
-
-function getFeatureMask(geometry: THREE.BufferGeometry, featureAngle: number): Uint8Array {
-  const hit = featureMaskCache.get(geometry)
-  if (hit && hit.angle === featureAngle) return hit.mask
-  buildAdjacencyCache(geometry)
-  const cache = geomCache.get(geometry)
-  const mask = new Uint8Array(cache?.faceCount ?? 0)
-  if (cache) {
-    const cosFeature = Math.cos((featureAngle * Math.PI) / 180)
-    const { adjList, faceNormals, faceCount } = cache
-    for (let f = 0; f < faceCount; f++) {
-      const adj = adjList[f]
-      const nx = faceNormals[f * 3], ny = faceNormals[f * 3 + 1], nz = faceNormals[f * 3 + 2]
-      for (let i = 0; i < adj.length; i++) {
-        const nb = adj[i]
-        const dot = nx * faceNormals[nb * 3] + ny * faceNormals[nb * 3 + 1] + nz * faceNormals[nb * 3 + 2]
-        if (dot < cosFeature) { mask[f] = 1; break }
-      }
-    }
-  }
-  featureMaskCache.set(geometry, { angle: featureAngle, mask })
-  return mask
-}
-
-/**
- * Alisa a FRONTEIRA da seleção (bordas mais retas e simétricas, sem
- * deformar a forma). Fluxo de encurtamento de curva discreto: inverte a
- * face SOMENTE se o comprimento total da fronteira DIMINUI.
- *   · dente/ponta (1 vizinho igual, 2 diferentes) → remove (encurta);
- *   · borda reta (2 iguais, 1 diferente) → mantém (inverter alongaria);
- *   · entalhe cercado → preenche (encurta);
- *   · relevo real (aresta viva) NUNCA inverte.
- * Sem corte interno (peça inteira selecionada) não faz nada — a silhueta
- * da peça é preservada intacta. Vizinhança por ARESTA (via faceVerts do
- * cache), custo ∝ fronteira, 2 passadas ping-pong.
- */
-export function smoothSelectionBoundary(
-  geometry: THREE.BufferGeometry,
-  selected: Set<number>,
-  options: BoundarySmoothOptions = {},
-): Set<number> {
-  const iterations = Math.max(0, Math.min(4, options.iterations ?? 2))
-  const featureAngle = options.featureAngle ?? 42
-  void options.flipRatio
-  if (selected.size === 0 || iterations === 0) return new Set(selected)
-
-  buildAdjacencyCache(geometry)
-  const cache = geomCache.get(geometry)
-  if (!cache) return new Set(selected)
-  const { adjList, faceCount, faceVerts } = cache
-
-  const inSel = new Uint8Array(faceCount)
-  for (const f of selected) if (f >= 0 && f < faceCount) inSel[f] = 1
-
-  // Sem corte interno = peça(s) inteira(s) → não toca na silhueta.
-  let hasCut = false
-  for (const f of selected) {
-    if (f < 0 || f >= faceCount) continue
-    const adj = adjList[f]
-    for (let i = 0; i < adj.length; i++) {
-      if (!inSel[adj[i]]) { hasCut = true; break }
-    }
-    if (hasCut) break
-  }
-  if (!hasCut) return new Set(selected)
-
-  // Banda de fronteira (custo ∝ seleção, não malha): selecionadas cortadas
-  // + seus vizinhos por vértice (anel completo ao redor do corte).
-  const band: number[] = []
-  const inBand = new Uint8Array(faceCount)
-  for (const f of selected) {
-    if (f < 0 || f >= faceCount) continue
-    const adj = adjList[f]
-    let mixed = false
-    for (let i = 0; i < adj.length; i++) {
-      const nb = adj[i]
-      if (!inBand[nb]) { inBand[nb] = 1; band.push(nb) }
-      if (!inSel[nb]) mixed = true
-    }
-    if (mixed && !inBand[f]) { inBand[f] = 1; band.push(f) }
-  }
-
-  const isFeature = getFeatureMask(geometry, featureAngle)
-
-  // Vizinhos que compartilham ARESTA (2 UIDs) com f, restrito à banda.
-  const edgeNeighbors = (f: number, out: number[]): number => {
-    const a = faceVerts[f * 3], b = faceVerts[f * 3 + 1], c = faceVerts[f * 3 + 2]
-    let n = 0
-    const adj = adjList[f]
-    for (let i = 0; i < adj.length; i++) {
-      const nb = adj[i]
-      if (nb === f || !inBand[nb]) continue
-      const x = faceVerts[nb * 3], y = faceVerts[nb * 3 + 1], z = faceVerts[nb * 3 + 2]
-      let shared = 0
-      if (x === a || x === b || x === c) shared++
-      if (y === a || y === b || y === c) shared++
-      if (z === a || z === b || z === c) shared++
-      if (shared >= 2) out[n++] = nb
-    }
-    return n
-  }
-
-  const scratch: number[] = []
-  let cur = inSel
-  for (let it = 0; it < iterations; it++) {
-    const next = cur.slice()
-    let changed = false
-    for (let bi = 0; bi < band.length; bi++) {
-      const f = band[bi]
-      if (isFeature[f]) continue // relevo real: intocável
-      const n = edgeNeighbors(f, scratch)
-      // Arestas sem vizinho mapeado contam como lado aberto (silhueta ou
-      // borda da banda): nunca criam fronteira nova por si sós.
-      let same = 0, diff = 0
-      for (let k = 0; k < n; k++) {
-        if (cur[scratch[k]]) same++
-        else diff++
-      }
-      const open = 3 - n
-      if (cur[f]) {
-        // Remover f apaga as fronteiras c/ o lado fora (`diff` + `open`) e
-        // cria nas arestas c/ o lado dentro (`same`): só vale se encurta,
-        // i.e. same < diff + open (dente/ponta; borda reta alongaria e fica;
-        // filamento com 2 vizinhos iguais fica — sem roer finos).
-        if (same < diff + open) { next[f] = 0; changed = true }
-      } else {
-        // Adicionar f apaga `same` e cria `diff + open`: só vale se encurta
-        // (entalhe cercado) — e exige ao menos 1 vizinho igual (ancoragem).
-        if (same > 0 && diff + open < same) { next[f] = 1; changed = true }
-      }
-    }
-    cur = next
-    if (!changed) break
-  }
-
-  const out = new Set<number>()
-  for (let f = 0; f < faceCount; f++) if (cur[f]) out.add(f)
-  // Segurança: nunca devolver vazio.
-  return out.size > 0 ? out : new Set(selected)
 }
 
 // ─── Pintura de vertex colors ─────────────────────────────────────────────────
