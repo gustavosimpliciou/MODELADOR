@@ -1,20 +1,30 @@
 /**
- * Worker — Corte por plano infinito (puro TypedArray, sem three.js).
+ * Worker — Corte por plano infinito (pipeline completo fora da UI thread).
+ *
+ * Etapas (todas aqui dentro — a main thread só monta e envia p/ GPU):
+ *   1. classificação + clip em chunks (TypedArrays, zero-copy)
+ *   2. loops de borda + tampas (generateCap, pipeline aprovado)
+ *   3. BVH das duas metades + serialize (pronto p/ deserialize na main)
  *
  * Protocolo:
  *  main → worker: { type: 'cut', jobId, positions, normals?, indices?,
  *                    planeN: [x,y,z], planeP: [x,y,z], eps?, scale?, chunkTris? }
  *                   (buffers transferidos — zero-copy)
  *  worker → main:  { type: 'progress', jobId, stage, pct, facesDone, facesTotal }
- *  worker → main:  { type: 'done', jobId, posPos, nrmPos, posNeg, nrmNeg,
- *                    segFlat, posTris, negTris, metrics }
+ *  worker → main:  { type: 'done', jobId, pos, nrm, neg, nrmNeg,
+ *                    bvhPos: {roots, index}, bvhNeg: {roots, index},
+ *                    capLoops, capTriangles, metrics }
  *                   (buffers transferidos de volta)
  *  worker → main:  { type: 'error' | 'cancelled', jobId, message? }
  *  main → worker:  { type: 'cancel', jobId }
  *
- * O worker processa em chunks: reporta progresso e verifica cancelamento
- * entre chunks. Nunca bloqueia a UI porque roda fora da main thread.
+ * Cancelamento também pode ser imediato via worker.terminate() — o worker
+ * verifica a flag entre chunks/loops para o cancelamento cooperativo.
  */
+
+import * as THREE from 'three'
+import { MeshBVH } from 'three-mesh-bvh'
+import { buildLoopsNumeric, buildCapsFromLoops } from '../lib/plane-cut-caps'
 
 interface CutMsg {
   type: string
@@ -299,32 +309,98 @@ self.onmessage = async function (e: MessageEvent) {
       post({
         type: 'progress', jobId,
         stage: f1 < triCount ? 'Recortando triângulos…' : 'Reconstruindo geometria…',
-        pct: 34 + (56 * f1) / triCount,
+        pct: 34 + (36 * f1) / triCount,
         facesDone: f1, facesTotal: triCount,
       })
     }
 
+    const tSplitEnd = performance.now()
+    if (isCancelled()) { post({ type: 'cancelled', jobId }); return }
+
+    // ── ETAPA C: loops de borda + tampas (o estágio que travava a UI) ───────
+    post({ type: 'progress', jobId, stage: 'Fechando corte…', pct: 72, facesDone: triCount, facesTotal: triCount })
+    const tCaps0 = performance.now()
+    const loops = buildLoopsNumeric(seg.subarray(0, segLen), scale)
+    if (isCancelled()) { post({ type: 'cancelled', jobId }); return }
+    const planeNrm = new THREE.Vector3(nx, ny, nz)
+    const planePt = new THREE.Vector3(px, py, pz)
+    const caps = buildCapsFromLoops(loops, planeNrm, planePt, (d, t) => {
+      post({
+        type: 'progress', jobId, stage: `Gerando tampa ${d}/${t}…`,
+        pct: 74 + (12 * d) / Math.max(1, t), facesDone: triCount, facesTotal: triCount,
+      })
+    })
+    if (isCancelled()) { post({ type: 'cancelled', jobId }); return }
+    const tCapsEnd = performance.now()
+
+    // ── Monta geometria final por lado (casca + tampa, cópia exata) ─────────
+    const finalPos = new Float32Array(wPos + caps.posCapPos.length)
+    const finalNrm = new Float32Array(wPos + caps.nrmCapPos.length)
+    finalPos.set(posPos.subarray(0, wPos), 0)
+    finalNrm.set(nrmPos.subarray(0, wPos), 0)
+    finalPos.set(caps.posCapPos, wPos)
+    finalNrm.set(caps.nrmCapPos, wPos)
+    const finalNeg = new Float32Array(wNeg + caps.posCapNeg.length)
+    const finalNrmNeg = new Float32Array(wNeg + caps.nrmCapNeg.length)
+    finalNeg.set(posNeg.subarray(0, wNeg), 0)
+    finalNrmNeg.set(nrmNeg.subarray(0, wNeg), 0)
+    // Libera referências grandes p/ GC do worker
+    // (os buffers de entrada já foram transferidos/neutered na origem)
+
+    // ── ETAPA D: BVH das metades + serialize (deserialize rápido na main) ───
+    post({ type: 'progress', jobId, stage: 'Indexando malha para seleção…', pct: 88, facesDone: triCount, facesTotal: triCount })
+    const tBvh0 = performance.now()
+    const buildSerializedBVH = (pos: Float32Array) => {
+      const g = new THREE.BufferGeometry()
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+      const bvh = new MeshBVH(g, { maxLeafSize: 10 })
+      const s = MeshBVH.serialize(bvh, { cloneBuffers: true }) as {
+        version: number
+        roots: ArrayBuffer[]
+        index: Int32Array | Uint32Array | Uint16Array | null
+        indirectBuffer: null
+      }
+      g.dispose()
+      return s
+    }
+    const sPos = buildSerializedBVH(finalPos)
+    if (isCancelled()) { post({ type: 'cancelled', jobId }); return }
+    post({ type: 'progress', jobId, stage: 'Indexando malha para seleção…', pct: 93, facesDone: triCount, facesTotal: triCount })
+    const sNeg = buildSerializedBVH(finalNeg)
+    if (isCancelled()) { post({ type: 'cancelled', jobId }); return }
+    const tBvhEnd = performance.now()
+
     const totalMs = performance.now() - t0
-    const outPos = posPos.subarray(0, wPos)
-    const outNp = nrmPos.subarray(0, wPos)
-    const outNg = posNeg.subarray(0, wNeg)
-    const outNn = nrmNeg.subarray(0, wNeg)
-    const outSeg = seg.subarray(0, segLen)
+    const posTris = Math.floor(finalPos.length / 9)
+    const negTris = Math.floor(finalNeg.length / 9)
+    const transfer: Transferable[] = [
+      finalPos.buffer, finalNrm.buffer, finalNeg.buffer, finalNrmNeg.buffer,
+      ...sPos.roots, ...sNeg.roots,
+    ]
+    if (sPos.index) transfer.push(sPos.index.buffer as ArrayBuffer)
+    if (sNeg.index) transfer.push(sNeg.index.buffer as ArrayBuffer)
 
     post({
       type: 'done', jobId,
-      posPos: outPos, nrmPos: outNp, posNeg: outNg, nrmNeg: outNn, segFlat: outSeg,
-      posTris: Math.floor(wPos / 9), negTris: Math.floor(wNeg / 9),
+      pos: finalPos, nrm: finalNrm, neg: finalNeg, nrmNeg: finalNrmNeg,
+      bvhPos: { version: sPos.version, roots: sPos.roots, index: sPos.index, indirectBuffer: null },
+      bvhNeg: { version: sNeg.version, roots: sNeg.roots, index: sNeg.index, indirectBuffer: null },
+      capLoops: caps.capLoops, capTriangles: caps.capTriangles,
+      posTris, negTris,
       metrics: {
         inputFaces: triCount, inputVerts: vertCount,
-        outputPosFaces: Math.floor(wPos / 9), outputNegFaces: Math.floor(wNeg / 9),
-        outputVerts: Math.floor(wPos / 3) + Math.floor(wNeg / 3),
+        outputPosFaces: posTris, outputNegFaces: negTris,
+        outputVerts: Math.floor(finalPos.length / 3) + Math.floor(finalNeg.length / 3),
         invalidTris: invalid, degenerateTris: degenerate,
         totalMs,
-        peakTempBytes: distV.byteLength + posPos.byteLength + nrmPos.byteLength + posNeg.byteLength + nrmNeg.byteLength,
+        splitMs: tSplitEnd - t0,
+        capMs: tCapsEnd - tCaps0,
+        bvhMs: tBvhEnd - tBvh0,
+        peakTempBytes: distV.byteLength + posPos.byteLength + nrmPos.byteLength + posNeg.byteLength + nrmNeg.byteLength
+          + finalPos.byteLength + finalNrm.byteLength + finalNeg.byteLength + finalNrmNeg.byteLength,
         cancelled: false,
       },
-    }, [outPos.buffer, outNp.buffer, outNg.buffer, outNn.buffer, outSeg.buffer])
+    }, transfer)
   } catch (err) {
     const post = (self as unknown as { postMessage: (m: unknown) => void }).postMessage
     post({ type: 'error', jobId, message: err instanceof Error ? err.message : String(err) })
