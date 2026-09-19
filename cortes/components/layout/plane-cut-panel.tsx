@@ -6,6 +6,7 @@ import * as THREE from 'three'
 import { useAppStore } from '@/lib/store'
 import { planeFromAxisOffset, type PlaneAxis } from '@/lib/solid-plane-cut'
 import { runPlaneCutAsync, isCancelled, type AsyncCutProgress } from '@/lib/plane-cut-async'
+import { disposeMeshGPU } from '@/lib/parts-manager'
 import { formatBytes, profileLine } from '@/lib/cut-telemetry'
 // plate-cut imports removed — Placa de Limitação não executa cortes
 import { trackEvent } from '@/lib/events'
@@ -200,6 +201,12 @@ export function PlaneCutPanel() {
   const [cutSummary, setCutSummary] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
+  // Hook ANTES do early return abaixo: hooks depois de `return null`
+  // quebram a ordem do React (erro #310) e derrubam a página inteira.
+  const handleCancelCut = useCallback(() => {
+    abortRef.current?.abort()
+  }, [])
+
   const onHeaderPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     // Não inicia drag em cliques em botões filhos
     if ((e.target as HTMLElement).closest('button')) return
@@ -246,10 +253,6 @@ export function PlaneCutPanel() {
   const axisInfo = AXES.find((a) => a.id === cutPlaneAxis)!
 
   // ─── Executar corte por plano infinito (assíncrono, não trava a UI) ─────────
-
-  const handleCancelCut = useCallback(() => {
-    abortRef.current?.abort()
-  }, [])
 
   const handleExecuteInfinite = async () => {
     if (!modelMesh || cutting) return
@@ -320,6 +323,12 @@ export function PlaneCutPanel() {
       setStatus('error', 'O plano não intercepta o modelo. Ajuste a posição do corte.')
       return
     }
+
+    // Libera a GPU da malha substituída (cada corte vazava o modelo inteiro).
+    // O histórico guarda a referência JS — o three reenvia os atributos se o
+    // usuário desfizer a operação, então o undo continua funcionando.
+    const prevMesh = modelMesh
+    if (prevMesh) disposeMeshGPU(prevMesh)
 
     const mainMat = (modelMesh!.material as THREE.MeshStandardMaterial).clone()
     mainMat.side = THREE.DoubleSide
