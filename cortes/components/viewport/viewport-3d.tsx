@@ -40,6 +40,7 @@ function buildLimitationPlates(
   }]
 }
 import { loadModel } from '@/lib/model-loader'
+import { FaceLimitModal } from '@/components/layout/face-limit-modal'
 import { ModelRenderer } from './model-renderer'
 
 // ─── WebGL Error Boundary ─────────────────────────────────────────────────────
@@ -564,6 +565,17 @@ export function Viewport3D() {
         setLoadProgress(p.percent, p.stage)
         setStatus('loading', p.stage)
       })
+      // Limite de faces: recusa modelos acima de 1M com modal + redutor externo
+      const { isFaceLimitExceeded } = await import('@/lib/face-limit')
+      if (isFaceLimitExceeded(info.faces)) {
+        const { setFaceLimitInfo } = useAppStore.getState()
+        try { mesh.geometry.dispose() } catch {}
+        try { (mesh.material as unknown as { dispose?: () => void })?.dispose?.() } catch {}
+        setLoadProgress(-1)
+        setFaceLimitInfo({ faces: Math.round(info.faces), fileName: info.name })
+        setStatus('error', 'Modelo não suportado')
+        return
+      }
       registerModelAsPart(mesh, info.name)
       setModelInfo(info)
       setOriginalGeometry(mesh.geometry.clone())
@@ -727,6 +739,9 @@ export function Viewport3D() {
       )}
 
       <ActiveToolIndicator />
+
+      {/* Modal de limite de faces (upload recusado > 1M faces) */}
+      <FaceLimitModal />
     </div>
   )
 }

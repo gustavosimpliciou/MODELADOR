@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
 import { trackEvent } from '../lib/events'
+import { detectBrowserLanguage } from '../lib/detectLanguage'
 
 // Single source of truth for the mesh-editor sliders' baseline values.
 // Used both to seed/reset `meshParams` and to detect whether the user has
@@ -25,10 +26,12 @@ const TOKEN_KEY         = 'nativos.token'
 
 const initialLang = (() => {
   try {
+    // Preferência salva manualmente tem prioridade sobre a detecção.
     const v = typeof localStorage !== 'undefined' ? localStorage.getItem(LANG_KEY) : null
     if (v === 'pt' || v === 'en' || v === 'es') return v
   } catch (e) { void e }
-  return 'pt'
+  // Sem preferência: abre direto no idioma do navegador (pt/es/en, resto inglês).
+  return detectBrowserLanguage()
 })()
 
 const ls    = (key, fallback) => { try { const v = localStorage.getItem(key); return v !== null ? v : fallback } catch (e) { return fallback } }
