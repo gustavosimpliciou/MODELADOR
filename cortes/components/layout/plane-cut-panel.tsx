@@ -255,10 +255,32 @@ export function PlaneCutPanel() {
   // ─── Executar corte por plano infinito (assíncrono, não trava a UI) ─────────
 
   const handleExecuteInfinite = async () => {
-    if (!modelMesh || cutting) return
-    const geo = modelMesh.geometry as THREE.BufferGeometry
-    const triCount = geo.index ? geo.index.count / 3 : (geo.getAttribute('position') as THREE.BufferAttribute).count / 3
-    pushHistory()
+    // ── Guards à prova de erro ───────────────────────────────────────────────
+    if (cutting) return
+    if (!modelMesh) {
+      setStatus('error', 'Nenhum modelo carregado.')
+      return
+    }
+    const geo = modelMesh.geometry as THREE.BufferGeometry | null
+    if (!geo) {
+      setStatus('error', 'Geometria inválida.')
+      return
+    }
+    const posAttr = geo.getAttribute('position') as THREE.BufferAttribute | null
+    if (!posAttr || posAttr.count === 0) {
+      setStatus('error', 'Modelo sem vértices.')
+      return
+    }
+    const triCount = geo.index ? geo.index.count / 3 : posAttr.count / 3
+    if (!Number.isFinite(triCount) || triCount === 0) {
+      setStatus('error', 'Modelo sem faces.')
+      return
+    }
+    if (!Number.isFinite(cutPlaneOffset) || cutPlaneOffset < 0 || cutPlaneOffset > 1) {
+      setStatus('error', 'Posição de corte inválida.')
+      return
+    }
+    try { pushHistory() } catch { /* historico opcional */ }
     setCutSummary(null)
     setCutting(true)
     setCutProgress({ stage: 'Preparando modelo…', pct: 0, facesDone: 0, facesTotal: triCount, elapsedMs: 0, etaMs: null, mode: triCount > 1_500_000 ? 'extreme' : triCount > 500_000 ? 'high' : 'normal', usedWorker: true })
@@ -267,14 +289,25 @@ export function PlaneCutPanel() {
     abortRef.current = ctrl
 
     try {
-      if (!geo.boundingBox) geo.computeBoundingBox()
-      const bbox = geo.boundingBox!
+      try { if (!geo.boundingBox) geo.computeBoundingBox() } catch {}
+      const bbox = geo.boundingBox
+      if (!bbox || !isFinite(bbox.min.x) || !isFinite(bbox.max.x)) {
+        throw new Error('BBOX_INVALID')
+      }
       const { normal, point } = planeFromAxisOffset(bbox, cutPlaneAxis, cutPlaneOffset, cutPlaneFlip)
+      if (!normal || normal.lengthSq() < 1e-12 || !isFinite(normal.x)) {
+        throw new Error('PLANE_INVALID')
+      }
 
       const result = await runPlaneCutAsync(geo, normal, point, {
         signal: ctrl.signal,
         onProgress: (p) => setCutProgress(p),
       })
+
+      // Validação do resultado antes de aplicar
+      if (!result || !result.positive || !result.negative) {
+        throw new Error('RESULT_INVALID')
+      }
 
       const secs = (result.metrics.stageMs.total / 1000).toFixed(1)
       const inFaces = result.metrics.inputFaces.toLocaleString('pt-BR')
@@ -290,11 +323,16 @@ export function PlaneCutPanel() {
       if (isCancelled(err)) {
         setCutSummary('Corte cancelado pelo usuário.')
         setStatus('loaded', 'Corte cancelado.')
-      } else if (err instanceof Error && err.message === 'NO_INTERSECTION') {
-        setStatus('error', 'O plano não intercepta o modelo. Ajuste a posição do corte.')
+      } else if (err instanceof Error && (err.message === 'NO_INTERSECTION' || err.message === 'BBOX_INVALID' || err.message === 'PLANE_INVALID' || err.message === 'RESULT_INVALID')) {
+        const msg = err.message === 'NO_INTERSECTION' ? 'O plano não intercepta o modelo. Ajuste a posição do corte.'
+          : err.message === 'BBOX_INVALID' ? 'Não foi possível calcular as dimensões do modelo.'
+          : err.message === 'PLANE_INVALID' ? 'Plano de corte inválido.'
+          : 'Resultado do corte inválido.'
+        setStatus('error', msg)
       } else {
         console.error('[PlaneCut] Erro:', err)
-        setStatus('error', 'Falha ao cortar o sólido.')
+        const detail = err instanceof Error && err.message ? ` — ${err.message}` : ''
+        setStatus('error', `Falha ao cortar o sólido${detail.slice(0,120)}`)
       }
     } finally {
       abortRef.current = null
@@ -316,78 +354,126 @@ export function PlaneCutPanel() {
     normal: THREE.Vector3,
     statusMsg: string,
   ) => {
-    const posCount = positive.getAttribute('position')?.count ?? 0
-    const negCount = negative.getAttribute('position')?.count ?? 0
+    try {
+      // ── Validação à prova de erro ──────────────────────────────────────
+      if (!positive || !negative) {
+        setStatus('error', 'Resultado do corte inválido.')
+        try { positive?.dispose() } catch {}
+        try { negative?.dispose() } catch {}
+        return
+      }
+      const posAttr = positive.getAttribute('position') as THREE.BufferAttribute | null
+      const negAttr = negative.getAttribute('position') as THREE.BufferAttribute | null
+      if (!posAttr || !negAttr) {
+        setStatus('error', 'Geometria do corte sem posições.')
+        try { positive.dispose() } catch {}
+        try { negative.dispose() } catch {}
+        return
+      }
+      const posCount = posAttr.count
+      const negCount = negAttr.count
+      if (posCount === 0 || negCount === 0) {
+        setStatus('error', 'O plano não intercepta o modelo. Ajuste a posição do corte.')
+        try { positive.dispose() } catch {}
+        try { negative.dispose() } catch {}
+        return
+      }
+      if (!modelMesh) {
+        setStatus('error', 'Modelo original perdido.')
+        try { positive.dispose() } catch {}
+        try { negative.dispose() } catch {}
+        return
+      }
+      if (!normal || !isFinite(normal.x) || normal.lengthSq() < 1e-12) {
+        setStatus('error', 'Direção de corte inválida.')
+        return
+      }
 
-    if (posCount === 0 || negCount === 0) {
-      setStatus('error', 'O plano não intercepta o modelo. Ajuste a posição do corte.')
-      return
+      // Libera a GPU da malha substituída (cada corte vazava o modelo inteiro).
+      // O histórico guarda a referência JS — o three reenvia os atributos se o
+      // usuário desfizer a operação, então o undo continua funcionando.
+      const prevMesh = modelMesh
+      if (prevMesh) {
+        try { disposeMeshGPU(prevMesh) } catch {}
+      }
+
+      let mainMesh: THREE.Mesh
+      let partMesh: THREE.Mesh
+      try {
+        const mainMat = (modelMesh.material as THREE.MeshStandardMaterial).clone()
+        mainMat.side = THREE.DoubleSide
+        mainMat.needsUpdate = true
+        mainMesh = new THREE.Mesh(positive, mainMat)
+        mainMesh.position.copy(modelMesh.position)
+        mainMesh.rotation.copy(modelMesh.rotation)
+        mainMesh.scale.copy(modelMesh.scale)
+        mainMesh.castShadow = true
+        mainMesh.receiveShadow = true
+
+        const partMat = new THREE.MeshStandardMaterial({
+          color: new THREE.Color('#ff6600'),
+          roughness: 0.55,
+          metalness: 0.10,
+          side: THREE.DoubleSide,
+        })
+        partMesh = new THREE.Mesh(negative, partMat)
+        partMesh.position.copy(modelMesh.position)
+        partMesh.rotation.copy(modelMesh.rotation)
+        partMesh.scale.copy(modelMesh.scale)
+        partMesh.castShadow = true
+        partMesh.receiveShadow = true
+
+        const geo = modelMesh.geometry as THREE.BufferGeometry
+        try { if (!geo.boundingBox) geo.computeBoundingBox() } catch {}
+        const bb = geo.boundingBox
+        if (bb) {
+          const size = new THREE.Vector3()
+          bb.getSize(size)
+          const spread = Math.max(size.x, size.y, size.z) * 0.18
+          if (isFinite(spread) && spread > 0) {
+            partMesh.position.add(normal.clone().normalize().multiplyScalar(-spread))
+          }
+        }
+      } catch (e) {
+        console.error('[PlaneCut] Erro ao criar meshes:', e)
+        setStatus('error', 'Falha ao criar peças do corte.')
+        return
+      }
+
+      try { setModelMesh(mainMesh!) } catch (e) { console.error('[PlaneCut] setModelMesh falhou:', e); setStatus('error','Falha ao atualizar modelo.'); return }
+      try {
+        if (modelInfo) {
+          let newBb: THREE.Box3 | null = null
+          try { newBb = positive.boundingBox; if (!newBb) { positive.computeBoundingBox(); newBb = positive.boundingBox } } catch {}
+          const s = new THREE.Vector3()
+          if (newBb) try { newBb.getSize(s) } catch {}
+          setModelInfo({
+            ...modelInfo,
+            vertices: posCount,
+            faces: Math.floor(posCount / 3),
+            width:  newBb ? parseFloat(s.x.toFixed(2)) : modelInfo.width,
+            height: newBb ? parseFloat(s.y.toFixed(2)) : modelInfo.height,
+            depth:  newBb ? parseFloat(s.z.toFixed(2)) : modelInfo.depth,
+          })
+        }
+      } catch {}
+      try {
+        addCutPart({
+          id: `plane-${Date.now()}`,
+          name: `Metade ${cutParts.length + 1}`,
+          mesh: partMesh!,
+          faceIndices: [],
+          color: '#ff6600',
+        })
+      } catch (e) { console.error('[PlaneCut] addCutPart falhou:', e) }
+
+      try { clearSelection() } catch {}
+      setStatus('loaded', statusMsg)
+      try { trackEvent('cut_created', { tool: 'plane_cut', kind: cutPlaneAxis, pieces: 2 }) } catch {}
+    } catch (e) {
+      console.error('[PlaneCut] applyResult erro inesperado:', e)
+      setStatus('error', 'Falha ao aplicar corte.')
     }
-
-    // Libera a GPU da malha substituída (cada corte vazava o modelo inteiro).
-    // O histórico guarda a referência JS — o three reenvia os atributos se o
-    // usuário desfizer a operação, então o undo continua funcionando.
-    const prevMesh = modelMesh
-    if (prevMesh) disposeMeshGPU(prevMesh)
-
-    const mainMat = (modelMesh!.material as THREE.MeshStandardMaterial).clone()
-    mainMat.side = THREE.DoubleSide
-    mainMat.needsUpdate = true
-    const mainMesh = new THREE.Mesh(positive, mainMat)
-    mainMesh.position.copy(modelMesh!.position)
-    mainMesh.rotation.copy(modelMesh!.rotation)
-    mainMesh.scale.copy(modelMesh!.scale)
-    mainMesh.castShadow = true
-    mainMesh.receiveShadow = true
-
-    const partMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color('#ff6600'),
-      roughness: 0.55,
-      metalness: 0.10,
-      side: THREE.DoubleSide,
-    })
-    const partMesh = new THREE.Mesh(negative, partMat)
-    partMesh.position.copy(modelMesh!.position)
-    partMesh.rotation.copy(modelMesh!.rotation)
-    partMesh.scale.copy(modelMesh!.scale)
-    partMesh.castShadow = true
-    partMesh.receiveShadow = true
-
-    const geo = modelMesh!.geometry as THREE.BufferGeometry
-    if (!geo.boundingBox) geo.computeBoundingBox()
-    const bb = geo.boundingBox!
-    const size = new THREE.Vector3()
-    bb.getSize(size)
-    const spread = Math.max(size.x, size.y, size.z) * 0.18
-    partMesh.position.add(normal.clone().multiplyScalar(-spread))
-
-    setModelMesh(mainMesh)
-
-    if (modelInfo) {
-      const newBb = positive.boundingBox
-      const s = new THREE.Vector3()
-      newBb?.getSize(s)
-      setModelInfo({
-        ...modelInfo,
-        vertices: posCount,
-        faces: Math.floor(posCount / 3),
-        width:  newBb ? parseFloat(s.x.toFixed(2)) : modelInfo.width,
-        height: newBb ? parseFloat(s.y.toFixed(2)) : modelInfo.height,
-        depth:  newBb ? parseFloat(s.z.toFixed(2)) : modelInfo.depth,
-      })
-    }
-
-    addCutPart({
-      id: `plane-${Date.now()}`,
-      name: `Metade ${cutParts.length + 1}`,
-      mesh: partMesh,
-      faceIndices: [],
-      color: '#ff6600',
-    })
-
-    clearSelection()
-    setStatus('loaded', statusMsg)
-    trackEvent('cut_created', { tool: 'plane_cut', kind: cutPlaneAxis, pieces: 2 })
   }
 
   // ─── Render ──────────────────────────────────────────────────────────────────
