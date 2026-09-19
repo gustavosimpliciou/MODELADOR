@@ -26,6 +26,10 @@ export const PLANS_BASE = [
     normalBRL: 12,
     checkoutPromo: 'https://pay.kiwify.com.br/mP9JdtG',
     checkoutNormal: 'https://pay.kiwify.com.br/pEUqkzU',
+    checkoutPromoUSD: 'https://pay.kiwify.com/ryM08yR',
+    checkoutNormalUSD: 'https://pay.kiwify.com/v9I3z1D',
+    checkoutPromoEUR: 'https://pay.kiwify.com/icyfa5N',
+    checkoutNormalEUR: 'https://pay.kiwify.com/edtsDMT',
   },
   {
     id: 'medium',
@@ -35,6 +39,10 @@ export const PLANS_BASE = [
     normalBRL: 35,
     checkoutPromo: 'https://pay.kiwify.com.br/AzX89GY',
     checkoutNormal: 'https://pay.kiwify.com.br/gqFNBuH',
+    checkoutPromoUSD: 'https://pay.kiwify.com/JsYbzeK',
+    checkoutNormalUSD: 'https://pay.kiwify.com/AsmjQbO',
+    checkoutPromoEUR: 'https://pay.kiwify.com/XSanLFg',
+    checkoutNormalEUR: 'https://pay.kiwify.com/9FBMlI3',
   },
   {
     id: 'premium',
@@ -44,6 +52,10 @@ export const PLANS_BASE = [
     normalBRL: 99,
     checkoutPromo: 'https://pay.kiwify.com.br/RFJZS5v',
     checkoutNormal: 'https://pay.kiwify.com.br/YchVPRb',
+    checkoutPromoUSD: 'https://pay.kiwify.com/mHzy2e9',
+    checkoutNormalUSD: 'https://pay.kiwify.com/eVgZGEt',
+    checkoutPromoEUR: 'https://pay.kiwify.com/vi84HQc',
+    checkoutNormalEUR: 'https://pay.kiwify.com/GgJHU5O',
   },
 ]
 
@@ -90,5 +102,7 @@ export function getLocalizedPlans(lang) {
     title: p.id.toUpperCase(),
     promoPrice: formatPlanPrice(p.promoBRL, lang),
     normalPrice: formatPlanPrice(p.normalBRL, lang),
+    checkoutPromo: lang === 'en' ? p.checkoutPromoUSD : lang === 'es' ? p.checkoutPromoEUR : p.checkoutPromo,
+    checkoutNormal: lang === 'en' ? p.checkoutNormalUSD : lang === 'es' ? p.checkoutNormalEUR : p.checkoutNormal,
   }))
 }
