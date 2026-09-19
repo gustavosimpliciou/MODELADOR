@@ -196,10 +196,37 @@ export function EncaixePanel() {
     lastKeyRef.current = key
     const radius = round(clamp(limits.maxRadius * 0.5, RADIUS_MIN, limits.maxRadius), 1)
     const height = round(clamp(5, HEIGHT_MIN, limits.maxHeight), 1)
+    // Centraliza preview exatamente no meio do corte quando há complemento
+    let previewCenter = limits.center.clone()
+    let previewNormal = limits.normal.clone()
+    if (compPart && modelMesh) {
+      try {
+        const getWorldBox = (mesh: THREE.Mesh) => {
+          const geo = mesh.geometry as THREE.BufferGeometry
+          if (!geo.boundingBox) geo.computeBoundingBox()
+          const box = geo.boundingBox!.clone()
+          const m = new THREE.Matrix4().compose(mesh.position, mesh.quaternion, mesh.scale)
+          box.min.applyMatrix4(m); box.max.applyMatrix4(m)
+          return box
+        }
+        const boxA = getWorldBox(modelMesh)
+        const boxB = getWorldBox(compPart.mesh)
+        const centerA = new THREE.Vector3(); boxA.getCenter(centerA)
+        const centerB = new THREE.Vector3(); boxB.getCenter(centerB)
+        const cutCenterWorld = centerA.clone().add(centerB).multiplyScalar(0.5)
+        const srcWorld = new THREE.Matrix4().compose(modelMesh.position, modelMesh.quaternion, modelMesh.scale)
+        previewCenter = cutCenterWorld.clone().applyMatrix4(srcWorld.clone().invert())
+        const dirWorld = centerB.clone().sub(centerA).normalize()
+        if (dirWorld.lengthSq() > 1e-6) {
+          const srcQuatInv = modelMesh.quaternion.clone().invert()
+          previewNormal = dirWorld.clone().applyQuaternion(srcQuatInv).normalize()
+        }
+      } catch {}
+    }
     setEncaixePreview({
       seamCenter: [limits.center.x, limits.center.y, limits.center.z],
-      center: [limits.center.x, limits.center.y, limits.center.z],
-      normal: [limits.normal.x, limits.normal.y, limits.normal.z],
+      center: [previewCenter.x, previewCenter.y, previewCenter.z],
+      normal: [previewNormal.x, previewNormal.y, previewNormal.z],
       planeU: [limits.planeU.x, limits.planeU.y, limits.planeU.z],
       planeV: [limits.planeV.x, limits.planeV.y, limits.planeV.z],
       radius,
@@ -231,6 +258,40 @@ export function EncaixePanel() {
     const activeMesh = modelMesh
     const normal = new THREE.Vector3(...p.normal).normalize()
 
+    // ── Centralização perfeita no corte ─────────────────────────────────────
+    // O encaixe deve unir as duas metades exatamente na mesma reta/ângulo,
+    // no centro geométrico do corte, não no ponto clicado (que pode ser
+    // excêntrico). Para plane-cut, o centro é o ponto médio entre as duas
+    // peças em espaço mundo; a direção é a reta que une seus centroides.
+    let centerLocal = new THREE.Vector3(...p.center)
+    let directionCentral = normal.clone()
+    if (hasComp && compPart) {
+      try {
+        const getWorldBox = (mesh: THREE.Mesh) => {
+          const geo = mesh.geometry as THREE.BufferGeometry
+          if (!geo.boundingBox) geo.computeBoundingBox()
+          const box = geo.boundingBox!.clone()
+          const m = new THREE.Matrix4().compose(mesh.position, mesh.quaternion, mesh.scale)
+          box.min.applyMatrix4(m); box.max.applyMatrix4(m)
+          return box
+        }
+        const boxA = getWorldBox(activeMesh)
+        const boxB = getWorldBox(compPart.mesh)
+        const centerA = new THREE.Vector3(); boxA.getCenter(centerA)
+        const centerB = new THREE.Vector3(); boxB.getCenter(centerB)
+        const cutCenterWorld = centerA.clone().add(centerB).multiplyScalar(0.5)
+        const srcWorld = new THREE.Matrix4().compose(activeMesh.position, activeMesh.quaternion, activeMesh.scale)
+        centerLocal = cutCenterWorld.clone().applyMatrix4(srcWorld.clone().invert())
+        const dirWorld = centerB.clone().sub(centerA).normalize()
+        if (dirWorld.lengthSq() > 1e-6) {
+          const srcQuatInv = activeMesh.quaternion.clone().invert()
+          directionCentral = dirWorld.clone().applyQuaternion(srcQuatInv).normalize()
+          // Preserva orientação do modo female (inverte depois)
+          if (p.mode === 'female') directionCentral.negate()
+        }
+      } catch {}
+    }
+
     let mode: EncaixeMode
     let direction: THREE.Vector3
     let maleMesh: THREE.Mesh
@@ -239,12 +300,12 @@ export function EncaixePanel() {
     if (hasComp && compPart) {
       if (p.mode === 'female') {
         mode = 'both'
-        direction = normal.clone().negate()
+        direction = directionCentral.clone()
         maleMesh = compPart.mesh
         femaleMesh = activeMesh
       } else {
         mode = 'both'
-        direction = normal.clone()
+        direction = directionCentral.clone()
         maleMesh = activeMesh
         femaleMesh = compPart.mesh
       }
@@ -266,7 +327,7 @@ export function EncaixePanel() {
         pushHistory()
 
         const result = applyEncaixe({
-          center: new THREE.Vector3(...p.center),
+          center: centerLocal.clone(),
           direction,
           radius: p.radius,
           height: p.height,
