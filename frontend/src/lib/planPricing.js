@@ -53,14 +53,23 @@ function langConfig(lang) {
 
 /** Converte um valor em BRL para a moeda do idioma e formata. */
 export function formatPlanPrice(brlValue, lang) {
-  // Override: Easy promoção deve ser exatamente $5 / €5 (pedido do cliente)
-  if (Number(brlValue) === 6) {
-    if (lang === 'en') {
-      try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(5) } catch { return 'USD 5.00' }
-    }
-    if (lang === 'es') {
-      try { return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(5) } catch { return 'EUR 5.00' }
-    }
+  // Tabela fixa pedida pelo cliente para USD/EUR (en/es)
+  // BRL 6->5, 12->10, 25->20, 35->35, 69->50, 99->89
+  const FIXED_USD_EUR = {
+    6: 5,
+    12: 10,
+    25: 20,
+    35: 35,
+    69: 50,
+    99: 89,
+  }
+  const v = Number(brlValue)
+  if ((lang === 'en' || lang === 'es') && FIXED_USD_EUR[v] !== undefined) {
+    const fixed = FIXED_USD_EUR[v]
+    const cfgFixed = lang === 'en'
+      ? { locale: 'en-US', currency: 'USD' }
+      : { locale: 'es-ES', currency: 'EUR' }
+    try { return new Intl.NumberFormat(cfgFixed.locale, { style: 'currency', currency: cfgFixed.currency }).format(fixed) } catch { return `${cfgFixed.currency} ${fixed.toFixed(2)}` }
   }
   const cfg = langConfig(lang)
   const converted = Number(brlValue) / cfg.rate
