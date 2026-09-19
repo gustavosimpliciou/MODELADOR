@@ -455,34 +455,80 @@ function OrbitControlsGuard({ controlsRef }: { controlsRef: React.RefObject<any>
 }
 
 // ─── Camera auto-fit ──────────────────────────────────────────────────────────
-// Fires whenever modelMesh changes (new file loaded) and adjusts the camera +
-// OrbitControls target so the model fills the viewport nicely.
+// Fires whenever modelMesh or isolamento (activePartId) changes and ajusta a
+// câmera para que a peça clicada já apareça centralizada, sem precisar dar
+// scroll/zoom. Considera mesh.position (peças cortadas são deslocadas por
+// `spread` normal) e, quando sem isolamento, enquadra todas as peças visíveis.
 function CameraFitter({ controlsRef }: { controlsRef: React.RefObject<any> }) {
   const modelMesh = useAppStore((s) => s.modelMesh)
+  const activePartId = useAppStore((s) => s.activePartId)
+  const parts = useAppStore((s) => s.parts)
   const { camera } = useThree()
 
   useEffect(() => {
     if (!modelMesh) return
-    const geo = modelMesh.geometry
-    if (!geo.boundingSphere) geo.computeBoundingSphere()
-    const sphere = geo.boundingSphere!
-    const radius = Math.max(sphere.radius, 0.001)
+
+    // Determina qual malha(s) enquadrar
+    let targetCenter = new THREE.Vector3()
+    let targetRadius = 0
+
+    if (activePartId) {
+      const part = parts.find((p) => p.id === activePartId)
+      const mesh = part?.mesh ?? modelMesh
+      const geo = mesh.geometry as THREE.BufferGeometry
+      if (!geo.boundingSphere) geo.computeBoundingSphere()
+      if (!geo.boundingBox) geo.computeBoundingBox()
+      const sphere = geo.boundingSphere!
+      targetRadius = Math.max(sphere.radius, 0.001)
+      // boundingSphere.center é local (0,0,0 após centralização); somar mesh.position para centro em mundo
+      targetCenter.copy(sphere.center).add(mesh.position)
+    } else if (parts.length > 1) {
+      // Sem isolamento: enquadrar todas as peças visíveis
+      const box = new THREE.Box3()
+      let hasBox = false
+      for (const p of parts) {
+        if (!p.visible || !p.mesh) continue
+        const geo = p.mesh.geometry as THREE.BufferGeometry
+        if (!geo.boundingBox) geo.computeBoundingBox()
+        const bb = geo.boundingBox!.clone()
+        bb.min.add(p.mesh.position)
+        bb.max.add(p.mesh.position)
+        if (!hasBox) { box.copy(bb); hasBox = true } else { box.union(bb) }
+      }
+      if (hasBox) {
+        const sphere = new THREE.Sphere()
+        box.getBoundingSphere(sphere)
+        targetCenter.copy(sphere.center)
+        targetRadius = Math.max(sphere.radius, 0.001)
+      } else {
+        const geo = modelMesh.geometry as THREE.BufferGeometry
+        if (!geo.boundingSphere) geo.computeBoundingSphere()
+        const sphere = geo.boundingSphere!
+        targetRadius = Math.max(sphere.radius, 0.001)
+        targetCenter.copy(sphere.center).add(modelMesh.position)
+      }
+    } else {
+      const geo = modelMesh.geometry as THREE.BufferGeometry
+      if (!geo.boundingSphere) geo.computeBoundingSphere()
+      const sphere = geo.boundingSphere!
+      targetRadius = Math.max(sphere.radius, 0.001)
+      targetCenter.copy(sphere.center).add(modelMesh.position)
+    }
+
     const fov = (camera as THREE.PerspectiveCamera).fov * (Math.PI / 180)
-    // Distance so the sphere fits inside the viewport with a bit of padding
-    const distance = (radius / Math.sin(fov / 2)) * 1.6
-    // Isometric-ish angle for a good first look
+    const distance = (targetRadius / Math.sin(fov / 2)) * 1.6
     const dir = new THREE.Vector3(0.6, 0.45, 1).normalize()
-    camera.position.copy(dir.multiplyScalar(distance))
+    camera.position.copy(targetCenter.clone().add(dir.multiplyScalar(distance)))
     camera.near = distance * 0.001
     camera.far  = distance * 100
     camera.updateProjectionMatrix()
     if (controlsRef.current) {
-      controlsRef.current.target.set(0, 0, 0)
+      controlsRef.current.target.copy(targetCenter)
       controlsRef.current.update()
     }
     invalidate()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelMesh])
+  }, [modelMesh, activePartId, parts])
 
   return null
 }
