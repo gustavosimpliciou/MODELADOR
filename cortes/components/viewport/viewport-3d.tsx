@@ -468,7 +468,6 @@ function CameraFitter({ controlsRef }: { controlsRef: React.RefObject<any> }) {
   useEffect(() => {
     if (!modelMesh) return
 
-    // Determina qual malha(s) enquadrar
     let targetCenter = new THREE.Vector3()
     let targetRadius = 0
 
@@ -480,10 +479,8 @@ function CameraFitter({ controlsRef }: { controlsRef: React.RefObject<any> }) {
       if (!geo.boundingBox) geo.computeBoundingBox()
       const sphere = geo.boundingSphere!
       targetRadius = Math.max(sphere.radius, 0.001)
-      // boundingSphere.center é local (0,0,0 após centralização); somar mesh.position para centro em mundo
       targetCenter.copy(sphere.center).add(mesh.position)
     } else if (parts.length > 1) {
-      // Sem isolamento: enquadrar todas as peças visíveis
       const box = new THREE.Box3()
       let hasBox = false
       for (const p of parts) {
