@@ -133,11 +133,6 @@ export interface AppState {
   modelMesh: THREE.Mesh | null
   originalGeometry: THREE.BufferGeometry | null
 
-  // ─── Limite de faces ───────────────────────────────────────────────────────
-  /** Preenchido quando um upload é recusado por exceder MAX_SUPPORTED_FACES. */
-  faceLimitInfo: { faces: number; fileName: string } | null
-  setFaceLimitInfo: (info: { faces: number; fileName: string } | null) => void
-
   // ─── Sistema de Partes Independentes ─────────────────────────────────────────
   /** Todas as partes presentes na cena. A peça original sempre é a primeira. */
   parts: Part[]
@@ -325,9 +320,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   modelInfo: null,
   modelMesh: null,
   originalGeometry: null,
-
-  faceLimitInfo: null,
-  setFaceLimitInfo: (faceLimitInfo) => set({ faceLimitInfo }),
 
   parts: [],
   activePartId: null,

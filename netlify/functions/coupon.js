@@ -5,14 +5,14 @@
 //  - confere o token de sessão do usuário via Supabase Auth
 //  - exige conta NOVA (sem upgrade: first_upgrade_purchased = false)
 //  - limita a 1 uso por conta (credit_history.type = 'coupon')
-//  - concede 360 créditos com expiração de 20 dias (credits_expires_at)
+//  - concede 350 créditos com expiração de 20 dias (credits_expires_at)
 //  - registra em credit_history e user_events
 
 const SUPABASE_URL         = process.env.SUPABASE_URL         || 'https://blqvsglspdayrznnbzzf.supabase.co'
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_KEY         || ''
 
 const COUPON_CODE    = 'GHOOST3D'
-const COUPON_CREDITS = 360
+const COUPON_CREDITS = 350
 const COUPON_DAYS    = 20
 const DAY_MS         = 86400000
 
@@ -121,20 +121,8 @@ export const handler = async (event) => {
   if (used?.length) return json(400, { error: 'already_used' })
 
   const now         = new Date()
-  const couponExpiry = new Date(now.getTime() + COUPON_DAYS * DAY_MS)
-
-  // ── REGRA DO CRONÔMETRO (o vencimento nunca retrocede) ───────────────────
-  // Só quem tem APENAS créditos de cupom vence em 20 dias (volta para 100).
-  // Quem comprou um plano (90 dias) e resgatou o cupom mantém o cronômetro
-  // DO PLANO: o cupom soma créditos, mas o vencimento maior prevalece — o
-  // saldo só retorna a 100 quando o cronômetro do plano zerar.
-  const currentExpiryMs = row.credits_expires_at ? Date.parse(row.credits_expires_at) : NaN
-  const expiresAt =
-    Number.isFinite(currentExpiryMs) && currentExpiryMs > couponExpiry.getTime()
-      ? new Date(currentExpiryMs)
-      : couponExpiry
+  const expiresAt   = new Date(now.getTime() + COUPON_DAYS * DAY_MS)
   const newCredits  = (row.credits || 0) + COUPON_CREDITS
-  const keptPlanTimer = expiresAt.getTime() !== couponExpiry.getTime()
 
   await sbUpdate('users', 'id', user.id, {
     credits:            newCredits,
@@ -146,9 +134,7 @@ export const handler = async (event) => {
     user_id:     user.id,
     type:        'coupon',
     credits:     COUPON_CREDITS,
-    description: keptPlanTimer
-      ? `Cupom ${COUPON_CODE} — ${COUPON_CREDITS} créditos, mantido o vencimento do plano (${expiresAt.toISOString().slice(0, 10)})`
-      : `Cupom ${COUPON_CODE} — ${COUPON_CREDITS} créditos, expiram em ${COUPON_DAYS} dias`,
+    description: `Cupom ${COUPON_CODE} — ${COUPON_CREDITS} créditos, expiram em ${COUPON_DAYS} dias`,
     created_at:  now.toISOString(),
   })
 
@@ -158,7 +144,7 @@ export const handler = async (event) => {
     user_email: row.email || null,
     tool:       'auth',
     event:      'coupon_redeemed',
-    details:    { code, credits: COUPON_CREDITS, expires_at: expiresAt.toISOString(), kept_plan_timer: keptPlanTimer },
+    details:    { code, credits: COUPON_CREDITS, expires_in_days: COUPON_DAYS },
     created_at: now.toISOString(),
   }).catch(() => {})
 

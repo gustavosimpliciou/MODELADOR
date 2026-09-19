@@ -27,8 +27,6 @@ node_modules/
 /.next/
 /out/
 **/.next/
-cortes/out/
-cortes/tsconfig.tsbuildinfo
 next-env.d.ts
 *.tsbuildinfo
 

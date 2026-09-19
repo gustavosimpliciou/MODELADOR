@@ -15,7 +15,6 @@ import {
   type LimitationPlate,
 } from '@/lib/smart-cut'
 import { plateCutParamsFromTransform } from '@/lib/plate-cut'
-import { needsSpatialIndex } from '@/lib/geo-index'
 
 // ─── Constrói LimitationPlate a partir do estado do store ─────────────────────
 function buildLimitationPlates(
@@ -41,7 +40,6 @@ function buildLimitationPlates(
   }]
 }
 import { loadModel } from '@/lib/model-loader'
-import { FaceLimitModal } from '@/components/layout/face-limit-modal'
 import { ModelRenderer } from './model-renderer'
 
 // ─── WebGL Error Boundary ─────────────────────────────────────────────────────
@@ -181,34 +179,10 @@ function SmartCutInteraction() {
       hoverCache.current   = null
       return
     }
-    // Geometria nova → o cache de hover da malha anterior é inválido
-    // (sem isto, o hover pinta faces obsoletas e "nada aparece").
-    hoverCache.current = null
-    hoveredRef.current = new Set()
     const mat = modelMesh.material as THREE.MeshStandardMaterial
     colorAttrRef.current = ensureColorAttribute(modelMesh.geometry, mat)
-    // Construir cache de adjacência com ângulo atual (adiado para não travar o frame).
-    // Em malhas gigantes (>400k faces) a construção é cara: deixa para o primeiro
-    // clique (smartSelect constrói sob demanda) em vez de travar a UI após o corte.
-    // + AUTO-CURA do índice espacial: qualquer malha que chegue sem BVH
-    // (projeto salvo antigo, undo, caminho futuro) é indexada aqui — sem BVH
-    // o SmartCut fica mudo em malhas grandes. Silencioso para não apagar
-    // mensagens de status relevantes (ex.: resumo do corte).
-    setTimeout(async () => {
-      try {
-        const g = modelMesh.geometry as THREE.BufferGeometry
-        const posCount = (g.getAttribute('position') as THREE.BufferAttribute)?.count ?? 0
-        const faceCount = g.index ? g.index.count / 3 : posCount / 3
-        if (faceCount <= 400_000) {
-          try { buildAdjacencyCache(modelMesh.geometry, sharpAngle ?? 35) } catch {}
-        }
-        const { hasBoundsTree, ensureBoundsTree } = await import('@/lib/geo-index')
-        if (!hasBoundsTree(g) && faceCount > 0) {
-          await ensureBoundsTree(g)
-          invalidate()
-        }
-      } catch { /* seleção constrói sob demanda */ }
-    }, 80)
+    // Construir cache de adjacência com ângulo atual (adiado para não travar o frame)
+    setTimeout(() => buildAdjacencyCache(modelMesh.geometry, sharpAngle ?? 35), 80)
   }, [modelMesh, sharpAngle])
 
   // Invalida o hover cache sempre que os parâmetros de seleção ou a placa mudam
@@ -235,15 +209,9 @@ function SmartCutInteraction() {
   }, [setSelectionMode])
 
   // ── Raycast ──────────────────────────────────────────────────────────────────
-  // GUARDA ANTI-CONGELAMENTO: sem BVH (boundsTree) o raycast cai em brute-force
-  // O(n) — numa malha de 500k+ faces cada hover trava a aba por segundos até o
-  // navegador matá-la. Malhas grandes sem índice nunca passam daqui (a
-  // auto-cura no efeito acima constrói o índice em instantes).
   const raycastFace = useCallback(
     (clientX: number, clientY: number): number | null => {
       if (!modelMesh) return null
-      const geo = modelMesh.geometry as THREE.BufferGeometry
-      if (needsSpatialIndex(geo)) return null
       const rect = gl.domElement.getBoundingClientRect()
       mouseNDC.current.set(
         ((clientX - rect.left) / rect.width)  *  2 - 1,
@@ -356,15 +324,8 @@ function SmartCutInteraction() {
 
       const faceIndex = raycastFace(e.clientX, e.clientY)
 
-      // Clique no vazio com modo neutro → limpar tudo.
-      // Exceção: se a malha ainda está sem índice espacial, o raycast foi
-      // ignorado de propósito — não apaga a seleção, só avisa (o índice
-      // chega sozinho em instantes pela auto-cura).
+      // Clique no vazio com modo neutro → limpar tudo
       if (faceIndex === null) {
-        if (needsSpatialIndex(modelMesh.geometry as THREE.BufferGeometry)) {
-          setStatus('loading', 'Indexando malha para seleção… clique de novo em instantes.')
-          return
-        }
         if (!modKeys.current.ctrl && !modKeys.current.alt) {
           const prev = selectedRef.current
           if (prev.size > 0) pushHistory()
@@ -603,26 +564,6 @@ export function Viewport3D() {
         setLoadProgress(p.percent, p.stage)
         setStatus('loading', p.stage)
       })
-      // Limite de faces: recusa modelos acima de 1M com modal + redutor externo
-      const { isFaceLimitExceeded } = await import('@/lib/face-limit')
-      if (isFaceLimitExceeded(info.faces)) {
-        const { setFaceLimitInfo } = useAppStore.getState()
-        try { mesh.geometry.dispose() } catch {}
-        try { (mesh.material as unknown as { dispose?: () => void })?.dispose?.() } catch {}
-        setLoadProgress(-1)
-        setFaceLimitInfo({ faces: Math.round(info.faces), fileName: info.name })
-        setStatus('error', 'Modelo não suportado')
-        return
-      }
-      // Libera a GPU do modelo anterior ANTES de registrar o novo
-      // (cada re-upload vazava a malha inteira nos buffers da GPU).
-      try {
-        const { disposeMeshGPU } = await import('@/lib/parts-manager')
-        const prev = useAppStore.getState()
-        prev.parts.forEach((p) => disposeMeshGPU(p.mesh))
-        prev.cutParts.forEach((cp) => disposeMeshGPU(cp.mesh))
-        try { prev.originalGeometry?.dispose() } catch {}
-      } catch { /* limpeza é best-effort */ }
       registerModelAsPart(mesh, info.name)
       setModelInfo(info)
       setOriginalGeometry(mesh.geometry.clone())
@@ -659,9 +600,6 @@ export function Viewport3D() {
           <span className="text-xs font-mono" style={{ color: 'oklch(0.55 0 0)' }}>{loadStage}</span>
         </div>
       )}
-
-      {/* Modal de limite de faces (upload recusado > 1M faces) */}
-      <FaceLimitModal />
 
       {/* Overlay de drag-and-drop */}
       {isDragOver && (

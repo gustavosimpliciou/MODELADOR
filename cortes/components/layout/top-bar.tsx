@@ -76,26 +76,6 @@ export function TopBar({ onExport, onSave, onProjects }: TopBarProps) {
         setLoadProgress(p.percent, p.stage)
         setStatus('loading', p.stage)
       })
-      // Limite de faces: recusa modelos acima de 1M com modal + redutor externo
-      const { isFaceLimitExceeded } = await import('@/lib/face-limit')
-      if (isFaceLimitExceeded(info.faces)) {
-        const { setFaceLimitInfo } = useAppStore.getState()
-        try { mesh.geometry.dispose() } catch {}
-        try { (mesh.material as unknown as { dispose?: () => void })?.dispose?.() } catch {}
-        setLoadProgress(-1)
-        setFaceLimitInfo({ faces: Math.round(info.faces), fileName: info.name })
-        setStatus('error', t.face_limit_title)
-        return
-      }
-      // Libera a GPU do modelo anterior ANTES de registrar o novo
-      // (cada re-upload vazava a malha inteira nos buffers da GPU).
-      try {
-        const { disposeMeshGPU } = await import('@/lib/parts-manager')
-        const prev = useAppStore.getState()
-        prev.parts.forEach((p) => disposeMeshGPU(p.mesh))
-        prev.cutParts.forEach((cp) => disposeMeshGPU(cp.mesh))
-        try { prev.originalGeometry?.dispose() } catch {}
-      } catch { /* limpeza é best-effort */ }
       registerModelAsPart(mesh, info.name)
       setModelInfo(info)
       setOriginalGeometry(mesh.geometry.clone())

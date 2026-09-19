@@ -33,7 +33,7 @@ export function CouponModal({ open, onClose }: { open: boolean; onClose: () => v
     const result = await redeemCoupon(code.trim())
     setLoading(false)
     if (result.ok) {
-      setSuccess(t.coupon_success(result.credits ?? 360))
+      setSuccess(t.coupon_success(result.credits ?? 700))
       setCode('')
     } else {
       const key = ERROR_MESSAGES[result.error || 'server_error'] || 'coupon_error_server'

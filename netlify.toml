@@ -2,10 +2,7 @@
   # 1. Build Cortes 3D (Next.js static export → cortes/out)
   # 2. Build frontend (React/Vite → frontend/dist)
   # 3. Copy Cortes output into frontend/dist/cortes so both are served from the same domain
-  # rm -rf .next out garante build limpo: o repo já carregou um dia cache
-  # Turbopack de DEV dentro de cortes/.next, que corrompia o export
-  # (HTML referenciando chunks inexistentes → app morto em "Verificando sessão").
-  command   = "cd cortes && rm -rf .next out && pnpm install --ignore-scripts && pnpm run build && cd ../frontend && yarn install && yarn build && mkdir -p dist/cortes && cp -r ../cortes/out/. dist/cortes/"
+  command   = "cd cortes && pnpm install --ignore-scripts && pnpm run build && cd ../frontend && yarn install && yarn build && mkdir -p dist/cortes && cp -r ../cortes/out/. dist/cortes/"
   publish   = "frontend/dist"
   functions = "netlify/functions"
 

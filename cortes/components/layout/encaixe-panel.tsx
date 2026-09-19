@@ -14,8 +14,7 @@ import * as THREE from 'three'
 import { useAppStore } from '@/lib/store'
 import { analyzeEncaixe, applyEncaixe, type EncaixeMode } from '@/lib/encaixe'
 import { analyzeSelection } from '@/lib/smart-autocut'
-import { cloneMeshTransform, disposeMeshGPU } from '@/lib/parts-manager'
-import { buildBoundsTreeSafe } from '@/lib/geo-index'
+import { cloneMeshTransform } from '@/lib/parts-manager'
 import { trackEvent } from '@/lib/events'
 import { useT } from '@/lib/lang-store'
 import { useDraggable } from '@/lib/use-draggable'
@@ -294,17 +293,9 @@ export function EncaixePanel() {
             throw new Error('a cavidade não foi criada (sem remoção de material)')
           }
           // A peça atual recebe um conector e a peça cortada recebe o outro.
-          // Indexa as geometrias novas IMEDIATAMENTE (sem isto o SmartCut
-          // ficaria mudo nas peças com encaixe até a auto-cura) e libera a
-          // GPU das malhas substituídas (cada aplicação vazava 2 modelos).
-          // Material preservado: as malhas novas compartilham o material.
           const maleIsActive = maleMesh === activeMesh
-          buildBoundsTreeSafe(result.maleGeo)
-          buildBoundsTreeSafe(result.femaleGeo)
           const newActive = cloneMeshTransform(activeMesh, maleIsActive ? result.maleGeo : result.femaleGeo)
           const newComp = cloneMeshTransform(compPart.mesh, maleIsActive ? result.femaleGeo : result.maleGeo)
-          disposeMeshGPU(activeMesh, { material: false })
-          disposeMeshGPU(compPart.mesh, { material: false })
           setModelMesh(newActive)
           // setModelMesh sincroniza a peça ativa em parts; setCutParts +
           // updatePart sincronizam a malha da peça cortada em parts.
@@ -338,9 +329,7 @@ export function EncaixePanel() {
           const v = result.validation
           const ok = mode === 'female' ? v.femaleVolumeChanged : v.maleVolumeChanged
           if (!ok) throw new Error('o booleano não alterou a geometria — encaixe não aplicado')
-          buildBoundsTreeSafe(geo)
           const newActive = cloneMeshTransform(activeMesh, geo)
-          disposeMeshGPU(activeMesh, { material: false })
           setModelMesh(newActive)
           // Garantia extra: sincroniza a parte ativa também quando activePartId
           // estiver nulo, localizando-a pela referência da malha.

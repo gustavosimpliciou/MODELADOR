@@ -2,34 +2,15 @@
 
 import { create } from 'zustand'
 import { type Language, type Translations, translations } from './i18n'
-import { detectBrowserLanguage } from './detect-language'
 
 interface LangState {
   language: Language
   setLanguage: (lang: Language) => void
 }
 
-/** Mesma chave do Studio: a escolha manual vale nas duas ferramentas. */
-const LANG_KEY = 'nativos.language'
-
-function initialLanguage(): Language {
-  // Preferência salva manualmente (em qualquer ferramenta) tem prioridade.
-  try {
-    if (typeof localStorage !== 'undefined') {
-      const v = localStorage.getItem(LANG_KEY)
-      if (v === 'pt' || v === 'en' || v === 'es') return v
-    }
-  } catch { /* ignora e detecta */ }
-  // Sem preferência: abre direto no idioma do navegador (pt/es/en, resto inglês).
-  return detectBrowserLanguage()
-}
-
 export const useLangStore = create<LangState>((set) => ({
-  language: initialLanguage(),
-  setLanguage: (language) => {
-    try { localStorage.setItem(LANG_KEY, language) } catch { /* ignora */ }
-    set({ language })
-  },
+  language: 'en',
+  setLanguage: (language) => set({ language }),
 }))
 
 /** React hook — returns a translator function that re-renders when language changes. */

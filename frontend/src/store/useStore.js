@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
 import { trackEvent } from '../lib/events'
-import { detectBrowserLanguage } from '../lib/detectLanguage'
 
 // Single source of truth for the mesh-editor sliders' baseline values.
 // Used both to seed/reset `meshParams` and to detect whether the user has
@@ -26,12 +25,10 @@ const TOKEN_KEY         = 'nativos.token'
 
 const initialLang = (() => {
   try {
-    // Preferência salva manualmente tem prioridade sobre a detecção.
     const v = typeof localStorage !== 'undefined' ? localStorage.getItem(LANG_KEY) : null
     if (v === 'pt' || v === 'en' || v === 'es') return v
   } catch (e) { void e }
-  // Sem preferência: abre direto no idioma do navegador (pt/es/en, resto inglês).
-  return detectBrowserLanguage()
+  return 'pt'
 })()
 
 const ls    = (key, fallback) => { try { const v = localStorage.getItem(key); return v !== null ? v : fallback } catch (e) { return fallback } }
@@ -247,9 +244,7 @@ export const useStore = create((set, get) => ({
     set({ credits: EXPIRED_CREDIT_BALANCE, creditsExpiresAt: null })
   },
 
-  // Resgata o cupom GHOOST3D no servidor (valor surpresa / 1x por conta).
-  // Regra do cronômetro (servidor): o vencimento nunca retrocede — com plano
-  // ativo, o cronômetro do plano prevalece sobre os 20 dias do cupom.
+  // Resgata o cupom GHOOST3D no servidor (350 créditos / 20 dias / 1x por conta).
   redeemCoupon: async (code) => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -269,8 +264,8 @@ export const useStore = create((set, get) => ({
       }
 
       await get().refreshCredits()
-      trackEvent('coupon_redeemed', { credits: data.credits, expires_at: data.expiresAt ?? null })
-      return { ok: true, credits: data.credits, expiresAt: data.expiresAt ?? null }
+      trackEvent('coupon_redeemed', { credits: data.credits, expires_in_days: 20 })
+      return { ok: true, credits: data.credits }
     } catch (e) {
       return { ok: false, error: 'server_error' }
     }

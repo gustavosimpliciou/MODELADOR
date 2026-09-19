@@ -26,16 +26,7 @@ export default function CouponModal({ open, onClose }) {
     const result = await redeemCoupon(code.trim())
     setLoading(false)
     if (result.ok) {
-      // O valor só é revelado AQUI, no resgate (antes disso é surpresa).
-      // A data de expiração exibida é a real: 20 dias p/ só-cupom, ou o
-      // vencimento do plano quando ele prevalece (regra do cronômetro).
-      const total = (result.credits ?? 360).toLocaleString('pt-BR')
-      const expiry = result.expiresAt
-        ? new Date(result.expiresAt).toLocaleDateString('pt-BR')
-        : null
-      setSuccess(expiry
-        ? `${total} créditos adicionados! Válidos até ${expiry}.`
-        : `${total} créditos adicionados!`)
+      setSuccess(`${(result.credits ?? 350).toLocaleString('pt-BR')} créditos adicionados! Expiração em 20 dias.`)
       setCode('')
       onClose()
     } else {
@@ -124,10 +115,10 @@ export default function CouponModal({ open, onClose }) {
             fontFamily: 'var(--font-condensed)', fontSize: 26, fontWeight: 900,
             letterSpacing: '0.06em', color: '#ff6a00',
           }}>
-            BÔNUS SURPRESA
+            350 CRÉDITOS
           </span>
           <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: '#888' }}>
-            o valor é revelado ao resgatar o código
+            válidos por 20 dias
           </span>
         </div>
 

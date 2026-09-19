@@ -1,10 +1,99 @@
 import { useStore } from '../store/useStore'
-import { useT } from '../i18n/useT'
-import { getLocalizedPlans } from '../lib/planPricing'
 
-// Planos, preços e checkouts vêm de lib/planPricing (moeda por idioma).
-// Textos (título, recursos, rodapé) vêm do dicionário i18n via useT.
-const FOOTER_ICONS = ['💰', '⬇️', '🛡️', '🔒']
+// Preços e checkouts reais na Kiwify. Enquanto o usuário nunca comprou
+// (first_purchase / firstUpgradePurchased === false) mostramos o preço
+// promocional e o link de checkout "_promo"; depois disso, o preço normal.
+const PLANS = [
+  {
+    id: 'easy',
+    title: 'EASY',
+    credits: 200,
+    creditLabel: '200 CRÉDITOS',
+    highlight: true,
+    promoPrice: 'R$ 6,00',
+    normalPrice: 'R$ 12,00',
+    checkoutPromo:  'https://pay.kiwify.com.br/mP9JdtG',
+    checkoutNormal: 'https://pay.kiwify.com.br/pEUqkzU',
+    features: [
+      'Ferramenta completa de criação 3D',
+      'Exportação STL e OBJ',
+      'Acesso à biblioteca de modelos',
+      'Acesso a texturas',
+      'Templates de projetos',
+      'Atualizações inclusas',
+      'Suporte padrão',
+    ],
+  },
+  {
+    id: 'medium',
+    title: 'MEDIUM',
+    credits: 565,
+    creditLabel: '565 CRÉDITOS',
+    highlight: false,
+    promoPrice: 'R$ 25,00',
+    normalPrice: 'R$ 35,00',
+    checkoutPromo:  'https://pay.kiwify.com.br/AzX89GY',
+    checkoutNormal: 'https://pay.kiwify.com.br/gqFNBuH',
+    features: [
+      'Ferramenta completa de criação 3D',
+      'Exportação STL e OBJ',
+      'Biblioteca de modelos premium',
+      'Todos os modelos 3D',
+      'Texturas premium',
+      'Templates exclusivos',
+      'Prioridade de processamento',
+      'Suporte prioritário',
+      'Atualizações antecipadas',
+    ],
+  },
+  {
+    id: 'premium',
+    title: 'PREMIUM',
+    credits: 1500,
+    creditLabel: '1500 CRÉDITOS',
+    highlight: false,
+    promoPrice: 'R$ 69,00',
+    normalPrice: 'R$ 99,00',
+    checkoutPromo:  'https://pay.kiwify.com.br/RFJZS5v',
+    checkoutNormal: 'https://pay.kiwify.com.br/YchVPRb',
+    features: [
+      'Ferramenta completa de criação 3D',
+      'Exportação STL e OBJ',
+      'Biblioteca premium completa',
+      'Todos os modelos 3D',
+      'Texturas premium ilimitadas',
+      'Recursos beta e exclusivos',
+      'Suporte prioritário',
+      'Atualizações antecipadas',
+      'Comercial liberado',
+    ],
+  },
+]
+
+const FOOTER_ITEMS = [
+  {
+    icon: '💰',
+    title: 'COMO FUNCIONAM OS CRÉDITOS?',
+    desc: 'Cada download consome 40 créditos. Você continua criando e editando normalmente.',
+  },
+  {
+    icon: '⬇️',
+    title: 'CRIE SEM LIMITES',
+    desc: 'Projete, edite e visualize quantos modelos quiser.',
+  },
+  {
+    icon: '🛡️',
+    title: 'SEGURANÇA TOTAL',
+    desc: 'Pagamento 100% seguro e dados protegidos.',
+  },
+  {
+    icon: '🔒',
+    title: 'SEM MENSALIDADE',
+    desc: 'Sem cobranças recorrentes. Pague apenas o que usar.',
+  },
+]
+
+const PAYMENT_METHODS = ['PIX', 'VISA', 'Mastercard', 'American Express', 'Mercado Pago']
 
 export default function UpgradeModal() {
   const showUpgradeModal    = useStore((s) => s.showUpgradeModal)
@@ -12,8 +101,6 @@ export default function UpgradeModal() {
   const goToCheckout        = useStore((s) => s.goToCheckout)
   const firstUpgradePurchased = useStore((s) => s.firstUpgradePurchased)
   const user                = useStore((s) => s.user)
-  const language            = useStore((s) => s.language)
-  const t                   = useT()
 
   // Admin tem acesso total — nunca exibe o modal de upgrade
   if (user?.email === 'nativos3d.adm@gmail.com') return null
@@ -22,14 +109,6 @@ export default function UpgradeModal() {
 
   // Antes da primeira compra aprovada: preços promocionais. Depois: preço normal.
   const isPromo = !firstUpgradePurchased
-
-  const plans = getLocalizedPlans(language).map((plan) => ({
-    ...plan,
-    creditLabel: `${plan.credits} ${t('upgrade.credits')}`,
-    features: t(`upgrade.${plan.id}.features`),
-  }))
-  const footerItems = t('upgrade.footer')
-  const paymentMethods = t('upgrade.payments')
 
   return (
     <div
@@ -75,26 +154,24 @@ export default function UpgradeModal() {
             letterSpacing: '0.06em', textTransform: 'uppercase',
             color: '#fff', margin: 0, lineHeight: 1,
           }}>
-            {t('upgrade.titleA')}{' '}
-            <span style={{ color: '#ff6a00' }}>{t('upgrade.titleB')}</span>
+            ESCOLHA SEU{' '}
+            <span style={{ color: '#ff6a00' }}>PLANO</span>
           </h2>
           <p style={{
             fontFamily: 'var(--font-body)', fontSize: 13, color: '#777',
             marginTop: 8, marginBottom: 0,
           }}>
-            {t('upgrade.subtitle')}
+            Desbloqueie todo o potencial da Nativos Studio
           </p>
         </div>
 
         {/* Plan cards */}
         <div style={{ display: 'flex', gap: 14, alignItems: 'stretch' }}>
-          {plans.map(plan => (
+          {PLANS.map(plan => (
             <PlanCard
               key={plan.id}
               plan={plan}
               isPromo={isPromo}
-              badge={isPromo ? t('upgrade.badgePromo') : t('upgrade.badgeNormal')}
-              ctaLabel={t('upgrade.cta')}
               onSelect={() => goToCheckout(isPromo ? plan.checkoutPromo : plan.checkoutNormal)}
             />
           ))}
@@ -109,9 +186,9 @@ export default function UpgradeModal() {
           borderTop: '1px solid #1e1e1e',
           paddingTop: 20,
         }}>
-          {footerItems.map((item, i) => (
+          {FOOTER_ITEMS.map((item, i) => (
             <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-              <span style={{ fontSize: 22, flexShrink: 0, marginTop: 1 }}>{FOOTER_ICONS[i] ?? '•'}</span>
+              <span style={{ fontSize: 22, flexShrink: 0, marginTop: 1 }}>{item.icon}</span>
               <div>
                 <div style={{
                   fontFamily: 'var(--font-condensed)', fontSize: 11, fontWeight: 800,
@@ -139,10 +216,10 @@ export default function UpgradeModal() {
             fontFamily: 'var(--font-body)', fontSize: 11, color: '#555',
             display: 'flex', alignItems: 'center', gap: 4,
           }}>
-            {t('upgrade.secure')}
+            🔒 Pagamento 100% seguro
           </span>
           <span style={{ color: '#2a2a2a' }}>|</span>
-          {paymentMethods.map((m) => (
+          {PAYMENT_METHODS.map((m) => (
             <span key={m} style={{
               fontFamily: 'var(--font-condensed)', fontSize: 11, fontWeight: 700,
               color: '#555', letterSpacing: '0.04em',
@@ -159,8 +236,9 @@ export default function UpgradeModal() {
   )
 }
 
-function PlanCard({ plan, isPromo, badge, ctaLabel, onSelect }) {
+function PlanCard({ plan, isPromo, onSelect }) {
   const price = isPromo ? plan.promoPrice : plan.normalPrice
+  const badge = isPromo ? '🔥 PROMOÇÃO DE PRIMEIRA COMPRA' : 'PREÇO NORMAL'
   return (
     <div style={{
       flex: 1, minWidth: 0,
@@ -256,7 +334,7 @@ function PlanCard({ plan, isPromo, badge, ctaLabel, onSelect }) {
             e.currentTarget.style.color = plan.highlight ? '#000' : '#fff'
           }}
         >
-          {ctaLabel}
+          ESCOLHER PLANO
         </button>
       </div>
     </div>
