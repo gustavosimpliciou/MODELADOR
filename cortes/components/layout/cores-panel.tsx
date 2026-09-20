@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback, useRef, useMemo } from 'react'
-import { Palette, Paintbrush, Eraser, Trash2, Download, GripHorizontal, Eye, RotateCcw, Ban } from 'lucide-react'
+import { Palette, Paintbrush, Eraser, Trash2, Download, GripHorizontal, Eye, RotateCcw, Ban, Minus, ChevronUp } from 'lucide-react'
 import { invalidate } from '@react-three/fiber'
 import { useAppStore } from '@/lib/store'
 import { trackEvent } from '@/lib/events'
@@ -36,6 +36,7 @@ export function CoresPanel() {
   // Estado do painel arrastável (igual ao PlaneCutPanel)
   const panelRef = useRef<HTMLDivElement>(null)
   const [fixedPos, setFixedPos] = useState<{ left: number; top: number } | null>(null)
+  const [minimized, setMinimized] = useState(false)
   const headerDrag = useRef<{ startX: number; startY: number; origLeft: number; origTop: number } | null>(null)
 
   const onHeaderPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -116,32 +117,43 @@ export function CoresPanel() {
           backdropFilter: 'blur(24px) saturate(1.4)',
           borderColor: 'oklch(0.38 0.08 260 / 60%)',
           boxShadow: '0 8px 40px oklch(0 0 0 / 55%), inset 0 1px 0 oklch(1 0 0 / 4%)',
-          minWidth: '300px',
-          maxWidth: '340px',
+          minWidth: '180px',
+          maxWidth: '204px',
         }}
       >
         {/* Header arrastável */}
         <div
-          className="flex items-center justify-between px-3 py-2 select-none cursor-grab active:cursor-grabbing"
+          className="flex items-center justify-between px-2.5 py-1.5 select-none cursor-grab active:cursor-grabbing"
           style={{ background: 'oklch(0.11 0 0 / 80%)' }}
           onPointerDown={onHeaderPointerDown}
           onPointerMove={onHeaderPointerMove}
           onPointerUp={onHeaderPointerUp}
         >
-          <div className="flex items-center gap-2">
-            <GripHorizontal className="w-3 h-3" style={{ color: 'oklch(0.30 0 0)' }} />
-            <div className="w-1 h-3.5 rounded-full" style={{ background: isNone ? 'transparent' : paintColor, boxShadow: isNone ? 'none' : `0 0 6px ${paintColor}`, border: isNone ? '1px dashed oklch(0.40 0 0)' : 'none' }} />
-            <span className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground">Cores</span>
+          <div className="flex items-center gap-1.5">
+            <GripHorizontal className="w-2.5 h-2.5" style={{ color: 'oklch(0.30 0 0)' }} />
+            <div className="w-0.5 h-3 rounded-full" style={{ background: isNone ? 'transparent' : paintColor, boxShadow: isNone ? 'none' : `0 0 4px ${paintColor}`, border: isNone ? '1px dashed oklch(0.40 0 0)' : 'none' }} />
+            <span className="text-[8px] font-mono uppercase tracking-widest text-muted-foreground">Cores</span>
             {paintedCount > 0 && (
-              <span className="text-[8px] font-mono px-1.5 py-0.5 rounded-full" style={{ background: 'oklch(0.55 0.15 260 / 20%)', color: 'oklch(0.75 0.14 260)' }}>
-                {paintedCount} faces
+              <span className="text-[7px] font-mono px-1 py-0 rounded-full" style={{ background: 'oklch(0.55 0.15 260 / 20%)', color: 'oklch(0.75 0.14 260)' }}>
+                {paintedCount}
               </span>
             )}
           </div>
-          <Palette className="w-3.5 h-3.5" style={{ color: 'oklch(0.55 0.15 260)' }} />
+          <div className="flex items-center gap-1">
+            <Palette className="w-3 h-3" style={{ color: 'oklch(0.55 0.15 260)' }} />
+            <button
+              onClick={(e) => { e.stopPropagation(); setMinimized((m) => !m) }}
+              className="w-5 h-5 flex items-center justify-center rounded-md hover:bg-secondary/50 transition-colors"
+              style={{ color: 'oklch(0.55 0 0)' }}
+              title={minimized ? 'Expandir' : 'Minimizar'}
+            >
+              {minimized ? <ChevronUp className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
+            </button>
+          </div>
         </div>
 
-        <div className="flex flex-col gap-3 p-3">
+        {!minimized && (
+          <div className="flex flex-col gap-2 p-2">
           {/* Seleção info */}
           <div className="flex items-center justify-between rounded-lg px-2.5 py-2" style={{ background: 'oklch(0.12 0 0)', border: '1px solid oklch(0.16 0 0)' }}>
             <span className="text-[8px] font-mono uppercase tracking-widest" style={{ color: 'oklch(0.40 0 0)' }}>
@@ -273,6 +285,7 @@ export function CoresPanel() {
             </span>
           </div>
         </div>
+        )}
       </div>
     </div>
   )
