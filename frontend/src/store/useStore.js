@@ -25,12 +25,7 @@ const FIRST_UPGRADE_KEY = 'nativos.firstUpgradePurchased'
 const TOKEN_KEY         = 'nativos.token'
 
 const initialLang = (() => {
-  try {
-    // Preferência salva manualmente tem prioridade sobre a detecção.
-    const v = typeof localStorage !== 'undefined' ? localStorage.getItem(LANG_KEY) : null
-    if (v === 'pt' || v === 'en' || v === 'es') return v
-  } catch (e) { void e }
-  // Sem preferência: abre direto no idioma do navegador (pt/es/en, resto inglês).
+  // Sempre volta para o idioma padrão do navegador no reload (ex: brasileiro → pt)
   return detectBrowserLanguage()
 })()
 
@@ -121,7 +116,7 @@ export const useStore = create((set, get) => ({
   // ─── i18n ────────────────────────────────────────────────────────
   language: initialLang,
   setLanguage: (lang) => {
-    lsSet(LANG_KEY, lang)
+    // Troca apenas na sessão atual — no reload volta para o padrão do navegador
     set({ language: lang })
   },
 
