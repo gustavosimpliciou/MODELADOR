@@ -6,7 +6,7 @@ import type { AutoSplitPlan } from './auto-split'
 import { type Part, createPart } from './parts-manager'
 import { hexToRgbNorm, syncPaintedColors, paintSelectedFaces, clearPaintedFaces } from './paint'
 
-export type Tool = 'select' | 'erase' | 'cut' | 'paint' | 'acab' | 'autosplit' | 'measure' | 'reset'
+export type Tool = 'select' | 'erase' | 'cut' | 'paint' | 'orient' | 'acab' | 'autosplit' | 'measure' | 'reset'
 export type SelectionState = 'idle' | 'hovering' | 'selected' | 'cutting'
 export type AppStatus = 'idle' | 'loading' | 'loaded' | 'selecting' | 'cutting' | 'exporting' | 'error'
 export type SelectionMode = 'new' | 'add' | 'subtract'
@@ -215,6 +215,13 @@ export interface AppState {
   paintSelection: () => number
   clearPaintSelection: (all?: boolean) => number
   getActivePaintedMap: () => Map<number, string> | null
+
+  // ── Orientação manual (Orientar — ponto A topo, ponto B base) ──────────────
+  orientPointA: THREE.Vector3 | null
+  orientPointB: THREE.Vector3 | null
+  setOrientPointA: (p: THREE.Vector3 | null) => void
+  setOrientPointB: (p: THREE.Vector3 | null) => void
+  clearOrientPoints: () => void
 
   // Histórico (desfazer/refazer)
   past: HistorySnapshot[]
@@ -435,6 +442,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ paintedParts: map })
     return cleared
   },
+
+  orientPointA: null,
+  orientPointB: null,
+  setOrientPointA: (orientPointA) => set({ orientPointA }),
+  setOrientPointB: (orientPointB) => set({ orientPointB }),
+  clearOrientPoints: () => set({ orientPointA: null, orientPointB: null }),
 
   past: [],
   future: [],
