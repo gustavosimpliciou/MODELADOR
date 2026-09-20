@@ -45,6 +45,8 @@ export interface SavedProjectData {
   activePartId: string | null
   parts: SavedMeshPart[]
   cutParts: { id: string; name: string; color: string; isConnector?: boolean }[]
+  paintedParts?: Record<string, Record<number, string>>
+  paintColor?: string
 }
 
 interface SavedMeshPart extends SavedMesh {
@@ -231,6 +233,14 @@ export function serializeProject(): SavedProjectData {
     isConnector: cp.isConnector,
   }))
 
+  // Serializa pintura por face (Map -> Record para JSON)
+  const paintedParts: Record<string, Record<number, string>> = {}
+  for (const [partId, faceMap] of s.paintedParts) {
+    const rec: Record<number, string> = {}
+    for (const [face, hex] of faceMap) rec[face] = hex
+    paintedParts[partId] = rec
+  }
+
   return {
     version: 1,
     unit: s.unit,
@@ -238,6 +248,8 @@ export function serializeProject(): SavedProjectData {
     activePartId: s.activePartId,
     parts: partsSaved,
     cutParts: cutPartsSaved,
+    paintedParts,
+    paintColor: s.paintColor,
   }
 }
 
@@ -311,6 +323,17 @@ export async function restoreProject(data: SavedProjectData): Promise<void> {
   const activeMesh: THREE.Mesh | null = activeId ? (meshById.get(activeId) ?? null) : null
   const firstMesh: THREE.Mesh | null = restoredParts[0]?.mesh ?? null
 
+  // Restaura pintura por face
+  const paintedParts = new Map<string, Map<number, string>>()
+  if (data.paintedParts) {
+    for (const partId of Object.keys(data.paintedParts)) {
+      const rec = data.paintedParts[partId]
+      const map = new Map<number, string>()
+      for (const k of Object.keys(rec)) map.set(Number(k), rec[Number(k)])
+      paintedParts.set(partId, map)
+    }
+  }
+
   useAppStore.setState({
     parts: restoredParts,
     cutParts: cutPartsRestored,
@@ -319,6 +342,8 @@ export async function restoreProject(data: SavedProjectData): Promise<void> {
     modelInfo: data.modelInfo ?? null,
     unit: (data.unit as 'mm' | 'cm' | 'm' | 'in') || 'mm',
     originalGeometry: restoredParts[0]?.mesh.geometry.clone() ?? null,
+    paintedParts,
+    paintColor: data.paintColor ?? useAppStore.getState().paintColor,
     selectedFaceIndices: new Set(),
     hoveredFaceIndices: new Set(),
     selectionState: 'idle',
