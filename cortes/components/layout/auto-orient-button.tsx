@@ -33,14 +33,19 @@ export function AutoOrientButton() {
     setStatus('cutting', 'Analisando modelo...')
 
     // Cria um objeto temporário para análise sem mutar os meshes reais
-    // Se houver isolamento, analisa apenas a peça ativa; senão, todas as visíveis
+    // Sempre clona para não mutar antes de confirmar confiança
     let object: THREE.Object3D
     let isGroup = false
+    const clones: THREE.Mesh[] = []
     if (store.activePartId) {
-      object = targetMesh
+      const clone = new THREE.Mesh(targetMesh.geometry.clone() as THREE.BufferGeometry, targetMesh.material)
+      clone.position.copy(targetMesh.position)
+      clone.quaternion.copy(targetMesh.quaternion)
+      clone.scale.copy(targetMesh.scale)
+      clone.updateMatrixWorld(true)
+      object = clone
     } else if (store.parts.length > 1) {
       const group = new THREE.Group()
-      // Clona meshes apenas para análise (não muta os originais)
       for (const p of store.parts) {
         if (!p.visible) continue
         const clone = new THREE.Mesh(p.mesh.geometry.clone() as THREE.BufferGeometry, p.mesh.material)
@@ -49,6 +54,7 @@ export function AutoOrientButton() {
         clone.scale.copy(p.mesh.scale)
         clone.updateMatrixWorld(true)
         group.add(clone)
+        clones.push(clone)
       }
       if (group.children.length === 0) {
         const clone = new THREE.Mesh(targetMesh.geometry.clone() as THREE.BufferGeometry, targetMesh.material)
@@ -56,12 +62,18 @@ export function AutoOrientButton() {
         clone.quaternion.copy(targetMesh.quaternion)
         clone.scale.copy(targetMesh.scale)
         group.add(clone)
+        clones.push(clone)
       }
       group.updateMatrixWorld(true)
       object = group
       isGroup = true
     } else {
-      object = targetMesh
+      const clone = new THREE.Mesh(targetMesh.geometry.clone() as THREE.BufferGeometry, targetMesh.material)
+      clone.position.copy(targetMesh.position)
+      clone.quaternion.copy(targetMesh.quaternion)
+      clone.scale.copy(targetMesh.scale)
+      clone.updateMatrixWorld(true)
+      object = clone
     }
 
     try {
@@ -72,13 +84,8 @@ export function AutoOrientButton() {
 
       setConfidence(result.confidence)
 
-      if (!result.success && result.confidence < 0.45) {
-        setState('error')
-        setMsg('Incerta')
-        setStatus('error', 'Orientação incerta — tente manualmente.')
-        setTimeout(() => setState('idle'), 3000)
-        return
-      }
+      // Se confiança muito baixa, ainda aplica mas avisa que pode desfazer
+      const isUncertain = !result.success && result.confidence < 0.45
 
       // Aplica o delta a todos os meshes reais
       const q = result.quaternion
@@ -94,6 +101,14 @@ export function AutoOrientButton() {
         targetMesh.quaternion.premultiply(q)
         targetMesh.position.y += offsetY
         targetMesh.updateMatrixWorld(true)
+      }
+
+      // Limpa clones
+      for (const c of clones) c.geometry.dispose()
+      if (object instanceof THREE.Group) {
+        for (const c of object.children) (c as THREE.Mesh).geometry?.dispose?.()
+      } else {
+        (object as THREE.Mesh).geometry.dispose()
       }
 
       const { invalidate } = await import('@react-three/fiber')
