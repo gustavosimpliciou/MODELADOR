@@ -319,6 +319,30 @@ function SmartCutInteraction() {
         newHovered,
         selModeRef.current,
       )
+      // Restaura pintura persistente para faces que saíram do hover e eram pintadas (senão ficam cinza/dimmed)
+      try {
+        const state = useAppStore.getState()
+        const partId = state.activePartId ?? state.parts[0]?.id
+        const paintedMap = partId ? state.paintedParts.get(partId) : null
+        if (paintedMap && paintedMap.size > 0) {
+          for (const f of prevHover) {
+            if (newHovered.has(f)) continue
+            if (selectedRef.current.has(f)) continue
+            if (!paintedMap.has(f)) continue
+            const hex = paintedMap.get(f)!
+            const [r, g, b] = hexToRgbNorm(hex)
+            for (let c = 0; c < 3; c++) {
+              const idx = modelMesh.geometry.index
+              const vi = idx ? idx.getX(f * 3 + c) : f * 3 + c
+              const arr = colorAttr.array as Float32Array
+              arr[vi * 3] = r
+              arr[vi * 3 + 1] = g
+              arr[vi * 3 + 2] = b
+            }
+          }
+          colorAttr.needsUpdate = true
+        }
+      } catch {}
       invalidate()
     },
     [modelMesh, activeTool, raycastFace, sharpAngle, cutMode],

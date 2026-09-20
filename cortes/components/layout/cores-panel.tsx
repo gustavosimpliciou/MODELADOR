@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback, useRef, useMemo } from 'react'
-import { Palette, Paintbrush, Eraser, Trash2, Download, GripHorizontal, Eye, RotateCcw } from 'lucide-react'
+import { Palette, Paintbrush, Eraser, Trash2, Download, GripHorizontal, Eye, RotateCcw, Ban } from 'lucide-react'
 import { invalidate } from '@react-three/fiber'
 import { useAppStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
@@ -55,6 +55,7 @@ export function CoresPanel() {
   const hasSelection = selectedFaceIndices.size > 0 && selectionState === 'selected'
   const paintedMap = getActivePaintedMap()
   const paintedCount = paintedMap?.size ?? 0
+  const isNone = paintColor === 'none'
 
   const handlePaint = useCallback(() => {
     if (!hasSelection) {
@@ -62,12 +63,20 @@ export function CoresPanel() {
       return
     }
     pushHistory()
-    const n = paintSelection()
+    let n = 0
+    let label = paintColor
+    if (isNone) {
+      n = clearPaintSelection(false)
+      label = 'nenhuma'
+    } else {
+      n = paintSelection()
+      label = paintColor
+    }
     // Limpa seleção para revelar a pintura e força re-render demand
     clearSelection()
     invalidate()
-    setStatus('loaded', (tAny['cores_painted'] ?? 'Pintado') + ` — ${n} faces → ${paintColor}`)
-  }, [hasSelection, paintSelection, clearSelection, pushHistory, setStatus, paintColor, tAny])
+    setStatus('loaded', (tAny['cores_painted'] ?? 'Pintado') + ` — ${n} faces → ${label}`)
+  }, [hasSelection, paintSelection, clearPaintSelection, clearSelection, pushHistory, setStatus, paintColor, isNone, tAny])
 
   const handleClearSelection = useCallback(() => {
     if (!hasSelection) return
@@ -116,7 +125,7 @@ export function CoresPanel() {
         >
           <div className="flex items-center gap-2">
             <GripHorizontal className="w-3 h-3" style={{ color: 'oklch(0.30 0 0)' }} />
-            <div className="w-1 h-3.5 rounded-full" style={{ background: paintColor, boxShadow: `0 0 6px ${paintColor}` }} />
+            <div className="w-1 h-3.5 rounded-full" style={{ background: isNone ? 'transparent' : paintColor, boxShadow: isNone ? 'none' : `0 0 6px ${paintColor}`, border: isNone ? '1px dashed oklch(0.40 0 0)' : 'none' }} />
             <span className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground">Cores</span>
             {paintedCount > 0 && (
               <span className="text-[8px] font-mono px-1.5 py-0.5 rounded-full" style={{ background: 'oklch(0.55 0.15 260 / 20%)', color: 'oklch(0.75 0.14 260)' }}>
@@ -148,11 +157,11 @@ export function CoresPanel() {
                 <button
                   key={hex}
                   onClick={() => setPaintColor(hex)}
-                  className={cn('w-full aspect-square rounded-lg border-2 transition-all', paintColor.toLowerCase() === hex.toLowerCase() ? 'scale-105' : 'hover:scale-102')}
+                  className={cn('w-full aspect-square rounded-lg border-2 transition-all', !isNone && paintColor.toLowerCase() === hex.toLowerCase() ? 'scale-105' : 'hover:scale-102')}
                   style={{
                     background: hex,
-                    borderColor: paintColor.toLowerCase() === hex.toLowerCase() ? 'oklch(0.75 0.14 260)' : 'oklch(0.18 0 0)',
-                    boxShadow: paintColor.toLowerCase() === hex.toLowerCase() ? `0 0 8px ${hex}` : 'none',
+                    borderColor: !isNone && paintColor.toLowerCase() === hex.toLowerCase() ? 'oklch(0.75 0.14 260)' : 'oklch(0.18 0 0)',
+                    boxShadow: !isNone && paintColor.toLowerCase() === hex.toLowerCase() ? `0 0 8px ${hex}` : 'none',
                   }}
                   title={hex}
                   aria-label={`Cor ${hex}`}
@@ -160,25 +169,42 @@ export function CoresPanel() {
               ))}
             </div>
 
+            {/* Nenhuma (sem cor) */}
+            <button
+              onClick={() => setPaintColor('none')}
+              className={cn('w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg border text-[10px] font-mono transition-all', isNone ? 'scale-[1.01]' : 'hover:opacity-90')}
+              style={{
+                background: isNone ? 'oklch(0.55 0.15 260 / 20%)' : 'oklch(0.12 0 0)',
+                borderColor: isNone ? 'oklch(0.75 0.14 260)' : 'oklch(0.18 0 0)',
+                color: isNone ? 'oklch(0.75 0.14 260)' : 'oklch(0.45 0 0)',
+                boxShadow: isNone ? '0 0 8px oklch(0.55 0.15 260 / 30%)' : 'none',
+              }}
+            >
+              <Ban className="w-3 h-3" />
+              Nenhuma (sem cor)
+            </button>
+
             {/* Custom color */}
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
                 <input
                   type="color"
-                  value={paintColor}
+                  value={isNone ? '#ff2e2e' : paintColor}
                   onChange={(e) => setPaintColor(e.target.value)}
-                  className="w-full h-8 rounded-lg border cursor-pointer"
+                  disabled={isNone}
+                  className="w-full h-8 rounded-lg border cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                   style={{ background: 'oklch(0.12 0 0)', borderColor: 'oklch(0.18 0 0)', padding: '2px' }}
                   aria-label="Escolher cor"
                 />
               </div>
-              <div className="flex-1 flex items-center gap-1.5 px-2 py-1 rounded-lg" style={{ background: 'oklch(0.12 0 0)', border: '1px solid oklch(0.18 0 0)' }}>
-                <div className="w-4 h-4 rounded-full border" style={{ background: paintColor, borderColor: 'oklch(0.25 0 0)' }} />
+              <div className="flex-1 flex items-center gap-1.5 px-2 py-1 rounded-lg" style={{ background: 'oklch(0.12 0 0)', border: '1px solid oklch(0.18 0 0)', opacity: isNone ? 0.4 : 1 }}>
+                <div className="w-4 h-4 rounded-full border" style={{ background: isNone ? 'transparent' : paintColor, borderColor: 'oklch(0.25 0 0)', borderStyle: isNone ? 'dashed' : 'solid' }} />
                 <input
                   type="text"
-                  value={paintColor}
+                  value={isNone ? 'nenhuma' : paintColor}
                   onChange={(e) => {
                     const v = e.target.value.trim()
+                    if (v.toLowerCase() === 'nenhuma' || v.toLowerCase() === 'none') { setPaintColor('none'); return }
                     if (/^#?[0-9a-fA-F]{3,6}$/.test(v)) {
                       setPaintColor(v.startsWith('#') ? v : `#${v}`)
                     }
@@ -186,6 +212,7 @@ export function CoresPanel() {
                   className="flex-1 bg-transparent text-[11px] font-mono outline-none"
                   style={{ color: 'oklch(0.75 0 0)' }}
                   placeholder="#ff2e2e"
+                  readOnly={isNone}
                 />
               </div>
             </div>
@@ -201,10 +228,10 @@ export function CoresPanel() {
               onClick={handlePaint}
               disabled={!hasSelection}
               className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[11px] font-mono font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ background: hasSelection ? paintColor : 'oklch(0.18 0 0)', color: hasSelection ? '#000' : 'oklch(0.35 0 0)', boxShadow: hasSelection ? `0 0 12px ${paintColor}55` : 'none' }}
+              style={{ background: isNone ? 'oklch(0.18 0 0)' : hasSelection ? paintColor : 'oklch(0.18 0 0)', color: isNone ? 'oklch(0.75 0.14 260)' : hasSelection ? '#000' : 'oklch(0.35 0 0)', boxShadow: isNone || !hasSelection ? 'none' : `0 0 12px ${paintColor}55`, border: isNone ? '1px solid oklch(0.55 0.15 260)' : 'none' }}
             >
-              <Paintbrush className="w-3.5 h-3.5" />
-              Pintar seleção
+              {isNone ? <Ban className="w-3.5 h-3.5" /> : <Paintbrush className="w-3.5 h-3.5" />}
+              {isNone ? 'Remover cor' : 'Pintar seleção'}
             </button>
             <button
               onClick={handleClearSelection}

@@ -62,8 +62,8 @@ export function LeftPanel() {
       {/* Separator */}
       <div className="w-8 h-px my-1" style={{ background: 'oklch(0.16 0 0)' }} />
 
-      {/* SmartCut mode — only in select tool */}
-      {activeTool === 'select' && (
+      {/* SmartCut mode — em select e paint (Cores usa mesma seleção) */}
+      {(activeTool === 'select' || activeTool === 'paint') && (
         <div className="flex flex-col items-center gap-1 w-full px-1.5">
           <span className="text-[7px] font-mono uppercase tracking-widest" style={{ color: 'oklch(0.40 0 0)' }}>
             {t.mode}
