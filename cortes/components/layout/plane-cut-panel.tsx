@@ -248,15 +248,6 @@ export function PlaneCutPanel() {
     return cutPlaneAxis === 'x' ? size.x : cutPlaneAxis === 'y' ? size.y : size.z
   }, [modelMesh, cutPlaneAxis])
 
-  // Quando troca de peça (isola uma peça cortada), centraliza o plano
-  // no meio da peça para que o corte funcione imediatamente em qualquer
-  // peça individualmente, sem precisar ajustar manualmente
-  useEffect(() => {
-    if (modelMesh) {
-      setCutPlaneOffset(0.5)
-    }
-  }, [modelMesh])
-
   if (activeTool !== 'cut' || !modelMesh) return null
 
   const axisInfo = AXES.find((a) => a.id === cutPlaneAxis)!
