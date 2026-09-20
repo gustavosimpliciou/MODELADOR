@@ -73,7 +73,7 @@ export function EncaixeWelcome() {
       onClick={(e) => { if (e.target === e.currentTarget) dismiss() }}
     >
       <div
-        className="w-full max-w-[400px] rounded-2xl border p-5 flex flex-col gap-4"
+        className="w-full max-w-[340px] rounded-xl border p-4 flex flex-col gap-3"
         style={{
           background: 'oklch(0.09 0 0 / 97%)',
           borderColor: 'oklch(0.38 0.08 260 / 70%)',
@@ -103,11 +103,11 @@ export function EncaixeWelcome() {
 
         {/* Título + intro */}
         <div>
-          <h2 className="m-0 text-base font-mono font-bold tracking-wide" style={{ color: 'oklch(0.85 0.12 260)' }}>
+          <h2 className="m-0 text-sm font-mono font-bold tracking-wide" style={{ color: 'oklch(0.85 0.12 260)' }}>
             Novidades: Cores + Encaixe 3.0
           </h2>
-          <p className="m-0 mt-1 text-[11px] leading-relaxed text-muted-foreground">
-            Pinte modelos por seleção e encaixes perfeitamente centralizados — exportação 3MF com cores e bordas reparadas.
+          <p className="m-0 mt-1 text-[10px] leading-relaxed text-muted-foreground">
+            Pinte por seleção e encaixes centralizados — 3MF com cores e bordas reparadas.
           </p>
         </div>
 
@@ -118,16 +118,16 @@ export function EncaixeWelcome() {
           </p>
           <ol className="m-0 p-0 flex flex-col gap-1.5 list-none">
             {STEPS_CORES.map((s, i) => (
-              <li key={s.title} className="flex items-start gap-2 rounded-lg border border-border/60 px-2.5 py-2" style={{ background: 'oklch(1 0 0 / 2%)' }}>
-                <span className="flex items-center justify-center w-5 h-5 shrink-0 rounded-full text-[9px] font-mono font-bold" style={{ background: 'oklch(0.55 0.15 260 / 25%)', color: 'oklch(0.75 0.12 260)' }}>
+              <li key={s.title} className="flex items-start gap-2 rounded-lg border border-border/60 px-2 py-1.5" style={{ background: 'oklch(1 0 0 / 2%)' }}>
+                <span className="flex items-center justify-center w-4 h-4 shrink-0 rounded-full text-[8px] font-mono font-bold" style={{ background: 'oklch(0.55 0.15 260 / 25%)', color: 'oklch(0.75 0.12 260)' }}>
                   {i + 1}
                 </span>
                 <div className="min-w-0">
-                  <span className="flex items-center gap-1.5 text-[11px] font-mono font-semibold text-foreground">
-                    <s.icon className="w-3 h-3 shrink-0" style={{ color: 'oklch(0.65 0.18 260)' }} />
+                  <span className="flex items-center gap-1 text-[10px] font-mono font-semibold text-foreground">
+                    <s.icon className="w-2.5 h-2.5 shrink-0" style={{ color: 'oklch(0.65 0.18 260)' }} />
                     {s.title}
                   </span>
-                  <p className="m-0 mt-0.5 text-[10px] leading-snug text-muted-foreground/80">{s.desc}</p>
+                  <p className="m-0 mt-0.5 text-[9px] leading-snug text-muted-foreground/80">{s.desc}</p>
                 </div>
               </li>
             ))}
@@ -141,16 +141,16 @@ export function EncaixeWelcome() {
           </p>
           <ol className="m-0 p-0 flex flex-col gap-1.5 list-none">
             {STEPS_ENCAIXE.map((s, i) => (
-              <li key={s.title} className="flex items-start gap-2 rounded-lg border border-border/60 px-2.5 py-2" style={{ background: 'oklch(1 0 0 / 2%)' }}>
-                <span className="flex items-center justify-center w-5 h-5 shrink-0 rounded-full text-[9px] font-mono font-bold" style={{ background: 'oklch(0.70 0.22 42 / 18%)', color: 'oklch(0.75 0.22 42)' }}>
+              <li key={s.title} className="flex items-start gap-2 rounded-lg border border-border/60 px-2 py-1.5" style={{ background: 'oklch(1 0 0 / 2%)' }}>
+                <span className="flex items-center justify-center w-4 h-4 shrink-0 rounded-full text-[8px] font-mono font-bold" style={{ background: 'oklch(0.70 0.22 42 / 18%)', color: 'oklch(0.75 0.22 42)' }}>
                   {i + 1}
                 </span>
                 <div className="min-w-0">
-                  <span className="flex items-center gap-1.5 text-[11px] font-mono font-semibold text-foreground">
-                    <s.icon className="w-3 h-3 shrink-0" style={{ color: 'oklch(0.70 0.22 42)' }} />
+                  <span className="flex items-center gap-1 text-[10px] font-mono font-semibold text-foreground">
+                    <s.icon className="w-2.5 h-2.5 shrink-0" style={{ color: 'oklch(0.70 0.22 42)' }} />
                     {s.title}
                   </span>
-                  <p className="m-0 mt-0.5 text-[10px] leading-snug text-muted-foreground/80">{s.desc}</p>
+                  <p className="m-0 mt-0.5 text-[9px] leading-snug text-muted-foreground/80">{s.desc}</p>
                 </div>
               </li>
             ))}
@@ -158,22 +158,22 @@ export function EncaixeWelcome() {
         </div>
 
         {/* Dicas */}
-        <div className="flex flex-col gap-1 rounded-lg px-2.5 py-2" style={{ background: 'oklch(0.12 0 0)', border: '1px solid oklch(0.16 0 0)' }}>
-          <p className="m-0 text-[10px] leading-relaxed text-muted-foreground/70">
-            <span style={{ color: 'oklch(0.65 0.14 260)' }}>● Cores:</span> use <b>Nenhuma</b> para remover cor e exporte em <b>3MF colorido</b>.
+        <div className="flex flex-col gap-1 rounded-lg px-2 py-1.5" style={{ background: 'oklch(0.12 0 0)', border: '1px solid oklch(0.16 0 0)' }}>
+          <p className="m-0 text-[9px] leading-relaxed text-muted-foreground/70">
+            <span style={{ color: 'oklch(0.65 0.14 260)' }}>● Cores:</span> use <b>Nenhuma</b> para remover e exporte em <b>3MF</b>.
           </p>
-          <p className="m-0 text-[10px] leading-relaxed text-muted-foreground/70">
-            <span style={{ color: 'oklch(0.70 0.22 42)' }}>● Encaixe:</span> fica no local selecionado, mesma reta/centralização do corte.
+          <p className="m-0 text-[9px] leading-relaxed text-muted-foreground/70">
+            <span style={{ color: 'oklch(0.70 0.22 42)' }}>● Encaixe:</span> no local selecionado, mesma reta do corte.
           </p>
         </div>
 
         {/* Fechar */}
         <button
           onClick={dismiss}
-          className="w-full flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-mono font-medium text-background hover:opacity-90 transition-all"
+          className="w-full flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-mono font-medium text-background hover:opacity-90 transition-all"
           style={{ background: 'oklch(0.55 0.15 260)' }}
         >
-          <Check className="w-3.5 h-3.5" /> Entendi
+          <Check className="w-3 h-3" /> Entendi
         </button>
       </div>
     </div>
