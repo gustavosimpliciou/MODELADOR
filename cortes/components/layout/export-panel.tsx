@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Download, X, FileDown, Layers, Package, Zap, Palette } from 'lucide-react'
+import { repairForExport } from '@/lib/repair'
 import { useAppStore } from '@/lib/store'
 import { useUserStore } from '@/lib/user-store'
 import { trackEvent } from '@/lib/events'
@@ -349,11 +350,13 @@ function computeUniformScaleFactor(meshes: THREE.Mesh[]): number {
 
 function buildExportMesh(mesh: THREE.Mesh, scaleFactor: number): THREE.Mesh {
   mesh.updateWorldMatrix(true, false)
-  const geo = mesh.geometry.clone()
+  let geo = mesh.geometry.clone() as THREE.BufferGeometry
   const exportMatrix = new THREE.Matrix4()
     .makeScale(scaleFactor, scaleFactor, scaleFactor)
     .multiply(mesh.matrixWorld)
   geo.applyMatrix4(exportMatrix)
+  // Correção otimizada de bordas não-manifold antes de exportar (solda vértices, remove degenerados)
+  try { geo = repairForExport(geo) } catch {}
   const exportMesh = new THREE.Mesh(geo, mesh.material)
   exportMesh.position.set(0, 0, 0)
   exportMesh.rotation.set(0, 0, 0)

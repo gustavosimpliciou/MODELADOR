@@ -15,6 +15,7 @@
  */
 
 import * as THREE from 'three'
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { hexToRgbNorm } from './paint'
 
 const MAX_PRINT_MM = 200
@@ -37,10 +38,16 @@ function computeUniformScaleFactor(meshes: THREE.Mesh[]): number {
 
 function buildExportMesh(mesh: THREE.Mesh, scaleFactor: number): THREE.Mesh {
   mesh.updateWorldMatrix(true, false)
-  const geo = mesh.geometry.clone() as THREE.BufferGeometry
+  let geo = mesh.geometry.clone() as THREE.BufferGeometry
   const exportMatrix = new THREE.Matrix4().makeScale(scaleFactor, scaleFactor, scaleFactor).multiply(mesh.matrixWorld)
   geo.applyMatrix4(exportMatrix)
-  // Garante que a geometria tenha índice para export
+  // Reparo leve otimizado: solda vértices duplicados (0.1µm) para eliminar
+  // bordas não-manifold por duplicatas sem remover faces (preserva mapeamento por face para cores)
+  try {
+    geo = mergeVertices(geo, 1e-4)
+  } catch {}
+  try { geo.computeVertexNormals() } catch {}
+  try { geo.computeBoundingBox(); geo.computeBoundingSphere() } catch {}
   const exportMesh = new THREE.Mesh(geo, mesh.material)
   exportMesh.position.set(0, 0, 0)
   exportMesh.rotation.set(0, 0, 0)
