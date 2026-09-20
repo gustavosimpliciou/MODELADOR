@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from 'react'
-import { Download, X, FileDown, Layers, Package, Zap } from 'lucide-react'
+import { Download, X, FileDown, Layers, Package, Zap, Palette } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { useUserStore } from '@/lib/user-store'
 import { trackEvent } from '@/lib/events'
@@ -13,7 +13,7 @@ interface ExportPanelProps {
   onClose: () => void
 }
 
-type ExportFormat = 'stl' | 'obj'
+type ExportFormat = 'stl' | 'obj' | '3mf'
 
 const ACCENT = 'oklch(0.70 0.22 42)'
 const EXPORT_COST = 40
@@ -29,6 +29,11 @@ export function ExportPanel({ open, onClose }: ExportPanelProps) {
   const [format, setFormat] = useState<ExportFormat>('stl')
   const [exporting, setExporting] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  const paintedCount = useAppStore((s) => {
+    let total = 0
+    for (const m of s.paintedParts.values()) total += m.size
+    return total
+  })
 
   if (!open) return null
 
@@ -73,10 +78,16 @@ export function ExportPanel({ open, onClose }: ExportPanelProps) {
     setStatus('exporting', 'Exportando todas as partes...')
 
     try {
-      if (visibleParts.length === 1) {
-        await exportSingleMesh(visibleParts[0].mesh, format, visibleParts[0].name)
+      if (format === '3mf') {
+        const { exportTo3MF } = await import('@/lib/export-3mf')
+        const paintedParts = useAppStore.getState().paintedParts
+        const partsFor3MF = visibleParts.map((p) => ({ id: p.id, name: p.name, mesh: p.mesh }))
+        const fname = visibleParts.length === 1 ? `${sanitizeFilename(visibleParts[0].name)}.3mf` : 'modelo-colorido.3mf'
+        await exportTo3MF(partsFor3MF, paintedParts, fname)
+      } else if (visibleParts.length === 1) {
+        await exportSingleMesh(visibleParts[0].mesh, format as 'stl' | 'obj', visibleParts[0].name)
       } else {
-        await exportAllAsZip(visibleParts.map((p) => ({ mesh: p.mesh, name: p.name })), format)
+        await exportAllAsZip(visibleParts.map((p) => ({ mesh: p.mesh, name: p.name })), format as 'stl' | 'obj')
       }
       setStatus('loaded', `Exportação concluída — ${visibleParts.length} parte(s).`)
       trackEvent('download', {
@@ -189,6 +200,35 @@ export function ExportPanel({ open, onClose }: ExportPanelProps) {
                 </button>
               ))}
             </div>
+
+            {/* Modelo colorido 3MF — abaixo dos formatos existentes */}
+            <button
+              onClick={() => setFormat('3mf')}
+              className={cn(
+                'mt-2 w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-left transition-all',
+                format === '3mf'
+                  ? 'text-background border-transparent'
+                  : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/20'
+              )}
+              style={format === '3mf' ? { background: 'oklch(0.55 0.15 260)', borderColor: 'transparent' } : { background: 'oklch(0.12 0 0)' }}
+            >
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: format === '3mf' ? 'rgba(0,0,0,0.15)' : 'oklch(0.55 0.15 260 / 15%)' }}>
+                  <Palette className="w-3.5 h-3.5" style={{ color: format === '3mf' ? '#fff' : 'oklch(0.65 0.14 260)' }} />
+                </div>
+                <div>
+                  <div className="text-xs font-mono font-semibold tracking-wider" style={{ color: format === '3mf' ? '#fff' : 'oklch(0.75 0.14 260)' }}>
+                    Modelo colorido 3MF
+                  </div>
+                  <div className="text-[10px] font-mono" style={{ color: format === '3mf' ? 'rgba(255,255,255,0.7)' : 'oklch(0.45 0 0)' }}>
+                    Salva cores por triângulo — {paintedCount > 0 ? `${paintedCount} faces pintadas` : 'pinte antes de exportar'}
+                  </div>
+                </div>
+              </div>
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full" style={{ background: format === '3mf' ? 'rgba(255,255,255,0.2)' : 'oklch(0.55 0.15 260 / 12%)', color: format === '3mf' ? '#fff' : 'oklch(0.65 0.14 260)' }}>
+                .3MF
+              </span>
+            </button>
           </div>
 
           {/* Summary */}
@@ -274,7 +314,7 @@ export function ExportPanel({ open, onClose }: ExportPanelProps) {
             ) : (
               <>
                 <Download className="w-4 h-4" />
-                {visibleParts.length > 1 ? 'Exportar ZIP' : 'Exportar'}
+                {format === '3mf' ? 'Exportar 3MF' : visibleParts.length > 1 ? 'Exportar ZIP' : 'Exportar'}
                 {!isFree && !isAdmin && (
                   <span className="text-[10px] opacity-60 ml-1">−{EXPORT_COST} créditos</span>
                 )}

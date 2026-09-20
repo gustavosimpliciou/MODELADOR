@@ -41,6 +41,7 @@ function buildLimitationPlates(
 }
 import { loadModel } from '@/lib/model-loader'
 import { FaceLimitModal } from '@/components/layout/face-limit-modal'
+import { syncPaintedColors, hexToRgbNorm } from '@/lib/paint'
 import { ModelRenderer } from './model-renderer'
 
 // ─── WebGL Error Boundary ─────────────────────────────────────────────────────
@@ -158,12 +159,51 @@ function SmartCutInteraction() {
   // Sincroniza o ref de seleção com o store. Quando a mudança vem de fora do
   // fluxo normal de clique (ex.: desfazer/refazer), o objeto Set é diferente do
   // que está pintado, então repintamos o delta para refletir na geometria.
+  // Respeita cores pintadas (Cores) — restaura base pintada antes de sobrepor seleção.
   useEffect(() => {
     const prev = selectedRef.current
     if (prev !== selectedFaceIndices) {
       const colorAttr = colorAttrRef.current
       if (modelMesh && colorAttr) {
-        paintFacesDelta(modelMesh.geometry, colorAttr, prev, selectedFaceIndices, 'new')
+        // Restaura base com pintura persistente antes de aplicar overlay de seleção
+        try {
+          const state = useAppStore.getState()
+          const partId = state.activePartId ?? state.parts[0]?.id
+          const paintedMap = partId ? state.paintedParts.get(partId) : null
+          if (paintedMap && paintedMap.size > 0) {
+            syncPaintedColors(modelMesh.geometry as THREE.BufferGeometry, modelMesh.material as THREE.MeshStandardMaterial, paintedMap)
+            colorAttrRef.current = modelMesh.geometry.getAttribute('color') as THREE.BufferAttribute
+          }
+        } catch {}
+        const curAttr = colorAttrRef.current!
+        paintFacesDelta(modelMesh.geometry, curAttr, prev, selectedFaceIndices, 'new')
+        // Reaplica pintura para faces que saíram da seleção mas eram pintadas (o delta acima as apagou para DIMMED)
+        try {
+          const state = useAppStore.getState()
+          const partId = state.activePartId ?? state.parts[0]?.id
+          const paintedMap = partId ? state.paintedParts.get(partId) : null
+          if (paintedMap && selectedFaceIndices.size === 0 && paintedMap.size > 0) {
+            // Seleção ficou vazia — reaplica todas as pintadas (bulk fill apagou)
+            syncPaintedColors(modelMesh.geometry as THREE.BufferGeometry, modelMesh.material as THREE.MeshStandardMaterial, paintedMap)
+            colorAttrRef.current = modelMesh.geometry.getAttribute('color') as THREE.BufferAttribute
+          } else if (paintedMap) {
+            for (const f of prev) {
+              if (!selectedFaceIndices.has(f) && paintedMap.has(f)) {
+                const hex = paintedMap.get(f)!
+                const [r, g, b] = hexToRgbNorm(hex)
+                for (let c = 0; c < 3; c++) {
+                  const idx = modelMesh.geometry.index
+                  const vi = idx ? idx.getX(f * 3 + c) : f * 3 + c
+                  const arr = (colorAttrRef.current!.array as Float32Array)
+                  arr[vi * 3] = r
+                  arr[vi * 3 + 1] = g
+                  arr[vi * 3 + 2] = b
+                }
+              }
+            }
+            colorAttrRef.current!.needsUpdate = true
+          }
+        } catch {}
         hoveredRef.current = new Set()
         invalidate()
       }
@@ -182,6 +222,16 @@ function SmartCutInteraction() {
     }
     const mat = modelMesh.material as THREE.MeshStandardMaterial
     colorAttrRef.current = ensureColorAttribute(modelMesh.geometry, mat)
+    // Restaura pintura persistente da peça ativa, se houver
+    try {
+      const state = useAppStore.getState()
+      const partId = state.activePartId ?? state.parts.find((p) => p.mesh === modelMesh)?.id ?? null
+      const map = partId ? state.paintedParts.get(partId) : null
+      if (map && map.size > 0) {
+        syncPaintedColors(modelMesh.geometry as THREE.BufferGeometry, mat, map)
+        colorAttrRef.current = modelMesh.geometry.getAttribute('color') as THREE.BufferAttribute
+      }
+    } catch {}
     // Construir cache de adjacência com ângulo atual (adiado para não travar o frame)
     setTimeout(() => buildAdjacencyCache(modelMesh.geometry, sharpAngle ?? 35), 80)
   }, [modelMesh, sharpAngle])
@@ -230,7 +280,7 @@ function SmartCutInteraction() {
   // ── Hover: direto ao BufferAttribute, zero React ─────────────────────────────
   const doHover = useCallback(
     (clientX: number, clientY: number) => {
-      if (!modelMesh || activeTool !== 'select') return
+      if (!modelMesh || (activeTool !== 'select' && activeTool !== 'paint')) return
       const colorAttr = colorAttrRef.current
       if (!colorAttr) return
 
@@ -293,7 +343,7 @@ function SmartCutInteraction() {
   // ── Click: BFS + acumulação + state ──────────────────────────────────────────
   const handleClick = useCallback(
     (e: MouseEvent) => {
-      if (!modelMesh || activeTool !== 'select' || isOrbitingRef.current) return
+      if (!modelMesh || (activeTool !== 'select' && activeTool !== 'paint') || isOrbitingRef.current) return
       const colorAttr = colorAttrRef.current
       if (!colorAttr) return
 
@@ -792,7 +842,7 @@ export function Viewport3D() {
 // ─── Indicador de modo ────────────────────────────────────────────────────────
 function ActiveToolIndicator() {
   const { activeTool, selectionState, selectedFaceIndices, selectionMode } = useAppStore()
-  if (activeTool !== 'select') return null
+  if (activeTool !== 'select' && activeTool !== 'paint') return null
 
   const modeLabel =
     selectionMode === 'add'      ? '+ Adicionar  (Ctrl)' :

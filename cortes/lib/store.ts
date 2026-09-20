@@ -4,8 +4,9 @@ import { create } from 'zustand'
 import * as THREE from 'three'
 import type { AutoSplitPlan } from './auto-split'
 import { type Part, createPart } from './parts-manager'
+import { hexToRgbNorm, syncPaintedColors, paintSelectedFaces, clearPaintedFaces } from './paint'
 
-export type Tool = 'select' | 'erase' | 'cut' | 'acab' | 'autosplit' | 'measure' | 'reset'
+export type Tool = 'select' | 'erase' | 'cut' | 'paint' | 'acab' | 'autosplit' | 'measure' | 'reset'
 export type SelectionState = 'idle' | 'hovering' | 'selected' | 'cutting'
 export type AppStatus = 'idle' | 'loading' | 'loaded' | 'selecting' | 'cutting' | 'exporting' | 'error'
 export type SelectionMode = 'new' | 'add' | 'subtract'
@@ -116,6 +117,8 @@ export interface HistorySnapshot {
   modelInfo: ModelInfo | null
   parts: Part[]
   activePartId: string | null
+  paintedParts: Map<string, Map<number, string>>
+  paintColor: string
 }
 
 export interface AppState {
@@ -204,6 +207,14 @@ export interface AppState {
   // ─── Preview interativo do corte ──────────────────────────────────────────
   cutPreview: CutPreviewData | null
   previewViewMode: PreviewViewMode
+
+  // ── Pintura por seleção (Cores) ────────────────────────────────────────────
+  paintColor: string
+  paintedParts: Map<string, Map<number, string>>
+  setPaintColor: (hex: string) => void
+  paintSelection: () => number
+  clearPaintSelection: (all?: boolean) => number
+  getActivePaintedMap: () => Map<number, string> | null
 
   // Histórico (desfazer/refazer)
   past: HistorySnapshot[]
@@ -379,6 +390,52 @@ export const useAppStore = create<AppState>((set, get) => ({
   cutPreview: null,
   previewViewMode: 'solid',
 
+  // Pintura
+  paintColor: '#ff2e2e',
+  paintedParts: new Map<string, Map<number, string>>(),
+  setPaintColor: (paintColor) => set({ paintColor }),
+  getActivePaintedMap: () => {
+    const s = get()
+    const id = s.activePartId ?? s.parts[0]?.id ?? null
+    if (!id) return null
+    return s.paintedParts.get(id) ?? null
+  },
+  paintSelection: () => {
+    const s = get()
+    const mesh = s.modelMesh
+    const sel = s.selectedFaceIndices
+    if (!mesh || sel.size === 0) return 0
+    const partId = s.activePartId ?? s.parts[0]?.id ?? null
+    if (!partId) return 0
+    const map = new Map(s.paintedParts)
+    let faceMap = map.get(partId)
+    if (!faceMap) { faceMap = new Map(); map.set(partId, faceMap) }
+    else { faceMap = new Map(faceMap); map.set(partId, faceMap) }
+    const mat = mesh.material as THREE.MeshStandardMaterial
+    const count = paintSelectedFaces(mesh.geometry as THREE.BufferGeometry, mat, sel, s.paintColor, faceMap)
+    set({ paintedParts: map })
+    // Importante: pushHistory deve ser chamado ANTES pela UI se quiser undo do paint
+    return count
+  },
+  clearPaintSelection: (all = false) => {
+    const s = get()
+    const mesh = s.modelMesh
+    if (!mesh) return 0
+    const partId = s.activePartId ?? s.parts[0]?.id ?? null
+    if (!partId) return 0
+    const faceMap = s.paintedParts.get(partId)
+    if (!faceMap || faceMap.size === 0) return 0
+    const map = new Map(s.paintedParts)
+    const newFaceMap = new Map(faceMap)
+    map.set(partId, newFaceMap)
+    const mat = mesh.material as THREE.MeshStandardMaterial
+    const sel = all ? new Set<number>() : s.selectedFaceIndices
+    const cleared = clearPaintedFaces(mesh.geometry as THREE.BufferGeometry, mat, sel, newFaceMap, all)
+    if (newFaceMap.size === 0) map.delete(partId)
+    set({ paintedParts: map })
+    return cleared
+  },
+
   past: [],
   future: [],
 
@@ -387,10 +444,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   registerModelAsPart: (mesh, name) =>
     set((state) => {
       const part = createPart(mesh, name.replace(/\.[^.]+$/, '') || 'Corpo Principal')
+      // Garante vertex colors base para pintura
+      try {
+        const mat = mesh.material as THREE.MeshStandardMaterial
+        syncPaintedColors(mesh.geometry as THREE.BufferGeometry, mat, null)
+      } catch {}
       return {
         parts: [part],
         activePartId: part.id,
         modelMesh: mesh,
+        paintedParts: new Map<string, Map<number, string>>(),
+        paintColor: state.paintColor,
         cutParts: [],
         activeCutPartId: null,
         selectedFaceIndices: new Set(),
@@ -442,10 +506,18 @@ export const useAppStore = create<AppState>((set, get) => ({
         return { activePartId: null }
       }
       const part = state.parts.find((p) => p.id === id)
+      const mesh = part?.mesh ?? state.modelMesh
+      // Sincroniza cores pintadas da peça ativa
+      if (mesh) {
+        try {
+          const map = state.paintedParts.get(id) ?? null
+          syncPaintedColors(mesh.geometry as THREE.BufferGeometry, mesh.material as THREE.MeshStandardMaterial, map)
+        } catch {}
+      }
       return {
         activePartId: id,
         // Redirect modelMesh so SmartCut operates on the active part
-        modelMesh: part?.mesh ?? state.modelMesh,
+        modelMesh: mesh,
         // Reset selection when switching parts
         selectedFaceIndices: new Set(),
         hoveredFaceIndices: new Set(),
@@ -716,6 +788,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       const previous = state.past[state.past.length - 1]
       const newPast = state.past.slice(0, -1)
       disposeCutPreview(state.cutPreview)
+      // Restaura cores pintadas na malha ativa
+      try {
+        const mesh = previous.modelMesh
+        if (mesh) {
+          const map = previous.paintedParts.get(previous.activePartId ?? previous.parts[0]?.id ?? '') ?? null
+          syncPaintedColors(mesh.geometry as THREE.BufferGeometry, mesh.material as THREE.MeshStandardMaterial, map)
+        }
+      } catch {}
       return {
         past: newPast,
         future: [snapshotOf(state), ...state.future].slice(0, MAX_HISTORY),
@@ -727,6 +807,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         modelInfo: previous.modelInfo,
         parts: previous.parts,
         activePartId: previous.activePartId,
+        paintedParts: clonePaintedParts(previous.paintedParts),
+        paintColor: previous.paintColor,
         hoveredFaceIndices: new Set(),
         cutPreview: null,
         status: 'loaded',
@@ -740,6 +822,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       const next = state.future[0]
       const newFuture = state.future.slice(1)
       disposeCutPreview(state.cutPreview)
+      try {
+        const mesh = next.modelMesh
+        if (mesh) {
+          const map = next.paintedParts.get(next.activePartId ?? next.parts[0]?.id ?? '') ?? null
+          syncPaintedColors(mesh.geometry as THREE.BufferGeometry, mesh.material as THREE.MeshStandardMaterial, map)
+        }
+      } catch {}
       return {
         past: pushSnapshot(state.past, snapshotOf(state)),
         future: newFuture,
@@ -751,6 +840,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         modelInfo: next.modelInfo,
         parts: next.parts,
         activePartId: next.activePartId,
+        paintedParts: clonePaintedParts(next.paintedParts),
+        paintColor: next.paintColor,
         hoveredFaceIndices: new Set(),
         cutPreview: null,
         status: 'loaded',
@@ -760,6 +851,12 @@ export const useAppStore = create<AppState>((set, get) => ({
 }))
 
 // ── Helpers de histórico ──────────────────────────────────────────────────────
+function clonePaintedParts(src: Map<string, Map<number, string>>): Map<string, Map<number, string>> {
+  const out = new Map<string, Map<number, string>>()
+  for (const [k, v] of src) out.set(k, new Map(v))
+  return out
+}
+
 function snapshotOf(state: AppState): HistorySnapshot {
   return {
     selectedFaceIndices: new Set(state.selectedFaceIndices),
@@ -770,6 +867,8 @@ function snapshotOf(state: AppState): HistorySnapshot {
     modelInfo: state.modelInfo,
     parts: [...state.parts],
     activePartId: state.activePartId,
+    paintedParts: clonePaintedParts(state.paintedParts),
+    paintColor: state.paintColor,
   }
 }
 

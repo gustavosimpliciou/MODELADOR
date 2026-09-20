@@ -7,6 +7,7 @@ import { RightPanel } from '@/components/layout/right-panel'
 import { StatusBar } from '@/components/layout/status-bar'
 import { CutActions } from '@/components/layout/cut-actions'
 import { PlaneCutPanel } from '@/components/layout/plane-cut-panel'
+import { CoresPanel } from '@/components/layout/cores-panel'
 import { AutoSplitPanel } from '@/components/layout/auto-split-panel'
 import { SmartAutoCutPanel } from '@/components/layout/smart-autocut-panel'
 import { EncaixePanel } from '@/components/layout/encaixe-panel'
@@ -53,6 +54,8 @@ export default function NativosCut() {
           <EncaixePanel />
           {/* Painel de corte de sólido por plano */}
           <PlaneCutPanel />
+          {/* Painel de pintura por seleção — abaixo do menu Corte */}
+          <CoresPanel />
           {/* Painel de divisão automática por geometria */}
           <AutoSplitPanel />
           {/* Painel de acabamento localizado na região do corte */}
