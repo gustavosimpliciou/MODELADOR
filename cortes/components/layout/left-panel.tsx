@@ -5,6 +5,7 @@ import { MousePointerClick, Scissors, Palette, RotateCcw } from 'lucide-react'
 import { useAppStore, type Tool } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/lang-store'
+import { AutoOrientButton } from './auto-orient-button'
 
 export function LeftPanel() {
   const t = useT()
@@ -128,6 +129,13 @@ export function LeftPanel() {
           </div>
 
           <div className="w-8 h-px my-1" style={{ background: 'oklch(0.16 0 0)' }} />
+        </div>
+      )}
+
+      {/* Auto Orientar — sempre visível quando há modelo */}
+      {modelMesh && (
+        <div className="w-full px-1.5">
+          <AutoOrientButton />
         </div>
       )}
 
