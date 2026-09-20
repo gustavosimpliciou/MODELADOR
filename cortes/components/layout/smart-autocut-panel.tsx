@@ -149,25 +149,33 @@ export function SmartAutoCutPanel() {
     try {
       const geo = modelMesh.geometry as THREE.BufferGeometry
 
-      // ── Auto-fill micro-fragmentos ──────────────────────────────────────
-      // Antes de qualquer cálculo, absorve pequenas partículas não-selecionadas
-      // que ficaram de fora do SmartCut e descarta cacos selecionados isolados.
-      // Usa apenas limpeza por área — não altera o contorno da seleção principal.
-      const { cleaned: effectiveSelection, addedFaces, removedFaces } =
-        autoFillMicroFragments(geo, selectedFaceIndices)
-      if (addedFaces + removedFaces > 0) {
-        setSelectedFaceIndices(effectiveSelection)
-        if (addedFaces > 0) {
-          setStatus('cutting',
-            `Ajustando seleção — ${addedFaces} face(s) absorvida(s)${removedFaces > 0 ? `, ${removedFaces} caco(s) removido(s)` : ''}...`)
+      // ── Seleção como FONTE ABSOLUTA DA VERDADE ───────────────────────────
+      // Em modo EXATO, a seleção original do usuário NÃO pode ser alterada.
+      // Nenhuma absorção, suavização ou simplificação é permitida.
+      let effectiveSelection: Set<number>
+      if (contourMode === 'exact') {
+        effectiveSelection = new Set(selectedFaceIndices)
+      } else {
+        // Modo AI: limpeza leve por área apenas para micro-fragmentos
+        const { cleaned, addedFaces, removedFaces } = autoFillMicroFragments(geo, selectedFaceIndices)
+        effectiveSelection = cleaned
+        if (addedFaces + removedFaces > 0) {
+          setSelectedFaceIndices(effectiveSelection)
+          if (addedFaces > 0) {
+            setStatus('cutting',
+              `Ajustando seleção — ${addedFaces} face(s) absorvida(s)${removedFaces > 0 ? `, ${removedFaces} caco(s) removido(s)` : ''}...`)
+          }
         }
       }
 
       let openResult
       if (contourMode === 'exact') {
-        // Modo exato: separa pelo contorno da malha sem reconstrução
-        const selGeo = extractSubMesh(geo, effectiveSelection, true, weldQ)
-        const bodyGeo = removeSubMesh(geo, effectiveSelection, weldQ)
+        // Modo exato: respeita EXATAMENTE a borda da seleção original
+        // Sem diffuseField, sem march, sem relax — apenas separação por faces + tampa como constrained loop
+        // Usa weldQ máximo (1e6) para preservar precisão sub-milimétrica
+        const exactWeldQ = Math.max(weldQ, 1e6)
+        const selGeo = extractSubMesh(geo, effectiveSelection, true, exactWeldQ)
+        const bodyGeo = removeSubMesh(geo, effectiveSelection, exactWeldQ)
         openResult = {
           openSelectedGeometry: selGeo,
           openBodyGeometry: bodyGeo,
@@ -175,7 +183,7 @@ export function SmartAutoCutPanel() {
           seamScore: 0, seamSegments: 0, iterations: 0, ok: true,
         }
       } else {
-        // Pipeline assíncrono — não bloqueia a UI nem o GC
+        // Pipeline AI: reconstrução com campo difuso e isocontorno suavizado
         openResult = await computeOpenCut(
           geo,
           effectiveSelection,
