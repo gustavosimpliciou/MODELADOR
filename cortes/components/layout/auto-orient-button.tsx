@@ -127,31 +127,190 @@ export function AutoOrientButton() {
   }, [pushHistory, setStatus])
 
   const disabled = !modelMesh
-  const label = state === 'analyzing' ? msg : state === 'done' ? `OK ${confidence !== null ? `${(confidence * 100).toFixed(0)}%` : ''}` : state === 'error' ? msg : 'Auto Orientar'
-  const description = state === 'analyzing' ? msg : state === 'done' ? `Orientado ${(confidence! * 100).toFixed(0)}%` : state === 'error' ? msg : 'Detecta a base e coloca em pé'
+  const orientA = useAppStore((s) => s.orientPointA)
+  const orientB = useAppStore((s) => s.orientPointB)
+  const activeTool = useAppStore((s) => s.activeTool)
+  const setActiveTool = useAppStore((s) => s.setActiveTool)
+  const isOrienting = activeTool === 'orient'
+
+  const label = state === 'analyzing' ? msg : state === 'done' ? `OK ${confidence !== null ? `${(confidence * 100).toFixed(0)}%` : ''}` : state === 'error' ? msg : 'Orientar'
+  const description = state === 'analyzing' ? msg : state === 'done' ? `Orientado ${(confidence! * 100).toFixed(0)}%` : state === 'error' ? msg : 'Indique topo e base e oriente'
+
+  const handleOrientarClick = () => {
+    if (!isOrienting) {
+      setActiveTool('orient')
+      useAppStore.getState().clearOrientPoints()
+      setStatus('loaded', 'Orientar: clique no ponto de cima (A) e depois no ponto de baixo (B) no modelo')
+      return
+    }
+    // Já em modo orientar: se tem A e B, aplica; se não, sai do modo
+    if (orientA && orientB) {
+      handleManualOrient()
+    } else {
+      setActiveTool('select')
+      useAppStore.getState().clearOrientPoints()
+      setStatus('loaded', 'Seleção Smart')
+    }
+  }
+
+  const handleManualOrient = useCallback(async () => {
+    const store = useAppStore.getState()
+    const a = store.orientPointA
+    const b = store.orientPointB
+    const mesh = store.modelMesh
+    if (!a || !b || !mesh) {
+      setStatus('error', 'Indique os dois pontos (A topo e B base) no modelo')
+      return
+    }
+    pushHistory()
+    setState('analyzing')
+    setMsg('Orientando...')
+    setStatus('cutting', 'Orientando...')
+
+    try {
+      const { solveManualQuaternion, applyGroundOffset } = await import('@/lib/auto-orient/orientationSolver')
+      const targetUp = new THREE.Vector3(0, 1, 0)
+      const q = solveManualQuaternion(a, b, targetUp)
+
+      // Aplica a todas as partes visíveis ou apenas à ativa
+      if (store.activePartId) {
+        mesh.quaternion.premultiply(q)
+        mesh.updateMatrixWorld(true)
+        const offset = applyGroundOffset(mesh, 0)
+        // Também aplica offset a todas as partes visíveis para manter conjunto
+        for (const p of store.parts) {
+          if (p.id !== store.activePartId && p.visible) {
+            p.mesh.quaternion.premultiply(q)
+            p.mesh.position.y += offset
+            p.mesh.updateMatrixWorld(true)
+          }
+        }
+      } else {
+        for (const p of store.parts) {
+          if (!p.visible) continue
+          p.mesh.quaternion.premultiply(q)
+          p.mesh.updateMatrixWorld(true)
+        }
+        // Ground para o conjunto
+        const dummy = new THREE.Group()
+        for (const p of store.parts) if (p.visible) dummy.add(p.mesh.clone())
+        dummy.updateMatrixWorld(true)
+        const box = new THREE.Box3().setFromObject(dummy)
+        const offset = 0 - box.min.y
+        for (const p of store.parts) {
+          if (!p.visible) continue
+          p.mesh.position.y += offset
+          p.mesh.updateMatrixWorld(true)
+        }
+        // Limpa clones
+        dummy.traverse((c) => (c as THREE.Mesh).geometry?.dispose?.())
+      }
+
+      const { invalidate } = await import('@react-three/fiber')
+      invalidate()
+      setState('done')
+      setMsg('OK')
+      setStatus('loaded', 'Modelo orientado (manual A→B)')
+      setActiveTool('select')
+      useAppStore.getState().clearOrientPoints()
+      setTimeout(() => setState('idle'), 2500)
+    } catch (e: any) {
+      setState('error')
+      setMsg('Falha')
+      setStatus('error', `Falha: ${e?.message ?? 'erro'}`)
+      setTimeout(() => setState('idle'), 3000)
+    }
+  }, [pushHistory, setStatus])
+
+  // Se já tem A e B, o botão principal vira "Orientar" com ação manual
+  const hasPoints = !!orientA && !!orientB
 
   return (
-    <div className="relative group w-full px-1.5">
+    <div className="relative group w-full px-1.5 flex flex-col gap-1">
       <button
-        onClick={handleClick}
+        onClick={isOrienting && hasPoints ? handleManualOrient : handleOrientarClick}
         disabled={disabled || state === 'analyzing'}
-        className={cn('tool-btn', disabled && 'opacity-25 cursor-not-allowed', state === 'analyzing' && 'opacity-60')}
+        className={cn('tool-btn', disabled && 'opacity-25 cursor-not-allowed', state === 'analyzing' && 'opacity-60', isOrienting && 'ring-1 ring-[oklch(0.70_0.22_42)]')}
         aria-label={description}
-        aria-pressed={false}
+        aria-pressed={isOrienting}
       >
         {state === 'analyzing' ? <Loader2 className="w-4 h-4 animate-spin" /> : state === 'done' ? <Check className="w-4 h-4" style={{ color: 'oklch(0.65 0.15 145)' }} /> : state === 'error' ? <AlertTriangle className="w-4 h-4" style={{ color: 'oklch(0.70 0.18 30)' }} /> : <ArrowUpFromLine className="w-4 h-4" />}
         <span className="text-[8px] font-mono uppercase tracking-wider leading-none text-center">
           {state === 'idle' ? (
-            <>
-              Auto
-              <br />
-              Orientar
-            </>
+            isOrienting ? (
+              hasPoints ? (
+                <>
+                  Aplicar
+                  <br />
+                  Orientar
+                </>
+              ) : (
+                <>
+                  {orientA ? 'Ponto B' : 'Ponto A'}
+                  <br />
+                  <span className="text-[6px] opacity-60">{orientA ? 'base' : 'topo'}</span>
+                </>
+              )
+            ) : (
+              'Orientar'
+            )
           ) : (
             <span className="text-[7px] leading-none">{label}</span>
           )}
         </span>
       </button>
+
+      {/* Painel moderno simples para indicar A e B */}
+      {isOrienting && (
+        <div className="w-full rounded-lg border p-2 flex flex-col gap-1.5" style={{ background: 'oklch(0.12 0 0)', borderColor: 'oklch(0.70 0.22 42 / 30%)' }}>
+          <div className="flex items-center gap-1.5">
+            <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-mono font-bold shrink-0" style={{ background: orientA ? 'oklch(0.70 0.22 42)' : 'oklch(0.18 0 0)', color: orientA ? '#000' : 'oklch(0.40 0 0)', border: orientA ? 'none' : '1px solid oklch(0.25 0 0)' }}>
+              A
+            </span>
+            <span className="text-[9px] font-mono flex-1 truncate" style={{ color: orientA ? 'oklch(0.85 0 0)' : 'oklch(0.40 0 0)' }}>
+              {orientA ? `${orientA.x.toFixed(1)}, ${orientA.y.toFixed(1)}, ${orientA.z.toFixed(1)}` : 'Clique no topo'}
+            </span>
+            {orientA && (
+              <button onClick={() => useAppStore.getState().setOrientPointA(null)} className="text-[8px] px-1 py-0.5 rounded bg-secondary/50 hover:bg-secondary">×</button>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-mono font-bold shrink-0" style={{ background: orientB ? 'oklch(0.70 0.22 42)' : 'oklch(0.18 0 0)', color: orientB ? '#000' : 'oklch(0.40 0 0)', border: orientB ? 'none' : '1px solid oklch(0.25 0 0)' }}>
+              B
+            </span>
+            <span className="text-[9px] font-mono flex-1 truncate" style={{ color: orientB ? 'oklch(0.85 0 0)' : 'oklch(0.40 0 0)' }}>
+              {orientB ? `${orientB.x.toFixed(1)}, ${orientB.y.toFixed(1)}, ${orientB.z.toFixed(1)}` : 'Clique na base'}
+            </span>
+            {orientB && (
+              <button onClick={() => useAppStore.getState().setOrientPointB(null)} className="text-[8px] px-1 py-0.5 rounded bg-secondary/50 hover:bg-secondary">×</button>
+            )}
+          </div>
+          {hasPoints && (
+            <div className="h-px my-1" style={{ background: 'oklch(0.18 0 0)' }} />
+          )}
+          <div className="flex gap-1">
+            <button
+              onClick={() => { useAppStore.getState().clearOrientPoints(); setActiveTool('select') }}
+              className="flex-1 py-1 rounded text-[8px] font-mono border"
+              style={{ borderColor: 'oklch(0.18 0 0)', color: 'oklch(0.45 0 0)' }}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleManualOrient}
+              disabled={!hasPoints}
+              className="flex-1 py-1 rounded text-[8px] font-mono font-semibold disabled:opacity-30"
+              style={{ background: hasPoints ? 'oklch(0.70 0.22 42)' : 'oklch(0.18 0 0)', color: hasPoints ? '#000' : 'oklch(0.35 0 0)' }}
+            >
+              Orientar
+            </button>
+          </div>
+          <span className="text-[7px] font-mono text-center leading-none" style={{ color: 'oklch(0.35 0 0)' }}>
+            A = topo · B = base · mesma reta
+          </span>
+        </div>
+      )}
+
       <div className="tool-tooltip whitespace-nowrap" role="tooltip">
         {description}
         {state === 'idle' && confidence !== null ? ` — ${(confidence * 100).toFixed(0)}%` : ''}

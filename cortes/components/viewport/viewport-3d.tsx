@@ -515,6 +515,106 @@ function SmartCutInteraction() {
   return null
 }
 
+// ─── Orient Pick Interaction — modo manual A→B ─────────────────────────────────
+function OrientPickInteraction() {
+  const { modelMesh, activeTool, orientPointA, orientPointB, setOrientPointA, setOrientPointB, parts, activePartId, setStatus } = useAppStore()
+  const { camera, gl, raycaster } = useThree()
+  const mouseNDC = useRef(new THREE.Vector2())
+
+  const handleClick = useCallback((e: MouseEvent) => {
+    if (activeTool !== 'orient' || !modelMesh) return
+    // Evita pick durante órbita
+    const rect = gl.domElement.getBoundingClientRect()
+    mouseNDC.current.set(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1,
+    )
+    raycaster.setFromCamera(mouseNDC.current, camera)
+
+    // Raycast contra a peça ativa se isolada, senão contra todas as visíveis
+    let hits: THREE.Intersection[] = []
+    if (activePartId) {
+      const part = parts.find((p) => p.id === activePartId)
+      const mesh = part?.mesh ?? modelMesh
+      hits = raycaster.intersectObject(mesh, false)
+    } else if (parts.length > 1) {
+      const meshes = parts.filter((p) => p.visible).map((p) => p.mesh)
+      hits = raycaster.intersectObjects(meshes, false)
+    } else {
+      hits = raycaster.intersectObject(modelMesh, false)
+    }
+
+    if (hits.length === 0) return
+    const point = hits[0].point.clone()
+
+    if (!orientPointA) {
+      setOrientPointA(point)
+      setStatus('loaded', 'Ponto A (topo) definido — clique no ponto B (base)')
+    } else if (!orientPointB) {
+      setOrientPointB(point)
+      setStatus('loaded', 'Pontos A e B definidos — clique em Orientar')
+    } else {
+      // Ambos já definidos: reinicia com novo A
+      setOrientPointA(point)
+      setOrientPointB(null)
+      setStatus('loaded', 'Ponto A redefinido — clique no ponto B')
+    }
+    invalidate()
+  }, [activeTool, modelMesh, orientPointA, orientPointB, setOrientPointA, setOrientPointB, parts, activePartId, camera, gl, raycaster, setStatus])
+
+  useEffect(() => {
+    const canvas = gl.domElement
+    canvas.addEventListener('click', handleClick)
+    return () => canvas.removeEventListener('click', handleClick)
+  }, [gl.domElement, handleClick])
+
+  return null
+}
+
+function OrientMarkers() {
+  const orientPointA = useAppStore((s) => s.orientPointA)
+  const orientPointB = useAppStore((s) => s.orientPointB)
+  const activeTool = useAppStore((s) => s.activeTool)
+
+  if (activeTool !== 'orient') return null
+  if (!orientPointA && !orientPointB) return null
+
+  return (
+    <group>
+      {orientPointA && (
+        <mesh position={orientPointA.toArray()}>
+          <sphereGeometry args={[0.12, 16, 16]} />
+          <meshBasicMaterial color="#ff3b30" transparent opacity={0.95} depthTest={false} />
+        </mesh>
+      )}
+      {orientPointB && (
+        <mesh position={orientPointB.toArray()}>
+          <sphereGeometry args={[0.12, 16, 16]} />
+          <meshBasicMaterial color="#007aff" transparent opacity={0.95} depthTest={false} />
+        </mesh>
+      )}
+      {orientPointA && orientPointB && (
+        <line>
+          <bufferGeometry>
+            <bufferAttribute
+              attach="attributes-position"
+              count={2}
+              array={new Float32Array([...orientPointA.toArray(), ...orientPointB.toArray()])}
+              itemSize={3}
+            />
+          </bufferGeometry>
+          <lineBasicMaterial color="#ffcc00" linewidth={2} transparent opacity={0.9} depthTest={false} />
+        </line>
+      )}
+      {orientPointA && (
+        <sprite position={orientPointA.clone().add(new THREE.Vector3(0.25, 0.25, 0)).toArray()}>
+          <spriteMaterial attach="material" color="#ff3b30" />
+        </sprite>
+      )}
+    </group>
+  )
+}
+
 // ─── OrbitControls disabler while plate/encaixe gizmos are dragged ───────────
 function OrbitControlsGuard({ controlsRef }: { controlsRef: React.RefObject<any> }) {
   const plateDragging = useAppStore((s) => s.plateCutDragging)
@@ -793,6 +893,8 @@ export function Viewport3D() {
         <CameraFitter controlsRef={controlsRef} />
         <OrbitControlsGuard controlsRef={controlsRef} />
         <SmartCutInteraction />
+        <OrientPickInteraction />
+        <OrientMarkers />
 
         <ambientLight intensity={0.55} />
         <directionalLight position={[5, 8, 5]}   intensity={1.2} />

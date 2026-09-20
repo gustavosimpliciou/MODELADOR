@@ -57,3 +57,18 @@ export function applyGroundOffset(
   object.updateMatrixWorld(true)
   return offset
 }
+
+/**
+ * Manual: dois pontos clicados no modelo — A = topo, B = base.
+ * Calcula quaternion que alinha o vetor B→A com o UP do mundo.
+ */
+export function solveManualQuaternion(
+  pointA: THREE.Vector3,
+  pointB: THREE.Vector3,
+  targetUp: THREE.Vector3 = new THREE.Vector3(0, 1, 0),
+): THREE.Quaternion {
+  const up = new THREE.Vector3().subVectors(pointA, pointB)
+  if (up.lengthSq() < 1e-6) return new THREE.Quaternion()
+  up.normalize()
+  return solveUpQuaternion(up, targetUp)
+}
