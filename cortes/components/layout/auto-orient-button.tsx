@@ -286,21 +286,21 @@ export function AutoOrientButton() {
               <button onClick={() => useAppStore.getState().setOrientPointB(null)} className="text-[7px] px-1 py-0 rounded bg-secondary/50 hover:bg-secondary leading-none shrink-0">×</button>
             )}
           </div>
-          <div className="grid w-full max-w-full gap-1 box-border" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)' }}>
+          <div className="flex flex-col gap-1 w-full max-w-full box-border min-w-0">
+            <button
+              onClick={handleManualOrient}
+              disabled={!hasPoints}
+              className="w-full max-w-full py-1.5 rounded text-[7px] font-mono font-semibold disabled:opacity-30 leading-none truncate overflow-hidden box-border min-w-0"
+              style={{ background: hasPoints ? 'oklch(0.70 0.22 42)' : 'oklch(0.18 0 0)', color: hasPoints ? '#000' : 'oklch(0.35 0 0)', boxSizing: 'border-box' }}
+            >
+              Orientar
+            </button>
             <button
               onClick={() => { useAppStore.getState().clearOrientPoints(); setActiveTool('select') }}
               className="w-full max-w-full py-1 rounded text-[7px] font-mono border leading-none truncate overflow-hidden box-border min-w-0"
               style={{ borderColor: 'oklch(0.18 0 0)', color: 'oklch(0.45 0 0)', boxSizing: 'border-box' }}
             >
               Cancelar
-            </button>
-            <button
-              onClick={handleManualOrient}
-              disabled={!hasPoints}
-              className="w-full max-w-full py-1 rounded text-[7px] font-mono font-semibold disabled:opacity-30 leading-none truncate overflow-hidden box-border min-w-0"
-              style={{ background: hasPoints ? 'oklch(0.70 0.22 42)' : 'oklch(0.18 0 0)', color: hasPoints ? '#000' : 'oklch(0.35 0 0)', boxSizing: 'border-box' }}
-            >
-              Orientar
             </button>
           </div>
         </div>
