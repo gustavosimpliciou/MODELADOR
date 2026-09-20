@@ -1020,6 +1020,9 @@ const EVENT_META = {
   project_loaded:   { label: 'Projeto aberto',   color: '#26a69a' },
   upgrade:          { label: 'Upgrade',          color: '#ffd600' },
   coupon_redeemed:  { label: 'Cupom usado',      color: '#fff176' },
+  paint_created:    { label: 'Pintura',          color: '#ff2e8b' },
+  paint_cleared:    { label: 'Pintura removida', color: '#9e9e9e' },
+  export_3mf:       { label: 'Export 3MF',       color: '#7c3aed' },
 }
 
 const TOOL_META = {
@@ -1101,6 +1104,26 @@ function detailsLine(evt, details = {}) {
       if (d.code) parts.push(`Cupom ${d.code}`)
       if (d.credits) parts.push(`+${d.credits} créditos`)
       if (d.expires_in_days) parts.push(`${d.expires_in_days} dias de validade`)
+      return parts.join(' · ')
+    }
+    case 'paint_created': {
+      const parts = []
+      if (d.color) parts.push(d.color)
+      if (d.faces) parts.push(`${d.faces} faces`)
+      if (d.part) parts.push(d.part)
+      return parts.join(' · ')
+    }
+    case 'paint_cleared': {
+      const parts = []
+      if (d.faces) parts.push(`${d.faces} faces`)
+      if (d.mode) parts.push(d.mode)
+      return parts.join(' · ')
+    }
+    case 'export_3mf': {
+      const parts = []
+      if (d.partCount) parts.push(`${d.partCount} parte(s)`)
+      if (d.paintedCount) parts.push(`${d.paintedCount} faces pintadas`)
+      if (d.format) parts.push(`.${d.format}`)
       return parts.join(' · ')
     }
     default: {
@@ -1211,6 +1234,8 @@ function ActivitiesLogPage({ compact = false }) {
         <StatCard label="Downloads hoje" value={counts.download || 0} accent="#ff6a00" icon={<span>⬇</span>} />
         <StatCard label="Tentativas de download" value={counts.download_attempt || 0} accent="#ff9800" icon={<span>⚡</span>} />
         <StatCard label="Cortes gerados hoje" value={counts.cut_created || 0} accent="#e040fb" icon={<span>✂</span>} />
+        <StatCard label="Pinturas hoje" value={counts.paint_created || 0} accent="#ff2e8b" icon={<span>🎨</span>} />
+        <StatCard label="Exports 3MF hoje" value={counts.export_3mf || 0} accent="#7c3aed" icon={<span>🧩</span>} />
         <StatCard label="Uploads hoje" value={counts.upload || 0} accent="#2196f3" icon={<span>⬆</span>} />
         <StatCard label="Logins hoje" value={counts.login || 0} accent="#4caf50" icon={<span>→</span>} />
         <StatCard label="Usuários ativos hoje" value={stats?.today?.active_users || 0} accent="#00bcd4" icon={<span>●</span>} />
@@ -1222,6 +1247,8 @@ function ActivitiesLogPage({ compact = false }) {
         <div style={grid}>
           <StatCard label="Downloads 7 dias" value={last7.download || 0} accent="#ff6a00" icon={<span>⬇</span>} />
           <StatCard label="Cortes 7 dias" value={last7.cut_created || 0} accent="#e040fb" icon={<span>✂</span>} />
+          <StatCard label="Pinturas 7 dias" value={last7.paint_created || 0} accent="#ff2e8b" icon={<span>🎨</span>} />
+          <StatCard label="Exports 3MF 7 dias" value={last7.export_3mf || 0} accent="#7c3aed" icon={<span>🧩</span>} />
           <StatCard label="Uploads 7 dias" value={last7.upload || 0} accent="#2196f3" icon={<span>⬆</span>} />
           <StatCard label="Logins 7 dias" value={last7.login || 0} accent="#4caf50" icon={<span>→</span>} />
           <StatCard label="Ativos 7 dias" value={stats?.last_7d?.active_users || 0} accent="#00bcd4" icon={<span>●</span>} />

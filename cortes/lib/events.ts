@@ -26,6 +26,9 @@ export type TrackEventName =
   | 'project_saved'
   | 'project_loaded'
   | 'upgrade'
+  | 'paint_created'
+  | 'paint_cleared'
+  | 'export_3mf'
 
 export function trackEvent(event: TrackEventName, details: Record<string, unknown> = {}): void {
   try {

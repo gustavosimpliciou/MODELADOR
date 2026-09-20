@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useMemo } from 'react'
 import { Palette, Paintbrush, Eraser, Trash2, Download, GripHorizontal, Eye, RotateCcw, Ban } from 'lucide-react'
 import { invalidate } from '@react-three/fiber'
 import { useAppStore } from '@/lib/store'
+import { trackEvent } from '@/lib/events'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/lang-store'
 
@@ -68,21 +69,24 @@ export function CoresPanel() {
     if (isNone) {
       n = clearPaintSelection(false)
       label = 'nenhuma'
+      trackEvent('paint_cleared', { faces: n, mode: 'selection', color: 'none' })
     } else {
       n = paintSelection()
       label = paintColor
+      trackEvent('paint_created', { faces: n, color: paintColor, part: modelMesh?.name ?? null })
     }
     // Limpa seleção para revelar a pintura e força re-render demand
     clearSelection()
     invalidate()
     setStatus('loaded', (tAny['cores_painted'] ?? 'Pintado') + ` — ${n} faces → ${label}`)
-  }, [hasSelection, paintSelection, clearPaintSelection, clearSelection, pushHistory, setStatus, paintColor, isNone, tAny])
+  }, [hasSelection, paintSelection, clearPaintSelection, clearSelection, pushHistory, setStatus, paintColor, isNone, tAny, modelMesh])
 
   const handleClearSelection = useCallback(() => {
     if (!hasSelection) return
     pushHistory()
     const n = clearPaintSelection(false)
     invalidate()
+    if (n > 0) trackEvent('paint_cleared', { faces: n, mode: 'selection' })
     setStatus('loaded', n > 0 ? `Pintura removida — ${n} faces` : 'Nenhuma pintura na seleção')
   }, [hasSelection, clearPaintSelection, pushHistory, setStatus])
 
@@ -91,6 +95,7 @@ export function CoresPanel() {
     pushHistory()
     const n = clearPaintSelection(true)
     invalidate()
+    if (n > 0) trackEvent('paint_cleared', { faces: n, mode: 'all' })
     setStatus('loaded', `Toda a pintura removida — ${n} faces`)
   }, [paintedCount, clearPaintSelection, pushHistory, setStatus])
 

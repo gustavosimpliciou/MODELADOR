@@ -85,6 +85,10 @@ export function ExportPanel({ open, onClose }: ExportPanelProps) {
         const partsFor3MF = visibleParts.map((p) => ({ id: p.id, name: p.name, mesh: p.mesh }))
         const fname = visibleParts.length === 1 ? `${sanitizeFilename(visibleParts[0].name)}.3mf` : 'modelo-colorido.3mf'
         await exportTo3MF(partsFor3MF, paintedParts, fname)
+        // Log específico para dashboard (além do download genérico)
+        let paintedCount = 0
+        for (const m of paintedParts.values()) paintedCount += m.size
+        trackEvent('export_3mf', { format: '3mf', partCount: visibleParts.length, paintedCount, painted: paintedCount > 0 })
       } else if (visibleParts.length === 1) {
         await exportSingleMesh(visibleParts[0].mesh, format as 'stl' | 'obj', visibleParts[0].name)
       } else {
