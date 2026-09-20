@@ -629,14 +629,13 @@ function OrbitControlsGuard({ controlsRef }: { controlsRef: React.RefObject<any>
 }
 
 // ─── Camera auto-fit ──────────────────────────────────────────────────────────
-// Fires whenever modelMesh or isolamento (activePartId) changes and ajusta a
-// câmera para que a peça clicada já apareça centralizada, sem precisar dar
-// scroll/zoom. Considera mesh.position (peças cortadas são deslocadas por
-// `spread` normal) e, quando sem isolamento, enquadra todas as peças visíveis.
+// Fires whenever modelMesh, isolamento ou orientação muda e ajusta a câmera
+// para que a peça fique centralizada no ponto central da tela.
 function CameraFitter({ controlsRef }: { controlsRef: React.RefObject<any> }) {
   const modelMesh = useAppStore((s) => s.modelMesh)
   const activePartId = useAppStore((s) => s.activePartId)
   const parts = useAppStore((s) => s.parts)
+  const orientVersion = useAppStore((s) => s.orientVersion)
   const { camera } = useThree()
 
   useEffect(() => {
@@ -699,7 +698,7 @@ function CameraFitter({ controlsRef }: { controlsRef: React.RefObject<any> }) {
     }
     invalidate()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelMesh, activePartId, parts])
+  }, [modelMesh, activePartId, parts, orientVersion])
 
   return null
 }

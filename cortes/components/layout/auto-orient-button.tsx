@@ -119,6 +119,30 @@ export function AutoOrientButton() {
         })
       } catch {}
 
+      // Centraliza no ponto central da tela (0,0 no XZ) — já está no ground em Y
+      try {
+        const allMeshes = isGroup ? store.parts.filter((p) => p.visible).map((p) => p.mesh) : [targetMesh]
+        const box = new THREE.Box3()
+        for (const m of allMeshes) {
+          m.updateMatrixWorld(true)
+          const b = new THREE.Box3().setFromObject(m)
+          box.union(b)
+        }
+        const center = new THREE.Vector3()
+        box.getCenter(center)
+        const offsetXZ = new THREE.Vector3(-center.x, 0, -center.z)
+        if (offsetXZ.lengthSq() > 1e-6) {
+          for (const m of allMeshes) {
+            m.position.add(offsetXZ)
+            m.updateMatrixWorld(true)
+          }
+          const s2 = useAppStore.getState()
+          const platePos2 = new THREE.Vector3(...s2.plateCutPosition)
+          platePos2.add(offsetXZ)
+          useAppStore.setState({ plateCutPosition: [platePos2.x, platePos2.y, platePos2.z] as [number, number, number] })
+        }
+      } catch {}
+
       // Limpa clones
       for (const c of clones) c.geometry.dispose()
       if (object instanceof THREE.Group) {
@@ -127,6 +151,7 @@ export function AutoOrientButton() {
         (object as THREE.Mesh).geometry.dispose()
       }
 
+      useAppStore.getState().bumpOrientVersion()
       const { invalidate } = await import('@react-three/fiber')
       invalidate()
 
@@ -241,6 +266,31 @@ export function AutoOrientButton() {
         })
       } catch {}
 
+      // Centraliza no ponto central da tela
+      try {
+        const allMeshes = store.activePartId ? [mesh] : store.parts.filter((p) => p.visible).map((p) => p.mesh)
+        const box = new THREE.Box3()
+        for (const m of allMeshes) {
+          m.updateMatrixWorld(true)
+          const b = new THREE.Box3().setFromObject(m)
+          box.union(b)
+        }
+        const center = new THREE.Vector3()
+        box.getCenter(center)
+        const offsetXZ = new THREE.Vector3(-center.x, 0, -center.z)
+        if (offsetXZ.lengthSq() > 1e-6) {
+          for (const m of allMeshes) {
+            m.position.add(offsetXZ)
+            m.updateMatrixWorld(true)
+          }
+          const s2 = useAppStore.getState()
+          const platePos2 = new THREE.Vector3(...s2.plateCutPosition)
+          platePos2.add(offsetXZ)
+          useAppStore.setState({ plateCutPosition: [platePos2.x, platePos2.y, platePos2.z] as [number, number, number] })
+        }
+      } catch {}
+
+      useAppStore.getState().bumpOrientVersion()
       const { invalidate } = await import('@react-three/fiber')
       invalidate()
       setState('done')

@@ -222,6 +222,8 @@ export interface AppState {
   setOrientPointA: (p: THREE.Vector3 | null) => void
   setOrientPointB: (p: THREE.Vector3 | null) => void
   clearOrientPoints: () => void
+  orientVersion: number
+  bumpOrientVersion: () => void
 
   // Histórico (desfazer/refazer)
   past: HistorySnapshot[]
@@ -448,6 +450,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   setOrientPointA: (orientPointA) => set({ orientPointA }),
   setOrientPointB: (orientPointB) => set({ orientPointB }),
   clearOrientPoints: () => set({ orientPointA: null, orientPointB: null }),
+  orientVersion: 0,
+  bumpOrientVersion: () => set((s) => ({ orientVersion: s.orientVersion + 1 })),
 
   past: [],
   future: [],
