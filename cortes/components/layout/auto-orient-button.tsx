@@ -260,38 +260,35 @@ export function AutoOrientButton() {
         </span>
       </button>
 
-      {/* Painel moderno simples para indicar A e B */}
+      {/* Painel moderno simples para indicar A e B — compacto para sidebar */}
       {isOrienting && (
-        <div className="w-full rounded-lg border p-2 flex flex-col gap-1.5" style={{ background: 'oklch(0.12 0 0)', borderColor: 'oklch(0.70 0.22 42 / 30%)' }}>
-          <div className="flex items-center gap-1.5">
-            <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-mono font-bold shrink-0" style={{ background: orientA ? 'oklch(0.70 0.22 42)' : 'oklch(0.18 0 0)', color: orientA ? '#000' : 'oklch(0.40 0 0)', border: orientA ? 'none' : '1px solid oklch(0.25 0 0)' }}>
+        <div className="w-full rounded-lg border p-1.5 flex flex-col gap-1" style={{ background: 'oklch(0.12 0 0)', borderColor: 'oklch(0.70 0.22 42 / 30%)' }}>
+          <div className="flex items-center gap-1">
+            <span title="clique no topo" className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-mono font-bold shrink-0 cursor-help" style={{ background: orientA ? 'oklch(0.70 0.22 42)' : 'oklch(0.18 0 0)', color: orientA ? '#000' : 'oklch(0.40 0 0)', border: orientA ? 'none' : '1px solid oklch(0.25 0 0)' }}>
               A
             </span>
-            <span className="text-[9px] font-mono flex-1 truncate" style={{ color: orientA ? 'oklch(0.85 0 0)' : 'oklch(0.40 0 0)' }}>
-              {orientA ? `${orientA.x.toFixed(1)}, ${orientA.y.toFixed(1)}, ${orientA.z.toFixed(1)}` : 'Clique no topo'}
+            <span className="text-[8px] font-mono flex-1 truncate" style={{ color: orientA ? 'oklch(0.85 0 0)' : 'oklch(0.40 0 0)' }}>
+              {orientA ? `${orientA.x.toFixed(0)},${orientA.y.toFixed(0)}` : 'topo'}
             </span>
             {orientA && (
-              <button onClick={() => useAppStore.getState().setOrientPointA(null)} className="text-[8px] px-1 py-0.5 rounded bg-secondary/50 hover:bg-secondary">×</button>
+              <button onClick={() => useAppStore.getState().setOrientPointA(null)} className="text-[7px] px-1 py-0 rounded bg-secondary/50 hover:bg-secondary leading-none">×</button>
             )}
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-mono font-bold shrink-0" style={{ background: orientB ? 'oklch(0.70 0.22 42)' : 'oklch(0.18 0 0)', color: orientB ? '#000' : 'oklch(0.40 0 0)', border: orientB ? 'none' : '1px solid oklch(0.25 0 0)' }}>
+          <div className="flex items-center gap-1">
+            <span title="clique na base" className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-mono font-bold shrink-0 cursor-help" style={{ background: orientB ? 'oklch(0.70 0.22 42)' : 'oklch(0.18 0 0)', color: orientB ? '#000' : 'oklch(0.40 0 0)', border: orientB ? 'none' : '1px solid oklch(0.25 0 0)' }}>
               B
             </span>
-            <span className="text-[9px] font-mono flex-1 truncate" style={{ color: orientB ? 'oklch(0.85 0 0)' : 'oklch(0.40 0 0)' }}>
-              {orientB ? `${orientB.x.toFixed(1)}, ${orientB.y.toFixed(1)}, ${orientB.z.toFixed(1)}` : 'Clique na base'}
+            <span className="text-[8px] font-mono flex-1 truncate" style={{ color: orientB ? 'oklch(0.85 0 0)' : 'oklch(0.40 0 0)' }}>
+              {orientB ? `${orientB.x.toFixed(0)},${orientB.y.toFixed(0)}` : 'base'}
             </span>
             {orientB && (
-              <button onClick={() => useAppStore.getState().setOrientPointB(null)} className="text-[8px] px-1 py-0.5 rounded bg-secondary/50 hover:bg-secondary">×</button>
+              <button onClick={() => useAppStore.getState().setOrientPointB(null)} className="text-[7px] px-1 py-0 rounded bg-secondary/50 hover:bg-secondary leading-none">×</button>
             )}
           </div>
-          {hasPoints && (
-            <div className="h-px my-1" style={{ background: 'oklch(0.18 0 0)' }} />
-          )}
           <div className="flex gap-1">
             <button
               onClick={() => { useAppStore.getState().clearOrientPoints(); setActiveTool('select') }}
-              className="flex-1 py-1 rounded text-[8px] font-mono border"
+              className="flex-1 py-0.5 rounded text-[7px] font-mono border leading-none"
               style={{ borderColor: 'oklch(0.18 0 0)', color: 'oklch(0.45 0 0)' }}
             >
               Cancelar
@@ -299,15 +296,12 @@ export function AutoOrientButton() {
             <button
               onClick={handleManualOrient}
               disabled={!hasPoints}
-              className="flex-1 py-1 rounded text-[8px] font-mono font-semibold disabled:opacity-30"
+              className="flex-1 py-0.5 rounded text-[7px] font-mono font-semibold disabled:opacity-30 leading-none"
               style={{ background: hasPoints ? 'oklch(0.70 0.22 42)' : 'oklch(0.18 0 0)', color: hasPoints ? '#000' : 'oklch(0.35 0 0)' }}
             >
               Orientar
             </button>
           </div>
-          <span className="text-[7px] font-mono text-center leading-none" style={{ color: 'oklch(0.35 0 0)' }}>
-            A = topo · B = base · mesma reta
-          </span>
         </div>
       )}
 
