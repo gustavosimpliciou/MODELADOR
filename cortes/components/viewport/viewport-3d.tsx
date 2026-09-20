@@ -17,26 +17,48 @@ import {
 import { plateCutParamsFromTransform } from '@/lib/plate-cut'
 
 // ─── Constrói LimitationPlate a partir do estado do store ─────────────────────
+// Converte a placa (armazenada em mundo) para o espaço LOCAL da geometria
+// do mesh ativo, para que o SmartCut (que trabalha em local) a enxergue
+// corretamente mesmo após o modelo ser orientado (quaternion/position).
 function buildLimitationPlates(
   planeCutMode: 'infinite' | 'plate',
   pos: [number, number, number],
   rot: [number, number, number],
   width: number,
   height: number,
+  mesh: THREE.Mesh | null,
 ): LimitationPlate[] {
   if (planeCutMode !== 'plate') return []
-  const center = new THREE.Vector3(...pos)
-  const quat   = new THREE.Quaternion().setFromEuler(
+  const centerWorld = new THREE.Vector3(...pos)
+  const quatWorld   = new THREE.Quaternion().setFromEuler(
     new THREE.Euler(rot[0], rot[1], rot[2], 'XYZ'),
   )
-  const params = plateCutParamsFromTransform(center, quat, width, height)
+  const paramsWorld = plateCutParamsFromTransform(centerWorld, quatWorld, width, height)
+
+  // Se houver mesh, converte placa para o espaço local da geometria
+  if (mesh) {
+    const invWorld = new THREE.Matrix4().compose(mesh.position, mesh.quaternion, mesh.scale).invert()
+    const centerLocal = paramsWorld.center.clone().applyMatrix4(invWorld)
+    const normalLocal = paramsWorld.normal.clone().transformDirection(invWorld).normalize()
+    const rightLocal = paramsWorld.right.clone().transformDirection(invWorld).normalize()
+    const upLocal = paramsWorld.up.clone().transformDirection(invWorld).normalize()
+    return [{
+      center: centerLocal,
+      normal: normalLocal,
+      right: rightLocal,
+      up: upLocal,
+      halfWidth: paramsWorld.width / 2,
+      halfHeight: paramsWorld.height / 2,
+    }]
+  }
+
   return [{
-    center:     params.center,
-    normal:     params.normal,
-    right:      params.right,
-    up:         params.up,
-    halfWidth:  params.width  / 2,
-    halfHeight: params.height / 2,
+    center:     paramsWorld.center,
+    normal:     paramsWorld.normal,
+    right:      paramsWorld.right,
+    up:         paramsWorld.up,
+    halfWidth:  paramsWorld.width  / 2,
+    halfHeight: paramsWorld.height / 2,
   }]
 }
 import { loadModel } from '@/lib/model-loader'
@@ -132,12 +154,14 @@ function SmartCutInteraction() {
   const { camera, gl, raycaster } = useThree()
 
   // ── Placa de Limitação: ref sempre atualizado para uso nos callbacks ─────────
+  // A placa é armazenada em mundo, mas o SmartCut trabalha em local da geometria
   const limitationPlatesRef = useRef<LimitationPlate[]>([])
   useEffect(() => {
     limitationPlatesRef.current = buildLimitationPlates(
       planeCutMode, plateCutPosition, plateCutRotation, plateCutWidth, plateCutHeight,
+      modelMesh,
     )
-  }, [planeCutMode, plateCutPosition, plateCutRotation, plateCutWidth, plateCutHeight])
+  }, [planeCutMode, plateCutPosition, plateCutRotation, plateCutWidth, plateCutHeight, modelMesh])
 
   // Refs para estado mutable sem re-render
   const mouseNDC       = useRef(new THREE.Vector2())
