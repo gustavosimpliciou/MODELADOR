@@ -226,7 +226,7 @@ export function AutoOrientButton() {
   const hasPoints = !!orientA && !!orientB
 
   return (
-    <div className="relative group w-full max-w-full px-0.5 flex flex-col gap-1 box-border min-w-0 overflow-hidden -ml-1">
+    <div className="relative group w-full max-w-full px-1.5 flex flex-col gap-1 box-border min-w-0 overflow-hidden">
       <button
         onClick={isOrienting && hasPoints ? handleManualOrient : handleOrientarClick}
         disabled={disabled || state === 'analyzing'}
@@ -261,9 +261,9 @@ export function AutoOrientButton() {
         </span>
       </button>
 
-      {/* Painel PONTO A/B — encostado à esquerda, sem overflow */}
+      {/* Painel PONTO A/B — centralizado na sidebar */}
       {isOrienting && (
-        <div className="w-[calc(100%+8px)] max-w-[calc(100%+8px)] rounded-lg border p-1 flex flex-col gap-1 box-border overflow-hidden min-w-0 -ml-1" style={{ background: 'oklch(0.12 0 0)', borderColor: 'oklch(0.70 0.22 42 / 30%)', boxSizing: 'border-box', marginLeft: '-4px' }}>
+        <div className="w-full max-w-full rounded-lg border p-1.5 flex flex-col gap-1 box-border overflow-hidden min-w-0 mx-auto" style={{ background: 'oklch(0.12 0 0)', borderColor: 'oklch(0.70 0.22 42 / 30%)', boxSizing: 'border-box' }}>
           <div className="flex items-center gap-1 w-full max-w-full min-w-0 overflow-hidden">
             <span title="clique no topo" className="w-4 h-4 rounded-full flex items-center justify-center text-[7px] font-mono font-bold shrink-0 cursor-help" style={{ background: orientA ? 'oklch(0.70 0.22 42)' : 'oklch(0.18 0 0)', color: orientA ? '#000' : 'oklch(0.40 0 0)', border: orientA ? 'none' : '1px solid oklch(0.25 0 0)' }}>
               A
