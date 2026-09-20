@@ -16,6 +16,13 @@ import { useT } from './i18n/useT'
 import { supabase } from './lib/supabase'
 
 export default function App() {
+  // Trava menu de contexto do botão direito em todo o Studio
+  useEffect(() => {
+    const handler = (e) => e.preventDefault()
+    document.addEventListener('contextmenu', handler)
+    return () => document.removeEventListener('contextmenu', handler)
+  }, [])
+
   // Pula o SplashScreen se o usuário já passou por ele nesta sessão
   // (ex.: voltando do Cortes via botão Studio). sessionStorage é limpo ao fechar o browser.
   const [loaded, setLoaded] = useState(() => !!sessionStorage.getItem('nativos_splash_done'))
@@ -137,12 +144,15 @@ export default function App() {
 
   // ── Main app (Modelador 3D) ───────────────────────────────────────
   return (
-    <div style={{
-      width: '100vw', height: '100vh',
-      display: 'flex', flexDirection: 'column',
-      background: 'var(--bg)',
-      overflow: 'hidden',
-    }}>
+    <div
+      onContextMenu={(e) => e.preventDefault()}
+      style={{
+        width: '100vw', height: '100vh',
+        display: 'flex', flexDirection: 'column',
+        background: 'var(--bg)',
+        overflow: 'hidden',
+      }}
+    >
       <UpgradeModal />
       <ProjectsModal />
       <Navbar onBackToSelector={() => setActiveTool(null)} />

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { TopBar } from '@/components/layout/top-bar'
 import { LeftPanel } from '@/components/layout/left-panel'
 import { RightPanel } from '@/components/layout/right-panel'
@@ -25,9 +25,17 @@ export default function NativosCut() {
   const [projectsOpen, setProjectsOpen] = useState(false)
   const [projectsMode, setProjectsMode] = useState<'save' | 'list'>('list')
 
+  // Trava menu de contexto do botão direito em toda a ferramenta Cortes
+  useEffect(() => {
+    const handler = (e: MouseEvent) => e.preventDefault()
+    document.addEventListener('contextmenu', handler as EventListener)
+    return () => document.removeEventListener('contextmenu', handler as EventListener)
+  }, [])
+
   return (
     <AuthGuard>
     <main
+      onContextMenu={(e) => e.preventDefault()}
       className="flex flex-col h-dvh w-screen overflow-hidden select-none"
       style={{ background: 'oklch(0.08 0 0)' }}
     >
