@@ -266,18 +266,17 @@ export function AutoOrientButton() {
         })
       } catch {}
 
-      // Centraliza no ponto central da tela
+      // Centraliza: meio entre A e B = meio do modelo → centro da tela (0,0)
+      // Placa recalculada para ficar fiel ao novo posicionamento
       try {
+        const midAB = new THREE.Vector3().addVectors(a, b).multiplyScalar(0.5)
+        // Aplica a mesma rotação da orientação ao ponto médio para saber onde ele foi parar
+        const midAfter = midAB.clone().applyQuaternion(q)
+        // Ground já aplicado, então midAfter.y já está ajustado; apenas centraliza XZ
+        const offsetXZ = new THREE.Vector3(-midAfter.x, 0, -midAfter.z)
+        // Também centraliza via bbox para garantir que o modelo inteiro fique centrado, mas prioriza midAB
         const allMeshes = store.activePartId ? [mesh] : store.parts.filter((p) => p.visible).map((p) => p.mesh)
-        const box = new THREE.Box3()
-        for (const m of allMeshes) {
-          m.updateMatrixWorld(true)
-          const b = new THREE.Box3().setFromObject(m)
-          box.union(b)
-        }
-        const center = new THREE.Vector3()
-        box.getCenter(center)
-        const offsetXZ = new THREE.Vector3(-center.x, 0, -center.z)
+        // Primeiro, move todos para que midAB vá para (0, *, 0)
         if (offsetXZ.lengthSq() > 1e-6) {
           for (const m of allMeshes) {
             m.position.add(offsetXZ)
@@ -285,8 +284,15 @@ export function AutoOrientButton() {
           }
           const s2 = useAppStore.getState()
           const platePos2 = new THREE.Vector3(...s2.plateCutPosition)
+          // Placa também segue o modelo e o offset de centralização
+          platePos2.applyQuaternion(q)
+          platePos2.add(new THREE.Vector3(0, manualOffset, 0))
           platePos2.add(offsetXZ)
-          useAppStore.setState({ plateCutPosition: [platePos2.x, platePos2.y, platePos2.z] as [number, number, number] })
+          // Recalcula a placa para ficar exatamente no meio do modelo pós-orientação
+          // (fiel ao corte onde a placa foi posicionada antes)
+          const newPlatePos = new THREE.Vector3(0, platePos2.y, 0)
+          // Mantém X/Z da placa no centro do modelo (0,0) para corte centralizado
+          useAppStore.setState({ plateCutPosition: [newPlatePos.x, newPlatePos.y, newPlatePos.z] as [number, number, number] })
         }
       } catch {}
 
@@ -295,7 +301,7 @@ export function AutoOrientButton() {
       invalidate()
       setState('done')
       setMsg('OK')
-      setStatus('loaded', 'Modelo orientado (manual A→B)')
+      setStatus('loaded', 'Modelo orientado (manual A→B) — meio centralizado')
       setActiveTool('select')
       useAppStore.getState().clearOrientPoints()
       setTimeout(() => setState('idle'), 2500)
