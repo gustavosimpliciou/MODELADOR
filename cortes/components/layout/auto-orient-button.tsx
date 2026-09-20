@@ -103,6 +103,22 @@ export function AutoOrientButton() {
         targetMesh.updateMatrixWorld(true)
       }
 
+      // Placa de Corte: faz ela seguir o modelo (mesma rotação + translação Y)
+      try {
+        const s = useAppStore.getState()
+        const pos = new THREE.Vector3(...s.plateCutPosition)
+        const euler = new THREE.Euler(s.plateCutRotation[0], s.plateCutRotation[1], s.plateCutRotation[2], 'XYZ')
+        const plateQuat = new THREE.Quaternion().setFromEuler(euler)
+        pos.applyQuaternion(q)
+        pos.y += offsetY
+        plateQuat.premultiply(q)
+        const newEuler = new THREE.Euler().setFromQuaternion(plateQuat, 'XYZ')
+        useAppStore.setState({
+          plateCutPosition: [pos.x, pos.y, pos.z] as [number, number, number],
+          plateCutRotation: [newEuler.x, newEuler.y, newEuler.z] as [number, number, number],
+        })
+      } catch {}
+
       // Limpa clones
       for (const c of clones) c.geometry.dispose()
       if (object instanceof THREE.Group) {
@@ -173,10 +189,12 @@ export function AutoOrientButton() {
       const q = solveManualQuaternion(a, b, targetUp)
 
       // Aplica a todas as partes visíveis ou apenas à ativa
+      let manualOffset = 0
       if (store.activePartId) {
         mesh.quaternion.premultiply(q)
         mesh.updateMatrixWorld(true)
         const offset = applyGroundOffset(mesh, 0)
+        manualOffset = offset
         // Também aplica offset a todas as partes visíveis para manter conjunto
         for (const p of store.parts) {
           if (p.id !== store.activePartId && p.visible) {
@@ -197,6 +215,7 @@ export function AutoOrientButton() {
         dummy.updateMatrixWorld(true)
         const box = new THREE.Box3().setFromObject(dummy)
         const offset = 0 - box.min.y
+        manualOffset = offset
         for (const p of store.parts) {
           if (!p.visible) continue
           p.mesh.position.y += offset
@@ -205,6 +224,22 @@ export function AutoOrientButton() {
         // Limpa clones
         dummy.traverse((c) => (c as THREE.Mesh).geometry?.dispose?.())
       }
+
+      // Placa de Corte: segue o modelo
+      try {
+        const s = useAppStore.getState()
+        const pos = new THREE.Vector3(...s.plateCutPosition)
+        const euler = new THREE.Euler(s.plateCutRotation[0], s.plateCutRotation[1], s.plateCutRotation[2], 'XYZ')
+        const plateQuat = new THREE.Quaternion().setFromEuler(euler)
+        pos.applyQuaternion(q)
+        pos.y += manualOffset
+        plateQuat.premultiply(q)
+        const newEuler = new THREE.Euler().setFromQuaternion(plateQuat, 'XYZ')
+        useAppStore.setState({
+          plateCutPosition: [pos.x, pos.y, pos.z] as [number, number, number],
+          plateCutRotation: [newEuler.x, newEuler.y, newEuler.z] as [number, number, number],
+        })
+      } catch {}
 
       const { invalidate } = await import('@react-three/fiber')
       invalidate()
