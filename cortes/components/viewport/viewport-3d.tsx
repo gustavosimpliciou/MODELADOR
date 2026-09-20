@@ -677,6 +677,18 @@ export function Viewport3D() {
     const { setLoadProgress } = useAppStore.getState()
     setStatus('loading', `Carregando ${file.name}...`)
     setLoadProgress(0, 'Iniciando...')
+    // Pré-checagem rápida por header (sem carregar geometria) — modal imediato para >1M
+    try {
+      const { quickEstimateFaces, isFaceLimitExceeded } = await import('@/lib/face-limit')
+      const est = await quickEstimateFaces(file)
+      if (est !== null && isFaceLimitExceeded(est)) {
+        const { setFaceLimitInfo } = useAppStore.getState()
+        setLoadProgress(-1)
+        setFaceLimitInfo({ faces: Math.round(est), fileName: file.name })
+        setStatus('error', 'Modelo não suportado')
+        return
+      }
+    } catch {}
     try {
       const { mesh, info } = await loadModel(file, (p) => {
         setLoadProgress(p.percent, p.stage)

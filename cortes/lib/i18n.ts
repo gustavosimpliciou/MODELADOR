@@ -24,7 +24,7 @@ export const translations = {
     face_limit_body: (faces: string, name: string) =>
       `O modelo "${name}" contém ${faces} faces, acima do limite suportado. Reduza o tamanho do modelo e tente novamente.`,
     face_limit_hint: 'Para reduzir o tamanho, clique aqui:',
-    face_limit_cta: 'REDUTOR',
+    face_limit_cta: 'Reduzir',
     face_limit_close: 'Escolher outro modelo',
     face_limit_max: (max: string) => `Limite máximo: ${max} faces`,
     // Config modal
@@ -295,7 +295,7 @@ export const translations = {
     face_limit_body: (faces: string, name: string) =>
       `The model "${name}" has ${faces} faces, above the supported limit. Reduce the model size and try again.`,
     face_limit_hint: 'To reduce the size, click here:',
-    face_limit_cta: 'REDUCER',
+    face_limit_cta: 'Reduce',
     face_limit_close: 'Choose another model',
     face_limit_max: (max: string) => `Maximum limit: ${max} faces`,
     settings: 'Settings',
@@ -557,7 +557,7 @@ export const translations = {
     face_limit_body: (faces: string, name: string) =>
       `El modelo "${name}" tiene ${faces} caras, por encima del límite soportado. Reduce el tamaño del modelo e inténtalo de nuevo.`,
     face_limit_hint: 'Para reducir el tamaño, haz clic aquí:',
-    face_limit_cta: 'REDUCTOR',
+    face_limit_cta: 'Reducir',
     face_limit_close: 'Elegir otro modelo',
     face_limit_max: (max: string) => `Límite máximo: ${max} caras`,
     settings: 'Configuración',

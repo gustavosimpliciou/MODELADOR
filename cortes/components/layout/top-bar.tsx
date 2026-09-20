@@ -67,6 +67,19 @@ export function TopBar({ onExport, onSave, onProjects }: TopBarProps) {
   // ── Carregamento do arquivo ──────────────────────────────────────────────────
   const processFile = useCallback(async (file: File) => {
     setStatus('loading', t.loading_file(file.name))
+    // Pré-checagem rápida por header (sem carregar geometria) — mostra modal imediatamente para >1M
+    try {
+      const { quickEstimateFaces, isFaceLimitExceeded } = await import('@/lib/face-limit')
+      const est = await quickEstimateFaces(file)
+      if (est !== null && isFaceLimitExceeded(est)) {
+        const { setFaceLimitInfo } = useAppStore.getState()
+        const { setLoadProgress } = useAppStore.getState()
+        setLoadProgress(-1)
+        setFaceLimitInfo({ faces: Math.round(est), fileName: file.name })
+        setStatus('error', 'Modelo não suportado')
+        return
+      }
+    } catch {}
     try {
       // Lazy-import so loadModel (and Three.js loaders) are not in the initial bundle
       const { loadModel } = await import('@/lib/model-loader')
