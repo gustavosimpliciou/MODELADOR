@@ -89,6 +89,8 @@ export interface EncaixeResult {
   femaleGeo: THREE.BufferGeometry | null
   /** Profundidade efetiva da cavidade (≤ espessura da peça). */
   femaleDepth: number
+  /** Altura do pino efetivamente usada (após auto-fit — pode ser < pedida). */
+  heightUsed: number
   /** Prova de que o booleano REALMENTE rodou (topologia + volume). */
   validation: {
     /** `true` apenas se o volume da malha mudou entre antes/depois. */
@@ -119,6 +121,13 @@ const FEMALE_WALL_MM = 0.5
 /** Margem do cortador da fêmea: ultrapassa a superfície em 0.1mm para garantir
  * interseção real do Boolean Difference. Separado de `height`. */
 const OUTSET_MM = 0.1
+/** Folga axial: fundo da cavidade fica esta distância além da ponta do macho. */
+const AXIAL_CLEARANCE_MM = 0.1
+/** Cavidade mínima viável (abaixo disto, nem um pino mínimo cabe — erro claro). */
+const MIN_CAVITY_MM = 0.8
+
+const clampNum = (v: number, lo: number, hi: number) =>
+  Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : lo
 
 /**
  * Analisa a seleção e calcula os limites do encaixe. Não modifica nada.
@@ -273,22 +282,43 @@ function averageSelectionNormal(
 // ─── Aplicação (CSG) ───────────────────────────────────────────────────────────
 
 /**
- * Gera as geometrias definitivas conforme o `mode`:
- *  - 'male'   → macho  = UNIÃO da peça com um cilindro (pino integrado);
- *  - 'female' → fêmea  = SUBTRAÇÃO da peça com um cilindro maior (furo);
- *  - 'both'   → macho na peça ativa + fêmea no complemento.
+ * REGRA ABSOLUTA DO PAR MACHO/FÊMEA.
  *
- * `center`/`direction` estão no frame da `sourceMesh` (peça ativa). Cada
- * operação é executada no frame local da malha alvo (conversão automática),
- * então o encaixe alinha mesmo quando as peças estão deslocadas entre si.
+ * Invariante garantida por esta função (sem exceções silenciosas):
+ *   1. Macho criado  → fêmea criada (e vice-versa) no modo 'both'.
+ *   2. Ou NADA é criado (erro lançado antes de qualquer mutação).
+ *   3. O par sempre ENCAIXA: profundidade da fêmea ≥ altura do pino.
+ *
+ * Como é garantido:
+ *   a. PRE-FLIGHT bilateral: antes de qualquer CSG, as duas ferramentas
+ *      (pino e cortador) são posicionadas e têm sua interseção com a peça
+ *      alvo verificada por bounding-box. Ferramenta fora da peça = erro
+ *      imediato, sem executar metade do trabalho.
+ *   b. AUTO-FIT: a altura do pino é reduzida automaticamente para caber na
+ *      espessura real da peça receptora (com folga axial de 0.1mm). O valor
+ *      usado volta em `heightUsed` para a UI relatar com honestidade.
+ *   c. RETRY da fêmea: se a subtração voltar inalterada, uma segunda
+ *      tentativa com reancoragem (lado oposto + outset dobrado) é feita
+ *      antes de desistir.
+ *   d. VERIFICAÇÃO do par: volume/topologia dos dois lados + fit
+ *      (femaleDepth ≥ heightUsed). Qualquer prova faltando = throw.
+ *
  * Pode lançar — envolva em try/catch no chamador.
  */
 export function applyEncaixe(params: EncaixeApplyParams): EncaixeResult {
-  const { center, direction, radius, height, tolerance, mode, sourceMesh, maleMesh, femaleMesh } = params
+  // ── 0. Sanitiza parâmetros (nunca confia cegamente na UI/gizmo) ──────────
+  const radius = clampNum(params.radius, RADIUS_MM_MIN, 50)
+  const tolerance = clampNum(params.tolerance, 0, 2)
+  let height = clampNum(params.height, HEIGHT_MIN, HEIGHT_MAX)
+  const { center, mode, sourceMesh, maleMesh, femaleMesh } = params
+  const direction = params.direction.clone().normalize()
+  if (direction.lengthSq() < 0.5) throw new Error('direção do encaixe inválida')
 
-  let maleGeo: THREE.BufferGeometry | null = null
-  let femaleGeo: THREE.BufferGeometry | null = null
-  let femaleDepth = 0
+  const needMale = mode === 'male' || mode === 'both'
+  const needFemale = mode === 'female' || mode === 'both'
+  if (mode === 'both' && maleMesh === femaleMesh) {
+    throw new Error('macho e fêmea precisam de peças diferentes — faça o corte primeiro')
+  }
 
   // Prova de que os booleanos rodaram de verdade: medimos a topologia e o
   // volume ANTES e DEPOIS de cada operação. Sem essa prova, NUNCA reportamos
@@ -304,15 +334,75 @@ export function applyEncaixe(params: EncaixeApplyParams): EncaixeResult {
     maleTopologyChanged: false,
   }
 
-  if (mode === 'male' || mode === 'both') {
-    const f = toTargetFrame(maleMesh, sourceMesh, center, direction)
-    // Ancorar o pino na superfície da malha alvo (funciona mesmo quando a peça
-    // está deslocada pelo espalhamento do corte).
-    const base = snapCenterToSurface(maleMesh, f.center, f.direction)
-    const brush = makeCylinderBrush(radius, height, base, f.direction)
+  let maleGeo: THREE.BufferGeometry | null = null
+  let femaleGeo: THREE.BufferGeometry | null = null
+  let femaleDepth = 0
+
+  // ── 1. Frames locais de cada alvo ─────────────────────────────────────────
+  const mF = needMale ? toTargetFrame(maleMesh, sourceMesh, center, direction) : null
+  const fF = needFemale ? toTargetFrame(femaleMesh, sourceMesh, center, direction) : null
+
+  // ── 2. AUTO-FIT (antes de qualquer CSG): a altura do pino nunca excede a
+  // capacidade real da peça receptora (espessura − parede − folga axial).
+  // É isto que garante que o par sempre FECHA: depth(fêmea) ≥ height(macho).
+  if (needFemale && fF) {
+    const thickness = measureThickness(femaleMesh, fF.center, fF.direction)
+    const cap = thickness > 0 ? thickness - FEMALE_WALL_MM : HEIGHT_MAX
+    if (cap < MIN_CAVITY_MM) {
+      throw new Error(
+        `peça receptora fina demais (${Math.max(0, cap).toFixed(1)}mm) — o par macho/fêmea não caberia`,
+      )
+    }
+    height = Math.min(height, cap - AXIAL_CLEARANCE_MM)
+  }
+  const heightUsed = height
+
+  // ── 3. PRE-FLIGHT bilateral: posiciona as DUAS ferramentas e verifica
+  // interseção com a peça alvo ANTES de executar qualquer booleano. Assim um
+  // centro fora da superfície (pino flutuante / furo cego) falha AQUI com
+  // mensagem clara — nunca depois de metade do par pronto.
+  interface ToolPlan {
+    brush: Brush
+    base: THREE.Vector3
+    dir: THREE.Vector3
+  }
+  let malePlan: ToolPlan | null = null
+  let femalePlan: (ToolPlan & { depth: number; cavityRadius: number; outset: number }) | null = null
+  try {
+    if (needMale && mF) {
+      const base = snapCenterToSurface(maleMesh, mF.center, mF.direction)
+      const brush = makeCylinderBrush(radius, heightUsed, base, mF.direction)
+      if (!brushIntersectsMesh(brush, maleMesh)) {
+        disposeBrush(brush)
+        throw new Error('o pino não toca a peça do macho (centro fora da superfície) — reposicione o centro na costura')
+      }
+      malePlan = { brush, base, dir: mF.direction }
+    }
+    if (needFemale && fF) {
+      const base = snapCenterToSurface(femaleMesh, fF.center, fF.direction)
+      const cavityRadius = radius + tolerance
+      const outset = Math.max(cavityRadius * 1.5, 3) + OUTSET_MM
+      const depth = computeFemaleDepth(femaleMesh, base, fF.direction, heightUsed)
+      const brushLength = depth + outset
+      const brushStart = base.clone().addScaledVector(fF.direction, -outset)
+      const brush = makeCylinderBrush(cavityRadius, brushLength, brushStart, fF.direction)
+      if (!brushIntersectsMesh(brush, femaleMesh)) {
+        disposeBrush(brush)
+        throw new Error('o cortador da fêmea não atinge a peça (centro fora da superfície) — reposicione o centro na costura')
+      }
+      femalePlan = { brush, base, dir: fF.direction, depth, cavityRadius, outset }
+    }
+  } catch (preErr) {
+    if (malePlan) disposeBrush(malePlan.brush)
+    if (femalePlan) disposeBrush(femalePlan.brush)
+    throw preErr
+  }
+
+  // ── 4. Execução: macho (união) ────────────────────────────────────────────
+  if (malePlan) {
     const before = meshStats(maleMesh.geometry)
-    maleGeo = csgUnion(maleMesh.geometry, brush)
-    disposeBrush(brush)
+    maleGeo = csgUnion(maleMesh.geometry, malePlan.brush)
+    disposeBrush(malePlan.brush)
     const after = meshStats(maleGeo)
     validation.maleVolumeBefore = before.volume
     validation.maleVolumeAfter = after.volume
@@ -332,59 +422,68 @@ export function applyEncaixe(params: EncaixeApplyParams): EncaixeResult {
     }
   }
 
-  if (mode === 'female' || mode === 'both') {
-    const f = toTargetFrame(femaleMesh, sourceMesh, center, direction)
-    // A cavidade nasce na superfície da malha alvo e entra no material.
-    const base = snapCenterToSurface(femaleMesh, f.center, f.direction)
-    femaleDepth = computeFemaleDepth(femaleMesh, base, f.direction, height)
-    // O FemaleCutTool é um cilindro SÓLIDO e fechado (CylinderGeometry real,
-    // não um anel/linha) que PROJETA claramente PARA FORA da superfície
-    // (outset = raio×1,5 ou 3mm mín. + OUTSET_MM) antes de entrar no material.
-    // Isso garante: (1) interseção inequívoca com a peça; (2) nenhuma face
-    // coplanar com a superfície do corte (a boca do furo fica aberta na
-    // superfície). OUTSET_MM é a margem extra, separada de `height`.
-    const cavityRadius = radius + tolerance
-    const outset = Math.max(cavityRadius * 1.5, 3) + OUTSET_MM
-    const brushLength = femaleDepth + outset
-    const brushStart = base.clone().addScaledVector(f.direction, -outset)
-    const brush = makeCylinderBrush(cavityRadius, brushLength, brushStart, f.direction)
-    const before = meshStats(femaleMesh.geometry)
+  // ── 5. Execução: fêmea (subtração) com 1 retry de reancoragem ─────────────
+  // Se a subtração voltar inalterada (caso degenerado que passou no
+  // pre-flight por pouco), tenta de novo com outset dobrado e base
+  // recuada — só então desiste. Em qualquer falha, NADA é retornado
+  // (o chamador descarta o maleGeo junto: par ou nada).
+  if (femalePlan) {
     const targetBox = new THREE.Box3().setFromBufferAttribute(femaleMesh.geometry.getAttribute('position') as THREE.BufferAttribute)
-    const brushBox = new THREE.Box3().setFromBufferAttribute(brush.geometry.getAttribute('position') as THREE.BufferAttribute)
-      .applyMatrix4(brush.matrixWorld)
-    console.log(
-      `[CONNECTOR] fêmea (subtração) → target=${femaleMesh.name || '?'} ` +
-      `cutTool={r:${cavityRadius.toFixed(2)}, len:${brushLength.toFixed(2)}, outset:${outset.toFixed(2)}} ` +
-      `antes={v:${before.verts}, vol:${before.volume.toFixed(1)}}`,
-    )
-    console.log(
-      `[CONNECTOR] fêmea (diagnóstico) → seam(local)=${fmtV3(f.center)} dir=${fmtV3(f.direction)} ` +
-      `base=${fmtV3(base)} alvo.bbox=${fmtBox(targetBox)} brush.bbox=${fmtBox(brushBox)} ` +
-      `brushFora=${!targetBox.intersectsBox(brushBox)}`,
-    )
-    femaleGeo = csgSubtract(femaleMesh.geometry, brush)
-    disposeBrush(brush)
-    const after = meshStats(femaleGeo)
-    validation.femaleVolumeBefore = before.volume
-    validation.femaleVolumeAfter = after.volume
-    validation.femaleTopologyChanged = after.verts !== before.verts
-    validation.femaleVolumeChanged = after.volume < before.volume
-    console.log(
-      `[CONNECTOR] fêmea (subtração) → depois={v:${after.verts}, vol:${after.volume.toFixed(1)}} ` +
-      `removido=${(before.volume - after.volume).toFixed(2)}mm³`,
-    )
-    // Regra inegociável: a fêmea SÓ é válida se a subtração REMOVEU material.
-    // Geometria idêntica antes/depois = o booleano não executou (cortador
-    // fora da peça, interseção cega, topologia degenerada) → nunca sucesso.
-    const femaleUnchanged = after.verts === before.verts && Math.abs(after.volume - before.volume) < 1e-6
-    if (femaleUnchanged) {
+    let attempt = 0
+    let plan = femalePlan
+    while (attempt < 2 && !femaleGeo) {
+      const before = meshStats(femaleMesh.geometry)
+      console.log(
+        `[CONNECTOR] fêmea (subtração, tentativa ${attempt + 1}) → target=${femaleMesh.name || '?'} ` +
+        `cutTool={r:${plan.cavityRadius.toFixed(2)}, len:${(plan.depth + plan.outset).toFixed(2)}, outset:${plan.outset.toFixed(2)}} ` +
+        `antes={v:${before.verts}, vol:${before.volume.toFixed(1)}}`,
+      )
+      console.log(
+        `[CONNECTOR] fêmea (diagnóstico) → seam(local)=${fmtV3(plan.base)} dir=${fmtV3(plan.dir)} ` +
+        `alvo.bbox=${fmtBox(targetBox)}`,
+      )
+      const candidate = csgSubtract(femaleMesh.geometry, plan.brush)
+      const after = meshStats(candidate)
+      const unchanged = after.verts === before.verts && Math.abs(after.volume - before.volume) < 1e-6
+      if (!unchanged && after.volume < before.volume) {
+        disposeBrush(plan.brush)
+        femaleGeo = candidate
+        femaleDepth = plan.depth
+        validation.femaleVolumeBefore = before.volume
+        validation.femaleVolumeAfter = after.volume
+        validation.femaleTopologyChanged = after.verts !== before.verts
+        validation.femaleVolumeChanged = true
+        console.log(
+          `[CONNECTOR] fêmea (subtração) → depois={v:${after.verts}, vol:${after.volume.toFixed(1)}} ` +
+          `removido=${(before.volume - after.volume).toFixed(2)}mm³`,
+        )
+      } else {
+        candidate.dispose()
+        disposeBrush(plan.brush)
+        attempt++
+        if (attempt < 2) {
+          // Reancoragem: base recuada + ferramenta mais longa.
+          const base2 = plan.base.clone().addScaledVector(plan.dir, -0.5)
+          const outset2 = plan.outset * 2
+          const brush2 = makeCylinderBrush(
+            plan.cavityRadius, plan.depth + outset2,
+            base2.clone().addScaledVector(plan.dir, -outset2), plan.dir,
+          )
+          plan = { ...plan, brush: brush2, base: base2, outset: outset2 }
+          console.warn('[CONNECTOR] fêmea: primeira subtração inalterada — tentando com reancoragem')
+        }
+      }
+    }
+    if (!femaleGeo) {
       console.error('[CONNECTOR] fêmea: topologia e volume inalterados após subtração — furo não criado')
       throw new Error('a fêmea não removeu material: a subtração não alterou a geometria (furo cego)')
     }
-    if (!(after.volume < before.volume)) {
-      console.error('[CONNECTOR] fêmea: topologia mudou mas o volume não diminuiu — resultado inválido')
-      throw new Error('a fêmea produziu um resultado inválido (volume não diminuiu)')
-    }
+  }
+
+  // ── 6. VERIFICAÇÃO DO PAR (regra absoluta): fêmea comporta o macho ────────
+  if (maleGeo && femaleGeo && !(femaleDepth + 1e-6 >= heightUsed)) {
+    console.error(`[CONNECTOR] par incompatível: cavidade ${femaleDepth.toFixed(2)}mm < pino ${heightUsed.toFixed(2)}mm`)
+    throw new Error('o par ficou incompatível (cavidade menor que o pino) — encaixe descartado')
   }
 
   for (const g of [maleGeo, femaleGeo]) {
@@ -394,7 +493,25 @@ export function applyEncaixe(params: EncaixeApplyParams): EncaixeResult {
     g.computeBoundingSphere()
   }
 
-  return { maleGeo, femaleGeo, femaleDepth, validation }
+  return { maleGeo, femaleGeo, femaleDepth, heightUsed, validation }
+}
+
+/**
+ * Gate do pre-flight: a ferramenta CSG (em frame local do alvo) precisa
+ * intersectar a peça — caso contrário o booleano seria cego (pino flutuante
+ * ou furo fora da peça). Barato (só bounding boxes).
+ */
+function brushIntersectsMesh(brush: Brush, targetMesh: THREE.Mesh): boolean {
+  try {
+    const tp = targetMesh.geometry.getAttribute('position') as THREE.BufferAttribute
+    if (!tp || tp.count === 0) return false
+    const targetBox = new THREE.Box3().setFromBufferAttribute(tp)
+    const bp = brush.geometry.getAttribute('position') as THREE.BufferAttribute
+    const brushBox = new THREE.Box3().setFromBufferAttribute(bp).applyMatrix4(brush.matrixWorld)
+    return targetBox.intersectsBox(brushBox)
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -492,9 +609,9 @@ function computeFemaleDepth(
   height: number,
 ): number {
   const thickness = measureThickness(mesh, center, direction)
-  // Folga axial: o macho entra `height` e o fundo da cavidade fica 0.1mm
-  // além da ponta do macho (distância fundo-do-macho → fundo-da-fêmea).
-  const ideal = height + 0.1
+  // Folga axial: o macho entra `height` e o fundo da cavidade fica
+  // AXIAL_CLEARANCE_MM além da ponta do macho.
+  const ideal = height + AXIAL_CLEARANCE_MM
   if (thickness <= 0) return Math.max(1, ideal)
   return Math.max(0.8, Math.min(ideal, thickness - FEMALE_WALL_MM))
 }

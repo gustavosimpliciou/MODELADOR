@@ -207,7 +207,7 @@ export function EncaixePanel() {
       tolerance: 0.2,
       maxRadius: limits.maxRadius,
       maxHeight: limits.maxHeight,
-      complementIndex: compPart ? candidates.indexOf(compPart) : -1,
+      complementIndex: compPart ? candidates.findIndex((c) => c.id === compPart.id) : -1,
       complementName: compPart ? compPart.name : '',
       // Sem complemento (peça sem corte), o padrão é gerar um pino na peça.
       mode: compPart ? 'both' : 'male',
@@ -263,10 +263,24 @@ export function EncaixePanel() {
     setTimeout(() => {
       if (myVersion !== computeRef.current) { setBusy(false); return }
       try {
-        pushHistory()
+        // Defesa em profundidade: o centro deve estar dentro do disco da
+        // costura (o gizmo já limita, mas o preview pode ter sido alterado
+        // por outras vias). Só restringe no plano — nunca no eixo.
+        const seamC = new THREE.Vector3(...p.seamCenter)
+        const uV = new THREE.Vector3(...p.planeU).normalize()
+        const vV = new THREE.Vector3(...p.planeV).normalize()
+        const centerV = new THREE.Vector3(...p.center)
+        const rel = centerV.clone().sub(seamC)
+        const axial = rel.dot(normal)
+        const inPlane = rel.clone().addScaledVector(normal, -axial)
+        const limit = Math.max(0, p.maxRadius - p.radius)
+        if (inPlane.length() > limit) {
+          inPlane.setLength(limit)
+          centerV.copy(seamC).add(inPlane).addScaledVector(normal, axial)
+        }
 
         const result = applyEncaixe({
-          center: new THREE.Vector3(...p.center),
+          center: centerV,
           direction,
           radius: p.radius,
           height: p.height,
@@ -277,6 +291,9 @@ export function EncaixePanel() {
           femaleMesh,
         })
 
+        // REGRA ABSOLUTA no commit: os dois lados precisam existir e o par
+        // precisa ter passado nas provas do CSG. O history só é gravado
+        // DEPOIS do sucesso — falha nunca polui o desfazer.
         if (compPart) {
           if (!result.maleGeo || !result.femaleGeo) throw new Error('encaixe vazio')
           if (result.maleGeo.attributes.position.count === 0 || result.femaleGeo.attributes.position.count === 0) {
@@ -291,6 +308,10 @@ export function EncaixePanel() {
           if (mode === 'both' && !v.femaleVolumeChanged && !v.maleVolumeChanged) {
             throw new Error('a cavidade não foi criada (sem remoção de material)')
           }
+          if (!(result.femaleDepth + 1e-6 >= result.heightUsed)) {
+            throw new Error('o par ficou incompatível (cavidade menor que o pino)')
+          }
+          pushHistory()
           // A peça atual recebe um conector e a peça cortada recebe o outro.
           const maleIsActive = maleMesh === activeMesh
           const newActive = cloneMeshTransform(activeMesh, maleIsActive ? result.maleGeo : result.femaleGeo)
@@ -315,12 +336,21 @@ export function EncaixePanel() {
           } else {
             updatePart(compPart!.id, { mesh: newComp })
           }
+          // Correção do par obsoleto: se NÃO há isolamento (activePartId nulo),
+          // setModelMesh não sincroniza parts — localiza a peça dona da malha
+          // antiga pela referência e atualiza. Sem isto, a peça do macho/fêmea
+          // continuava com a geometria antiga na cena (par "pela metade").
+          const staleActive = parts.find((part) => part.mesh === activeMesh)
+          if (staleActive) updatePart(staleActive.id, { mesh: newActive })
           setActivePartId(null) // sai do isolamento e mostra as duas peças
+          const fitNote = result.heightUsed < p.height - 1e-6
+            ? ` · altura ajustada ${result.heightUsed.toFixed(1)}mm (cabe na peça)`
+            : ''
           setStatus(
             'loaded',
             maleIsActive
-              ? `${t.encaixe_generated((p.radius * 2).toFixed(1), p.height.toFixed(1))} · ${t.male_label}: ${t.piece_current} + ${t.female_label}: ${compPart.name}`
-              : `${t.encaixe_generated((p.radius * 2).toFixed(1), p.height.toFixed(1))} · ${t.female_label}: ${t.piece_current} + ${t.male_label}: ${compPart.name}`,
+              ? `${t.encaixe_generated((p.radius * 2).toFixed(1), result.heightUsed.toFixed(1))} · ${t.male_label}: ${t.piece_current} + ${t.female_label}: ${compPart.name}${fitNote}`
+              : `${t.encaixe_generated((p.radius * 2).toFixed(1), result.heightUsed.toFixed(1))} · ${t.female_label}: ${t.piece_current} + ${t.male_label}: ${compPart.name}${fitNote}`,
           )
         } else {
           const geo = mode === 'male' ? result.maleGeo : result.femaleGeo
@@ -328,13 +358,14 @@ export function EncaixePanel() {
           const v = result.validation
           const ok = mode === 'female' ? v.femaleVolumeChanged : v.maleVolumeChanged
           if (!ok) throw new Error('o booleano não alterou a geometria — encaixe não aplicado')
+          pushHistory()
           const newActive = cloneMeshTransform(activeMesh, geo)
           setModelMesh(newActive)
           // Garantia extra: sincroniza a parte ativa também quando activePartId
           // estiver nulo, localizando-a pela referência da malha.
           const activeRef = parts.find((part) => part.mesh === activeMesh)
           if (activeRef) updatePart(activeRef.id, { mesh: newActive })
-          setStatus('loaded', t.encaixe_generated((p.radius * 2).toFixed(1), p.height.toFixed(1)))
+          setStatus('loaded', t.encaixe_generated((p.radius * 2).toFixed(1), result.heightUsed.toFixed(1)))
         }
 
         clearSelection()
