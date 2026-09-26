@@ -112,6 +112,37 @@ export function invalidateAdjacencyCache(geo: THREE.BufferGeometry): void {
   geomCache.delete(geo)
 }
 
+// ─── Acesso somente-leitura ao cache (para o Refinement Layer) ───────────────
+// Aditivo: não altera nenhum comportamento existente. Permite que
+// `smart-refine.ts` reutilize a mesma adjacência/custos/componentes já
+// construídos pelo smartSelect, sem reconstruir nada (crítico p/ hover 60fps).
+export interface SmartGeometryData {
+  adjList: Int32Array[]
+  edgeCost: Float32Array[]
+  faceNormals: Float32Array
+  faceCount: number
+  compLabel: Int32Array
+  compSize: Int32Array
+  compCount: number
+}
+
+export function getSmartGeometryData(
+  geometry: THREE.BufferGeometry,
+): SmartGeometryData | null {
+  buildAdjacencyCache(geometry)
+  const c = geomCache.get(geometry)
+  if (!c) return null
+  return {
+    adjList: c.adjList,
+    edgeCost: c.edgeCost,
+    faceNormals: c.faceNormals,
+    faceCount: c.faceCount,
+    compLabel: c.compLabel,
+    compSize: c.compSize,
+    compCount: c.compCount,
+  }
+}
+
 // ─── Construção do grafo de adjacência por posição ────────────────────────────
 export function buildAdjacencyCache(
   geometry: THREE.BufferGeometry,

@@ -62,6 +62,7 @@ function buildLimitationPlates(
   }]
 }
 import { loadModel } from '@/lib/model-loader'
+import { refineSmartHover, refineSmartSelection } from '@/lib/smart-refine'
 import { FaceLimitModal } from '@/components/layout/face-limit-modal'
 import { syncPaintedColors, hexToRgbNorm } from '@/lib/paint'
 import { ModelRenderer } from './model-renderer'
@@ -322,7 +323,11 @@ function SmartCutInteraction() {
         if (c && c.face === faceIndex && c.mode === cutMode && c.angle === angle) {
           newHovered = c.result
         } else {
-          newHovered = smartSelect(modelMesh.geometry, faceIndex, { sharpAngle: angle, mode: cutMode }, limitationPlatesRef.current)
+          // Refinement Layer: a Smart detecta a região candidata e o refine
+          // regulariza a fronteira (remove dentes de triangulação) antes do
+          // preview — sem mudar detecção, fluxo ou atalhos.
+          const rawHover = smartSelect(modelMesh.geometry, faceIndex, { sharpAngle: angle, mode: cutMode }, limitationPlatesRef.current)
+          newHovered = refineSmartHover(modelMesh.geometry, rawHover, faceIndex, limitationPlatesRef.current)
           hoverCache.current = { face: faceIndex, mode: cutMode, angle, result: newHovered }
         }
       }
@@ -446,8 +451,12 @@ function SmartCutInteraction() {
 
       setStatus('selecting', 'SmartCut selecionando...')
 
-      // Roda na mesma microtask para não bloquear o frame
-      const region = smartSelect(modelMesh.geometry, faceIndex, { sharpAngle: sharpAngle ?? 35, mode: cutMode }, limitationPlatesRef.current)
+      // Roda na mesma microtask para não bloquear o frame.
+      // Refinement Layer ANTES da composição Ctrl/add/subtract: cada região
+      // candidata é limpa (fronteira regularizada, micro-ruído removido,
+      // features preservadas) e só então combinada — fluxo inalterado.
+      const rawRegion = smartSelect(modelMesh.geometry, faceIndex, { sharpAngle: sharpAngle ?? 35, mode: cutMode }, limitationPlatesRef.current)
+      const region = refineSmartSelection(modelMesh.geometry, rawRegion, faceIndex, limitationPlatesRef.current)
 
       let next: Set<number>
       if (mode === 'add') {
