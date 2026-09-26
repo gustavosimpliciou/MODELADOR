@@ -12,9 +12,10 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Box, AlertTriangle, Loader2, X, GripHorizontal } from 'lucide-react'
 import * as THREE from 'three'
 import { useAppStore } from '@/lib/store'
-import { analyzeEncaixe, applyEncaixe, type EncaixeMode } from '@/lib/encaixe'
+import { analyzeEncaixe, applyEncaixe, findComplementOnAxis, type EncaixeMode } from '@/lib/encaixe'
 import { analyzeSelection } from '@/lib/smart-autocut'
 import { cloneMeshTransform } from '@/lib/parts-manager'
+import { ensureBoundsTree } from '@/lib/geo-index'
 import { useT } from '@/lib/lang-store'
 import { useDraggable } from '@/lib/use-draggable'
 
@@ -132,8 +133,10 @@ export function EncaixePanel() {
   // (a peça que foi dividida). Grupo:
   //   · peça ativa é um corte → pai + irmãos (mesma operação de corte);
   //   · peça ativa é base     → ela + os cortes derivados dela.
-  // Dentro do grupo, escolhe o membro mais próximo do centro da costura.
-  // Fallback: peça cortada mais recente. Isso garante que NUNCA falta par.
+  // Dentro do grupo, prioriza a peça que o EIXO da costura realmente ATINGE
+  // (é com ela que o par vai se acoplar — crucial no 2º+ encaixe, quando
+  // "a mais próxima" pode ser a peça errada). Fallback: mais próxima do
+  // centro da costura; por fim, peça cortada mais recente. NUNCA falta par.
   const compPart = useMemo(() => {
     if (!seamAnalysis) return null
     const active = parts.find((p) => p.mesh === modelMesh)
@@ -143,9 +146,22 @@ export function EncaixePanel() {
       : parts.filter((p) => p.id === active.id || p.parentId === active.id)
     const members = group.filter((p) => p.id !== active.id && p.mesh)
     let best: { id: string; name: string; mesh: THREE.Mesh } | null = null
-    if (members.length === 1) {
+    if (members.length >= 1 && modelMesh) {
+      // 1º critério: eixo da costura atinge a peça (par verdadeiro).
+      const axisId = findComplementOnAxis(
+        members.map((m) => ({ id: m.id, name: m.name, mesh: m.mesh })),
+        modelMesh,
+        seamAnalysis.seamCenter,
+        seamAnalysis.fitNormal,
+      )
+      if (axisId) {
+        const m = members.find((mm) => mm.id === axisId)!
+        best = { id: m.id, name: m.name, mesh: m.mesh }
+      }
+    }
+    if (!best && members.length === 1) {
       best = { id: members[0].id, name: members[0].name, mesh: members[0].mesh }
-    } else if (members.length > 1) {
+    } else if (!best && members.length > 1) {
       let bestD = Infinity
       for (const m of members) {
         const g = m.mesh.geometry
@@ -342,6 +358,10 @@ export function EncaixePanel() {
           // continuava com a geometria antiga na cena (par "pela metade").
           const staleActive = parts.find((part) => part.mesh === activeMesh)
           if (staleActive) updatePart(staleActive.id, { mesh: newActive })
+          // BVH nas peças novas: o 2º+ encaixe faz raycasts (snap/medida/eixo)
+          // sobre estas malhas — sem índice, cada raio varre tudo e a UI congela.
+          void ensureBoundsTree(newActive.geometry as THREE.BufferGeometry)
+          void ensureBoundsTree(newComp.geometry as THREE.BufferGeometry)
           setActivePartId(null) // sai do isolamento e mostra as duas peças
           const fitNote = result.heightUsed < p.height - 1e-6
             ? ` · altura ajustada ${result.heightUsed.toFixed(1)}mm (cabe na peça)`

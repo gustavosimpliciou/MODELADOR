@@ -26,7 +26,8 @@ const COL = {
   maxRing: '#ff4757',
   axis: '#ffffff',
   center: '#ffd54a',
-  seam: 'rgba(255,255,255,0.95)',
+  // NOTA: sem alpha na string (THREE.Color ignora alpha de rgba() com warning).
+  seam: '#ffffff',
 }
 
 const HEIGHT_MIN = 0.5

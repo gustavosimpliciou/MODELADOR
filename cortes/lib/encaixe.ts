@@ -185,9 +185,14 @@ export function analyzeEncaixe(
 
   // Altura máxima limitada pela espessura da peça receptora (não atravessar).
   // Mantém a folga generosa para o usuário ajustar (apenas a parede de segurança).
+  // NOTA: center/normal estão no frame da peça ATIVA — converte para o frame
+  // do complemento antes de medir (peças deslocadas têm frames diferentes).
   let maxHeight = HEIGHT_MAX
   if (complementIndex >= 0) {
-    const thickness = measureThickness(parts[complementIndex].mesh, center, normal)
+    const compMesh = parts[complementIndex].mesh
+    const srcMesh = parts.find((pt) => pt.mesh.geometry === geometry)?.mesh ?? compMesh
+    const inComp = toTargetFrame(compMesh, srcMesh, center, normal)
+    const thickness = measureThickness(compMesh, inComp.center, inComp.direction)
     if (thickness > 0) {
       maxHeight = Math.min(HEIGHT_MAX, thickness - FEMALE_WALL_MM)
     }
@@ -204,6 +209,54 @@ export function analyzeEncaixe(
     complementIndex,
     complementName: complementIndex >= 0 ? parts[complementIndex].name : '',
   }
+}
+
+/**
+ * Encontra o complemento pelo EIXO do encaixe (não por proximidade).
+ *
+ * A peça complementar verdadeira é aquela que o eixo da costura ATINGE a
+ * partir do centro — é com ela que o par macho/fêmea vai se acoplar. Em
+ * modelos com 3+ peças (ou após o 1º encaixe, quando já existem pinos e
+ * furos), "a peça mais próxima" pode ser a peça ERRADA: o eixo não a
+ * alcança, o snap falha e o pre-flight barra. Este teste elimina essa
+ * classe inteira de falhas no 2º, 3º, ... encaixe.
+ *
+ * `center`/`normal` estão no frame da `sourceMesh`. Testa cada candidato no
+ * seu próprio frame local, nos DOIS sentidos do eixo (a normal do PCA tem
+ * sinal ambíguo — o complemento pode estar em qualquer lado). Retorna o id
+ * do candidato atingido mais próximo, ou null se nenhum for atingido
+ * (caller usa fallback).
+ */
+export function findComplementOnAxis(
+  candidates: EncaixePart[],
+  sourceMesh: THREE.Mesh,
+  center: THREE.Vector3,
+  normal: THREE.Vector3,
+  maxDist = 1e4,
+): string | null {
+  let bestId: string | null = null
+  let bestD = Infinity
+  const n = normal.clone().normalize()
+  for (const c of candidates) {
+    if (!c.mesh || c.mesh === sourceMesh) continue
+    for (const s of [1, -1]) {
+      try {
+        const f = toTargetFrame(c.mesh, sourceMesh, center, n.clone().multiplyScalar(s))
+        const probe = new THREE.Mesh(c.mesh.geometry, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }))
+        const ray = new THREE.Raycaster(f.center, f.direction.clone().normalize())
+        ray.near = 1e-4
+        ray.far = maxDist
+        const hits = ray.intersectObject(probe, false)
+        if (hits.length > 0 && hits[0].distance < bestD) {
+          bestD = hits[0].distance
+          bestId = c.id
+        }
+      } catch {
+        continue
+      }
+    }
+  }
+  return bestId
 }
 
 /**
@@ -368,26 +421,69 @@ export function applyEncaixe(params: EncaixeApplyParams): EncaixeResult {
   }
   let malePlan: ToolPlan | null = null
   let femalePlan: (ToolPlan & { depth: number; cavityRadius: number; outset: number }) | null = null
+  // Diagnóstico do pre-flight (logado em qualquer falha — sem números, sem debug).
+  const diag = {
+    seam: fmtV3(center),
+    dir: fmtV3(direction),
+    maleTarget: needMale ? maleMesh.name || '?' : '-',
+    femaleTarget: needFemale ? femaleMesh.name || '?' : '-',
+    maleBase: '', maleHit: false, maleBox: '', maleBrushBox: '',
+    femaleBase: '', femaleHit: false, femaleBox: '', femaleBrushBox: '',
+    thickness: -1,
+  }
+  const logDiag = (where: string) => {
+    console.error(
+      `[CONNECTOR] pre-flight FALHOU em ${where} → seam=${diag.seam} dir=${diag.dir} ` +
+      `macho: target=${diag.maleTarget} base=${diag.maleBase} hit=${diag.maleHit} ` +
+      `alvo.bbox=${diag.maleBox} brush.bbox=${diag.maleBrushBox} | ` +
+      `fêmea: target=${diag.femaleTarget} base=${diag.femaleBase} hit=${diag.femaleHit} ` +
+      `espessura=${diag.thickness < 0 ? '?' : diag.thickness.toFixed(2)} ` +
+      `alvo.bbox=${diag.femaleBox} brush.bbox=${diag.femaleBrushBox}`,
+    )
+  }
   try {
     if (needMale && mF) {
-      const base = snapCenterToSurface(maleMesh, mF.center, mF.direction)
+      const snap = snapCenterToSurface(maleMesh, mF.center, mF.direction)
+      const base = snap.point
       const brush = makeCylinderBrush(radius, heightUsed, base, mF.direction)
+      diag.maleBase = fmtV3(base)
+      diag.maleHit = snap.hit
+      diag.maleBox = fmtBox(boxOf(maleMesh.geometry))
+      diag.maleBrushBox = fmtBox(boxOfBrush(brush))
+      if (!snap.hit) {
+        disposeBrush(brush)
+        logDiag('macho/snap (eixo não atinge a peça do macho — complemento errado ou costura fora da face de contato?)')
+        throw new Error('o eixo do encaixe não atinge a peça do macho — verifique a peça complementar e posicione o centro na face de contato')
+      }
       if (!brushIntersectsMesh(brush, maleMesh)) {
         disposeBrush(brush)
+        logDiag('macho/interseção (pino fora da peça)')
         throw new Error('o pino não toca a peça do macho (centro fora da superfície) — reposicione o centro na costura')
       }
       malePlan = { brush, base, dir: mF.direction }
     }
     if (needFemale && fF) {
-      const base = snapCenterToSurface(femaleMesh, fF.center, fF.direction)
+      const snap = snapCenterToSurface(femaleMesh, fF.center, fF.direction)
+      const base = snap.point
       const cavityRadius = radius + tolerance
       const outset = Math.max(cavityRadius * 1.5, 3) + OUTSET_MM
       const depth = computeFemaleDepth(femaleMesh, base, fF.direction, heightUsed)
       const brushLength = depth + outset
       const brushStart = base.clone().addScaledVector(fF.direction, -outset)
       const brush = makeCylinderBrush(cavityRadius, brushLength, brushStart, fF.direction)
+      diag.femaleBase = fmtV3(base)
+      diag.femaleHit = snap.hit
+      diag.femaleBox = fmtBox(boxOf(femaleMesh.geometry))
+      diag.femaleBrushBox = fmtBox(boxOfBrush(brush))
+      diag.thickness = measureThickness(femaleMesh, base, fF.direction)
+      if (!snap.hit) {
+        disposeBrush(brush)
+        logDiag('fêmea/snap (eixo não atinge a peça da fêmea — complemento errado ou costura fora da face de contato?)')
+        throw new Error('o eixo do encaixe não atinge a peça da fêmea — verifique a peça complementar e posicione o centro na face de contato')
+      }
       if (!brushIntersectsMesh(brush, femaleMesh)) {
         disposeBrush(brush)
+        logDiag('fêmea/interseção (cortador fora da peça)')
         throw new Error('o cortador da fêmea não atinge a peça (centro fora da superfície) — reposicione o centro na costura')
       }
       femalePlan = { brush, base, dir: fF.direction, depth, cavityRadius, outset }
@@ -503,14 +599,36 @@ export function applyEncaixe(params: EncaixeApplyParams): EncaixeResult {
  */
 function brushIntersectsMesh(brush: Brush, targetMesh: THREE.Mesh): boolean {
   try {
-    const tp = targetMesh.geometry.getAttribute('position') as THREE.BufferAttribute
-    if (!tp || tp.count === 0) return false
-    const targetBox = new THREE.Box3().setFromBufferAttribute(tp)
-    const bp = brush.geometry.getAttribute('position') as THREE.BufferAttribute
-    const brushBox = new THREE.Box3().setFromBufferAttribute(bp).applyMatrix4(brush.matrixWorld)
+    const targetBox = boxOf(targetMesh.geometry)
+    if (!targetBox) return false
+    const brushBox = boxOfBrush(brush)
+    if (!brushBox) return false
     return targetBox.intersectsBox(brushBox)
   } catch {
     return false
+  }
+}
+
+/** Bounding box local de uma geometria (null se vazia). */
+function boxOf(geo: THREE.BufferGeometry): THREE.Box3 | null {
+  try {
+    const p = geo.getAttribute('position') as THREE.BufferAttribute
+    if (!p || p.count === 0) return null
+    return new THREE.Box3().setFromBufferAttribute(p)
+  } catch {
+    return null
+  }
+}
+
+/** Bounding box da ferramenta CSG no frame do alvo (recompõe a matriz antes). */
+function boxOfBrush(brush: Brush): THREE.Box3 | null {
+  try {
+    brush.updateMatrixWorld(true)
+    const p = brush.geometry.getAttribute('position') as THREE.BufferAttribute
+    if (!p || p.count === 0) return null
+    return new THREE.Box3().setFromBufferAttribute(p).applyMatrix4(brush.matrixWorld)
+  } catch {
+    return null
   }
 }
 
@@ -652,12 +770,15 @@ export function measureThickness(
  * retornado fica levemente "antes" do ponto (contra a direção), para que:
  *  - o MACHO mergulhe um pouco no material e a união seja limpa;
  *  - a FÊMEA abra a boca completa na superfície.
+ *
+ * Retorna `hit: false` quando o eixo NÃO atinge a malha — o pre-flight usa
+ * esse sinal para barrar com mensagem precisa (em vez de criar par cego).
  */
 function snapCenterToSurface(
   mesh: THREE.Mesh,
   center: THREE.Vector3,
   dir: THREE.Vector3,
-): THREE.Vector3 {
+): { point: THREE.Vector3; hit: boolean } {
   try {
     const probe = new THREE.Mesh(mesh.geometry, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }))
     const d = dir.clone().normalize()
@@ -670,7 +791,7 @@ function snapCenterToSurface(
       ray.far = BIG * 2
       for (const h of ray.intersectObject(probe, false)) pts.push(h.point.clone())
     }
-    if (pts.length === 0) return center.clone()
+    if (pts.length === 0) return { point: center.clone(), hit: false }
     let best = pts[0]
     let bestD = Infinity
     for (const p of pts) {
@@ -680,9 +801,9 @@ function snapCenterToSurface(
         best = p
       }
     }
-    return best.clone().addScaledVector(d, -0.1)
+    return { point: best.clone().addScaledVector(d, -0.1), hit: true }
   } catch {
-    return center.clone()
+    return { point: center.clone(), hit: false }
   }
 }
 
