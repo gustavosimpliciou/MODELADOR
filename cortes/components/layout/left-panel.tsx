@@ -103,7 +103,7 @@ export function LeftPanel() {
               <input
                 type="range"
                 min={1}
-                max={250}
+                max={200}
                 step={1}
                 value={sharpAngle}
                 onChange={(e) => setSharpAngle(Number(e.target.value))}
