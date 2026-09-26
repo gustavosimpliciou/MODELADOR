@@ -251,29 +251,32 @@ self.onmessage = function (e: MessageEvent) {
 
     progress('Fundindo vértices duplicados...', 45)
 
-    // ── 3. Normais antes de indexar (mergeVertices pode perder normais) ───
+    // ── 3. Weld APENAS por posição (ignora normais do arquivo) ──────────
+    // STL/PLY/OBJ de slicers trazem normais por FACE. Se incluirmos essas
+    // normais no mergeVertices, vértices coincidentes NÃO fundem (hash difere)
+    // e o modelo fica facetado, cheio de marcas de polígonos.
+    // Por isso descartamos as normais do arquivo aqui e recalculamos normais
+    // suaves por vértice no passo 5 → superfície lisa, seleção mais estável.
     const normAttr = rawNormals
       ? new THREE.BufferAttribute(rawNormals, 3)
       : null
     const hadNormals = hasValidNormals(normAttr)
-    const normsForIndex = hadNormals ? rawNormals : null
 
     // ── 4. Indexação robusta (mergeVertices) → Uint32 para grandes malhas ─
-    const { positions: iPos, normals: iNorm, uvs: iUVs, indices } = indexGeometry(positions, normsForIndex, uvs)
+    // Passa null nas normais para fundir puramente por posição.
+    const { positions: iPos, uvs: iUVs, indices } = indexGeometry(positions, null, uvs)
 
-    progress('Calculando normais...', 70)
+    progress('Calculando normais suaves...', 70)
 
-    // ── 5. Normais — recalcular apenas se o arquivo não tinha normais válidas
-    let finalNormals: Float32Array | null = iNorm
-    if (!hadNormals) {
-      // Reconstruir geometria indexada para computeVertexNormals() do Three.js
-      const tmpGeo = new THREE.BufferGeometry()
-      tmpGeo.setAttribute('position', new THREE.BufferAttribute(iPos, 3))
-      tmpGeo.setIndex(new THREE.BufferAttribute(indices, 1))
-      tmpGeo.computeVertexNormals()
-      finalNormals = (tmpGeo.getAttribute('normal') as THREE.BufferAttribute).array as Float32Array
-      tmpGeo.dispose()
-    }
+    // ── 5. Normais suaves SEMPRE (não preserva flat do arquivo) ──────────
+    // Reconstrói geometria indexada e usa computeVertexNormals() do Three.js,
+    // que faz média das faces adjacentes → sombreamento contínuo, sem facetas.
+    const tmpGeo = new THREE.BufferGeometry()
+    tmpGeo.setAttribute('position', new THREE.BufferAttribute(iPos, 3))
+    tmpGeo.setIndex(new THREE.BufferAttribute(indices, 1))
+    tmpGeo.computeVertexNormals()
+    const finalNormals = (tmpGeo.getAttribute('normal') as THREE.BufferAttribute).array as Float32Array
+    tmpGeo.dispose()
 
     progress('Finalizando...', 90)
 

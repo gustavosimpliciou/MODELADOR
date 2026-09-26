@@ -76,11 +76,22 @@ export async function loadModel(
     geometry   = result.geometry
     hadNormals = result.hadNormals
 
+    // ── Suavização garantida (modelo "lisinho" sem facetas) ──────────────
+    // STL/OBJ/PLY de slicers trazem normais por face (flat). Como o worker
+    // agora faz weld apenas por posição, recalculamos sempre as normais
+    // suaves por vértice na geometria indexada → sombreamento contínuo,
+    // sem marcas de polígonos, e raycast/seleção mais estável.
+    geometry.computeVertexNormals()
+    // Normalizar por segurança (computeVertexNormals já normaliza, mas
+    // garante comprimento unitário após as transformações abaixo)
+    geometry.normalizeNormals()
+
     // Correção Z-up → Y-up (STL e PLY são Z-up por convenção de impressão 3D)
     if (ext === 'stl' || ext === 'ply') {
       geometry.applyMatrix4(new THREE.Matrix4().makeRotationX(-Math.PI / 2))
-      // Após rotação a geometria indexada tem normais erradas → recomputar
+      // Após rotação as normais precisam ser recalculadas para o novo espaço
       geometry.computeVertexNormals()
+      geometry.normalizeNormals()
     }
   } else if (ext === 'glb' || ext === 'gltf') {
     // ── Thread principal: GLTFLoader ────────────────────────────────────────
@@ -124,12 +135,14 @@ export async function loadModel(
   }
 
   // ── Material ─────────────────────────────────────────────────────────────
+  // flatShading: false = sombreamento suave (Gouraud). Com true cada
+  // triângulo aparece facetado, cheio de "marcas de polígonos".
   const material = new THREE.MeshStandardMaterial({
     color:      new THREE.Color(0x888888),
-    roughness:  0.6,
+    roughness:  0.55,
     metalness:  0.1,
     side:       THREE.DoubleSide, // modelos com winding inconsistente não mostram buracos
-    flatShading: true,
+    flatShading: false,
   })
 
   const mesh = new THREE.Mesh(geometry, material)

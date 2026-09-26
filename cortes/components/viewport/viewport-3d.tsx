@@ -486,11 +486,20 @@ function SmartCutInteraction() {
     const onKeyDown = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey
       if (!mod) return
+      // Não roubar Ctrl+Z/Y de campos de texto (renomear peça, inputs, etc.)
+      // — nesses casos o undo do navegador deve agir no texto, sem tocar no 3D.
+      const t = e.target as HTMLElement | null
+      const tag = t?.tagName?.toLowerCase()
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || t?.isContentEditable) return
       const key = e.key.toLowerCase()
       if (key === 'z' && !e.shiftKey) {
+        // Só desfaz se houver algo no histórico — sem efeito colateral na câmera
+        // (o CameraFitter ignora mudanças de undo pela chave de geometria).
+        if (useAppStore.getState().past.length === 0) return
         e.preventDefault()
         undo()
       } else if ((key === 'z' && e.shiftKey) || key === 'y') {
+        if (useAppStore.getState().future.length === 0) return
         e.preventDefault()
         redo()
       } else if (key === 'o') {
@@ -653,17 +662,40 @@ function OrbitControlsGuard({ controlsRef }: { controlsRef: React.RefObject<any>
 }
 
 // ─── Camera auto-fit ──────────────────────────────────────────────────────────
-// Fires whenever modelMesh, isolamento ou orientação muda e ajusta a câmera
-// para que a peça fique centralizada no ponto central da tela.
+// Auto-enquadra APENAS quando:
+//   • um modelo NOVO é carregado (geometria diferente),
+//   • o usuário troca de peça ativa,
+//   • a orientação manual muda (orientVersion).
+//
+// NÃO reenquadra em undo/redo/seleção: o histórico do store cria um array
+// `parts` novo a cada pushHistory/undo mesmo quando a geometria é a mesma,
+// e o efeito antigo disparava por identidade do array — reposicionando o
+// modelo na tela a cada Ctrl+Z. O guard por chave de geometria abaixo impede
+// isso: Ctrl+Z agora apenas retrocede a ação, sem tocar na câmera.
 function CameraFitter({ controlsRef }: { controlsRef: React.RefObject<any> }) {
   const modelMesh = useAppStore((s) => s.modelMesh)
   const activePartId = useAppStore((s) => s.activePartId)
   const parts = useAppStore((s) => s.parts)
   const orientVersion = useAppStore((s) => s.orientVersion)
   const { camera } = useThree()
+  const lastFitKey = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!modelMesh) return
+    if (!modelMesh) {
+      lastFitKey.current = null
+      return
+    }
+
+    // Malha que define o enquadramento (peça ativa ou modelo principal)
+    const activeMesh = activePartId
+      ? (parts.find((p) => p.id === activePartId)?.mesh ?? modelMesh)
+      : modelMesh
+    const geoUuid = (activeMesh.geometry as THREE.BufferGeometry)?.uuid ?? 'nogeom'
+    // Chave estável: só muda com geometria nova, troca de peça ou orientação.
+    // Undo/redo/seleção mantêm a mesma chave → sem reposicionamento.
+    const key = `${geoUuid}|${activePartId ?? ''}|${orientVersion}`
+    if (lastFitKey.current === key) return
+    lastFitKey.current = key
 
     let targetCenter = new THREE.Vector3()
     let targetRadius = 0

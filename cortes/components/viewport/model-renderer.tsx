@@ -92,7 +92,6 @@ interface PartMeshProps {
 
 const PartMesh = memo(function PartMesh({ part, isActive, isolate }: PartMeshProps) {
   const overlayActive = useCutOverlayActive()
-  const showWireframe = useAppStore((s) => s.showWireframe)
 
   // Visibility rules:
   // 1. If overlay is active, hide everything (CutPreviewOverlay replaces the view)
@@ -109,33 +108,20 @@ const PartMesh = memo(function PartMesh({ part, isActive, isolate }: PartMeshPro
     invalidate()
   }, [part.mesh, visible])
 
-  useEffect(() => { invalidate() }, [showWireframe])
-
   // Use <primitive> so part.mesh IS the actual scene object.
   // This is critical: raycaster.intersectObject(modelMesh) uses matrixWorld,
   // which Three.js only updates for objects that live in the scene graph.
   // With a separate <mesh geometry={...}> the store's modelMesh reference is
   // never in the scene, so its matrixWorld stays at identity regardless of
   // any transforms — causing mismatched raycasts.
+  //
+  // NOTA: removido o overlay wireframe que desenhava as arestas dos
+  // triângulos sobre a peça ativa (meshBasicMaterial wireframe opacity 0.06).
+  // Era ele que deixava o modelo "cheio de marcas de polígonos". O destaque
+  // da peça ativa agora é feito apenas pelo painel de Partes, mantendo a
+  // superfície lisa para visualização e seleção rápida.
   return (
-    <primitive object={part.mesh} visible={visible} castShadow receiveShadow>
-      {/* Active part highlight overlay (wireframe tint).
-          geometry compartilhada — filho herda matrixWorld correto via primitive. */}
-      {isActive && visible && (
-        <mesh geometry={part.mesh.geometry}>
-          <meshBasicMaterial
-            color="#ffffff"
-            wireframe
-            transparent
-            opacity={0.06}
-            polygonOffset
-            polygonOffsetFactor={-1}
-            polygonOffsetUnits={-1}
-            depthWrite={false}
-          />
-        </mesh>
-      )}
-    </primitive>
+    <primitive object={part.mesh} visible={visible} castShadow receiveShadow />
   )
 })
 
