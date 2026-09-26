@@ -80,6 +80,13 @@ export interface EncaixeApplyParams {
   maleMesh: THREE.Mesh
   /** Malha que recebe a FÊMEA (subtração). Só usada nos modos female/both. */
   femaleMesh: THREE.Mesh
+  /**
+   * Malhas que carregam joint protegido de OUTRA operação (Protection Manager).
+   * Se o alvo macho/fêmea estiver nesta lista E não for a própria sourceMesh
+   * (edição direta explícita), o apply é recusado — regra absoluta §13:
+   * a operação B não tem permissão para modificar o Joint A.
+   */
+  protectedMeshes?: THREE.Mesh[]
 }
 
 export interface EncaixeResult {
@@ -407,6 +414,17 @@ export function applyEncaixe(params: EncaixeApplyParams): EncaixeResult {
   const needFemale = mode === 'female' || mode === 'both'
   if (mode === 'both' && maleMesh === femaleMesh) {
     throw new Error('macho e fêmea precisam de peças diferentes — faça o corte primeiro')
+  }
+
+  // ── 0b. Ownership de joints (Protection Manager, §13/§30) ─────────────────
+  // Alvo com joint protegido de outra operação = edição proibida, salvo quando
+  // o alvo É a peça ativa (usuário direcionou explicitamente a operação §29).
+  const prot = params.protectedMeshes ?? []
+  if (needMale && prot.includes(maleMesh) && maleMesh !== sourceMesh) {
+    throw fail('PREFLIGHT', 'a peça do macho possui encaixe protegido de outra operação — selecione-a diretamente para editar')
+  }
+  if (needFemale && prot.includes(femaleMesh) && femaleMesh !== sourceMesh) {
+    throw fail('PREFLIGHT', 'a peça da fêmea possui encaixe protegido de outra operação — selecione-a diretamente para editar')
   }
 
   // ── Execução de UMA tentativa do par ao longo de `runDir` ─────────────────
@@ -787,8 +805,9 @@ function boxOfBrush(brush: Brush): THREE.Box3 | null {
 /**
  * Converte `center`/`direction` do frame da `source` para o frame da `target`.
  * Quando `target === source` (mesma malha) não há conversão.
+ * Exportada para o painel calcular a região do joint na malha nova.
  */
-function toTargetFrame(
+export function toTargetFrame(
   target: THREE.Mesh,
   source: THREE.Mesh,
   center: THREE.Vector3,

@@ -119,6 +119,8 @@ export interface HistorySnapshot {
   activePartId: string | null
   paintedParts: Map<string, Map<number, string>>
   paintColor: string
+  /** Histórico de operações protegidas (desfazer um corte remove sua proteção). */
+  operations: import('./protection').ProtectedArtifact[]
 }
 
 export interface AppState {
@@ -228,6 +230,22 @@ export interface AppState {
   // Histórico (desfazer/refazer)
   past: HistorySnapshot[]
   future: HistorySnapshot[]
+
+  // ─── Operações protegidas (Protection Manager) ──────────────────────────
+  // Cada corte/encaixe confirmado vira um artefato com ownership. Nova
+  // operação só edita a região que o usuário está editando.
+  operations: import('./protection').ProtectedArtifact[]
+  /** Registra um artefato confirmado (corte ou joint). */
+  registerArtifact: (artifact: import('./protection').ProtectedArtifact) => void
+  /** Substitui/atualiza artefatos (rebase após rebuild). */
+  updateArtifacts: (
+    updater: (prev: import('./protection').ProtectedArtifact[]) => import('./protection').ProtectedArtifact[],
+  ) => void
+  /** Limpa o histórico (novo modelo). */
+  clearArtifacts: () => void
+  /** Debug dev: mostra/esconde bounds das proteções na viewport. */
+  protectionDebug: boolean
+  setProtectionDebug: (on: boolean) => void
 
   // ── Ações do sistema de Partes ────────────────────────────────────────────
   /**
@@ -456,6 +474,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   past: [],
   future: [],
 
+  operations: [],
+  registerArtifact: (artifact) =>
+    set((state) => ({ operations: [...state.operations, artifact] })),
+  updateArtifacts: (updater) =>
+    set((state) => ({ operations: updater(state.operations) })),
+  clearArtifacts: () => set({ operations: [] }),
+  protectionDebug: false,
+  setProtectionDebug: (protectionDebug) => set({ protectionDebug }),
+
   // ── Sistema de Partes ──────────────────────────────────────────────────────
 
   registerModelAsPart: (mesh, name) =>
@@ -474,6 +501,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         paintColor: state.paintColor,
         cutParts: [],
         activeCutPartId: null,
+        // Novo modelo = novo histórico de operações (proteções antigas morrem aqui).
+        operations: [],
+        past: [],
+        future: [],
         selectedFaceIndices: new Set(),
         hoveredFaceIndices: new Set(),
         selectionState: 'idle',
@@ -834,6 +865,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         activePartId: previous.activePartId,
         paintedParts: clonePaintedParts(previous.paintedParts),
         paintColor: previous.paintColor,
+        operations: [...previous.operations],
         hoveredFaceIndices: new Set(),
         cutPreview: null,
         status: 'loaded',
@@ -867,6 +899,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         activePartId: next.activePartId,
         paintedParts: clonePaintedParts(next.paintedParts),
         paintColor: next.paintColor,
+        operations: [...next.operations],
         hoveredFaceIndices: new Set(),
         cutPreview: null,
         status: 'loaded',
@@ -894,6 +927,7 @@ function snapshotOf(state: AppState): HistorySnapshot {
     activePartId: state.activePartId,
     paintedParts: clonePaintedParts(state.paintedParts),
     paintColor: state.paintColor,
+    operations: [...state.operations],
   }
 }
 

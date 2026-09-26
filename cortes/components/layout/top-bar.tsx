@@ -140,6 +140,7 @@ export function TopBar({ onExport, onSave, onProjects }: TopBarProps) {
     useAppStore.setState({
       modelMesh: null, modelInfo: null, originalGeometry: null,
       parts: [], activePartId: null, cutParts: [], activeCutPartId: null,
+      operations: [], past: [], future: [],
       status: 'idle',
       statusMessage: t.status_idle,
     })

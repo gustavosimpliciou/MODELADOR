@@ -20,6 +20,10 @@ import {
 import * as THREE from 'three'
 import { useAppStore } from '@/lib/store'
 import { extractSubMesh, removeSubMesh, autoFillMicroFragments } from '@/lib/smart-cut'
+import {
+  createCutArtifact, artifactCentroids, rebaseArtifactWithCentroids,
+  queryProtectedIntersection,
+} from '@/lib/protection'
 import { computeOpenCut, generateCaps, addCapsToShell } from '@/lib/smartcut-pipeline'
 import { analyzeSelection } from '@/lib/smart-autocut'
 import { trackEvent } from '@/lib/events'
@@ -84,6 +88,7 @@ export function SmartAutoCutPanel() {
     setAutoCutPreview, unit, cutPreview, setCutPreview, previewViewMode, setPreviewViewMode,
     openCutData, setOpenCutData, autoCutPipelineStage, setAutoCutPipelineStage,
     autoCutPreviewMode, setAutoCutPreviewMode, setSelectedFaceIndices,
+    operations, registerArtifact, updateArtifacts, parts,
   } = useAppStore()
 
   const [phase, setPhase] = useState<PanelPhase>('configure')
@@ -322,6 +327,31 @@ export function SmartAutoCutPanel() {
     } else {
       if (!modelMesh || !cutPreview || !analysis) return
     }
+    // ── Protection Manager: a nova seleção não pode engolir faces de um
+    // corte/encaixe já protegido na MESMA malha (ownership direto = BLOCK).
+    // Exceção §29 (edição direta explícita): se a MAIORIA da seleção já é
+    // protegida, o usuário está claramente editando aquela região → permite.
+    // Proximidade (safe zone) nunca bloqueia — só é registrada no log.
+    const st0 = useAppStore.getState()
+    const selFaces0 = new Set(st0.selectedFaceIndices)
+    if (selFaces0.size > 0) {
+      const geo0 = modelMesh!.geometry as THREE.BufferGeometry
+      const owned = new Set<number>()
+      for (const a of st0.operations) {
+        if ((a.state === 'PROTECTED' || a.state === 'COMMITTED') && a.meshUuid === geo0.uuid) {
+          for (const f of a.faces) owned.add(f)
+        }
+      }
+      let ownedCount = 0
+      for (const f of selFaces0) if (owned.has(f)) ownedCount++
+      const hits = queryProtectedIntersection(geo0, selFaces0, st0.operations)
+      const direct = hits.filter((h) => h.directFaces > 0)
+      if (direct.length > 0 && ownedCount / selFaces0.size <= 0.5) {
+        const names = direct.map((h) => `"${h.artifact.label}"`).join(', ')
+        setStatus('error', `A seleção toca o corte protegido ${names} — selecione a peça dele para editar diretamente.`)
+        return
+      }
+    }
     setBusy(true)
     pushHistory()
     setStatus('cutting', 'Aplicando corte final...')
@@ -397,10 +427,43 @@ export function SmartAutoCutPanel() {
         partMesh.scale.copy(modelMesh.scale)
         partMesh.userData.cleanGeometry = cleanSel
         partMesh.position.add(dir)
+        const newPieceId = `autocut-${Date.now()}`
+        const newPieceName = `Peça ${cutParts.length + 1}`
         addCutPart({
-          id: `autocut-${Date.now()}`, name: `Peça ${cutParts.length + 1}`,
+          id: newPieceId, name: newPieceName,
           mesh: partMesh, faceIndices: [], color: '#ff6600',
         })
+
+        // ── Protection Manager: COMMIT → PROTECTED ──────────────────────
+        // 1. Rebase: proteções da malha consumida sobrevivem no corpo novo
+        //    (remapeamento por centroides — índices antigos morrem no rebuild).
+        // 2. Registra o corte (ownership das faces selecionadas na malha velha
+        //    + vínculo com as peças criadas). A partir daqui, o Olho A é
+        //    intocável por operações indiretas.
+        try {
+          const st1 = useAppStore.getState()
+          const oldBodyGeo = geo as THREE.BufferGeometry
+          const activePartIdNow = st1.parts.find((p) => p.mesh === modelMesh)?.id ?? null
+          const bb0 = oldBodyGeo.boundingBox
+          const sz0 = new THREE.Vector3()
+          bb0?.getSize(sz0)
+          const maxDim0 = Math.max(sz0.x, sz0.y, sz0.z) || 1
+          updateArtifacts((prev) => prev.map((a) =>
+            a.meshUuid === oldBodyGeo.uuid
+              ? rebaseArtifactWithCentroids(
+                  bodyPiece, a, artifactCentroids(oldBodyGeo, a),
+                )
+              : a,
+          ))
+          registerArtifact(createCutArtifact({
+            geometry: oldBodyGeo,
+            selectedFaces: selFaces0,
+            partId: activePartIdNow,
+            newPartIds: [activePartIdNow ?? '', newPieceId],
+            label: `Corte ${newPieceName}`,
+            modelMaxDim: maxDim0,
+          }))
+        } catch (e) { console.warn('[AutoCut] registro de proteção falhou (não bloqueante):', e) }
 
         setAutoCutPreview(null)
         setAutoCutOpen(false)

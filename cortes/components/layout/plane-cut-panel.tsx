@@ -7,6 +7,9 @@ import { useAppStore } from '@/lib/store'
 import { planeFromAxisOffset, type PlaneAxis } from '@/lib/solid-plane-cut'
 import { runPlaneCutAsync, isCancelled, type AsyncCutProgress } from '@/lib/plane-cut-async'
 import { disposeMeshGPU } from '@/lib/parts-manager'
+import {
+  createCutArtifact, artifactCentroids, rebaseArtifactWithCentroids,
+} from '@/lib/protection'
 import { formatBytes, profileLine } from '@/lib/cut-telemetry'
 // plate-cut imports removed — Placa de Limitação não executa cortes
 import { trackEvent } from '@/lib/events'
@@ -174,6 +177,7 @@ export function PlaneCutPanel() {
     setStatus,
     pushHistory,
     clearSelection,
+    registerArtifact, updateArtifacts,
     planeCutMode,
     setPlaneCutMode,
     plateCutPosition,
@@ -466,6 +470,49 @@ export function PlaneCutPanel() {
           color: '#ff6600',
         })
       } catch (e) { console.error('[PlaneCut] addCutPart falhou:', e) }
+
+      // ── Protection Manager ────────────────────────────────────────────
+      // O plano divide a peça inteira: as faces protegidas sobrevivem nos
+      // dois lados (remapeamento por centroides em AMBOS; vence o lado com
+      // mais faces). Se o plano ATRAVESSOU uma proteção (faces nos 2 lados),
+      // avisa — foi ação explícita na peça (§29), mas o usuário precisa saber.
+      try {
+        const st1 = useAppStore.getState()
+        const oldGeo = prevMesh.geometry as THREE.BufferGeometry
+        const activePartIdNow = st1.parts.find((p) => p.mesh === modelMesh)?.id ?? null
+        const splitNames: string[] = []
+        updateArtifacts((prevArts) => {
+          const out: typeof prevArts = []
+          for (const a of prevArts) {
+            if (a.meshUuid !== oldGeo.uuid) { out.push(a); continue }
+            const cents = artifactCentroids(oldGeo, a)
+            const rPos = rebaseArtifactWithCentroids(positive, a, cents)
+            const rNeg = rebaseArtifactWithCentroids(negative, a, cents)
+            const posCount = rPos.faces.length
+            const negCount = rNeg.faces.length
+            const total = Math.max(1, a.faces.length)
+            if (posCount / total > 0.1 && negCount / total > 0.1) {
+              splitNames.push(a.label)
+            }
+            out.push(posCount >= negCount ? rPos : rNeg)
+          }
+          return out
+        })
+        const bb0 = oldGeo.boundingBox
+        const sz0 = new THREE.Vector3()
+        bb0?.getSize(sz0)
+        registerArtifact(createCutArtifact({
+          geometry: oldGeo,
+          selectedFaces: new Set<number>(),
+          partId: activePartIdNow,
+          newPartIds: [activePartIdNow ?? ''],
+          label: `Corte plano ${cutPlaneAxis.toUpperCase()}`,
+          modelMaxDim: Math.max(sz0.x, sz0.y, sz0.z) || 1,
+        }))
+        if (splitNames.length > 0) {
+          statusMsg += ` · atravessou ${splitNames.join(', ')} (proteção remapeada)`
+        }
+      } catch (e) { console.warn('[PlaneCut] registro de proteção falhou (não bloqueante):', e) }
 
       try { clearSelection() } catch {}
       setStatus('loaded', statusMsg)

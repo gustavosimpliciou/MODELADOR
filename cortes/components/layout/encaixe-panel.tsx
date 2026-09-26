@@ -12,9 +12,13 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Box, AlertTriangle, Loader2, X, GripHorizontal } from 'lucide-react'
 import * as THREE from 'three'
 import { useAppStore } from '@/lib/store'
-import { analyzeEncaixe, applyEncaixe, findComplementOnAxis, type EncaixeMode } from '@/lib/encaixe'
+import { analyzeEncaixe, applyEncaixe, findComplementOnAxis, toTargetFrame, type EncaixeMode } from '@/lib/encaixe'
 import { analyzeSelection } from '@/lib/smart-autocut'
 import { cloneMeshTransform } from '@/lib/parts-manager'
+import {
+  partsWithProtectedJoints, meshesWithForeignJoints, createJointArtifact,
+  artifactCentroids, rebaseArtifactWithCentroids,
+} from '@/lib/protection'
 import { ensureBoundsTree } from '@/lib/geo-index'
 import { useT } from '@/lib/lang-store'
 import { useDraggable } from '@/lib/use-draggable'
@@ -96,25 +100,33 @@ export function EncaixePanel() {
     parts, cutParts, setCutParts,
     setModelMesh, setActivePartId, updatePart, addPart,
     setStatus, pushHistory, clearSelection,
+    operations, registerArtifact, updateArtifacts,
   } = useAppStore()
 
   const visible = encaixeOpen && !!modelMesh
   const hasSelection = selectedFaceIndices.size > 0 && selectionState === 'selected'
 
-  // Peças opostas do corte: todas as partes + peças cortadas, EXCETO a ativa.
+  // Peças com joint protegido de outra operação NUNCA são complemento
+  // automático (Protection Manager §13 — a operação B não toca o Joint A).
+  const protectedPartIds = useMemo(() => partsWithProtectedJoints(operations), [operations])
+
+  // Peças opostas do corte: todas as partes + peças cortadas, EXCETO a ativa
+  // e EXCETO peças com joint protegido (nunca par automático com elas).
   // Garante que a fêmea/macho sempre tenha uma peça-alvo no mesmo corte.
   const candidates = useMemo(() => {
     const byId = new Map<string, { id: string; name: string; mesh: THREE.Mesh }>()
     for (const p of parts) {
-      if (p.mesh && p.mesh !== modelMesh) byId.set(p.id, { id: p.id, name: p.name, mesh: p.mesh })
+      if (p.mesh && p.mesh !== modelMesh && !protectedPartIds.has(p.id)) {
+        byId.set(p.id, { id: p.id, name: p.name, mesh: p.mesh })
+      }
     }
     for (const cp of cutParts) {
-      if (cp.mesh && cp.mesh !== modelMesh && !byId.has(cp.id)) {
+      if (cp.mesh && cp.mesh !== modelMesh && !byId.has(cp.id) && !protectedPartIds.has(cp.id)) {
         byId.set(cp.id, { id: cp.id, name: cp.name, mesh: cp.mesh })
       }
     }
     return [...byId.values()]
-  }, [parts, cutParts, modelMesh])
+  }, [parts, cutParts, modelMesh, protectedPartIds])
 
   // Análise da costura (centro/normal) — usada para escolher o membro do
   // grupo de corte mais próximo da região de contato.
@@ -144,7 +156,7 @@ export function EncaixePanel() {
     const group = active.parentId
       ? parts.filter((p) => p.id === active.parentId || p.parentId === active.parentId)
       : parts.filter((p) => p.id === active.id || p.parentId === active.id)
-    const members = group.filter((p) => p.id !== active.id && p.mesh)
+    const members = group.filter((p) => p.id !== active.id && p.mesh && !protectedPartIds.has(p.id))
     let best: { id: string; name: string; mesh: THREE.Mesh } | null = null
     if (members.length >= 1 && modelMesh) {
       // 1º critério: eixo da costura atinge a peça (par verdadeiro).
@@ -295,6 +307,26 @@ export function EncaixePanel() {
           centerV.copy(seamC).add(inPlane).addScaledVector(normal, axial)
         }
 
+        // Peça ativa (dona da seleção) — para ownership e refusal precisa.
+        const activePart = parts.find((pt) => pt.mesh === activeMesh) ?? null
+        // Malhas com joint protegido de OUTRA operação: applyEncaixe recusa
+        // usá-las como alvo (a ativa pode — edição direta explícita §29).
+        const protectedMeshes = meshesWithForeignJoints(
+          parts.filter((pt) => pt.mesh).map((pt) => ({ id: pt.id, mesh: pt.mesh })),
+          useAppStore.getState().operations,
+          activePart?.id ?? null,
+        )
+        const modelMaxDim = (() => {
+          try {
+            const bb = new THREE.Box3().setFromBufferAttribute(
+              activeMesh.geometry.getAttribute('position') as THREE.BufferAttribute,
+            )
+            const s = new THREE.Vector3()
+            bb.getSize(s)
+            return Math.max(s.x, s.y, s.z) || 1
+          } catch { return 1 }
+        })()
+
         const result = applyEncaixe({
           center: centerV,
           direction,
@@ -305,6 +337,7 @@ export function EncaixePanel() {
           sourceMesh: activeMesh,
           maleMesh,
           femaleMesh,
+          protectedMeshes,
         })
 
         // REGRA ABSOLUTA no commit: os dois lados precisam existir e o par
@@ -358,6 +391,61 @@ export function EncaixePanel() {
           // continuava com a geometria antiga na cena (par "pela metade").
           const staleActive = parts.find((part) => part.mesh === activeMesh)
           if (staleActive) updatePart(staleActive.id, { mesh: newActive })
+          // ── Protection Manager: rebase + registro ──────────────────────
+          // 1. Proteções antigas das malhas consumidas são remapeadas para as
+          //    malhas novas (a proteção sobrevive ao rebuild do CSG).
+          // 2. O par criado vira 2 artefatos joint (ownership §13: cada joint
+          //    pertence à operação que o criou; cut linkado para rastreio).
+          const opsNow = useAppStore.getState().operations
+          const lastCutFor = (pid: string | null | undefined) => {
+            if (!pid) return undefined
+            for (let i = opsNow.length - 1; i >= 0; i--) {
+              const o = opsNow[i]
+              if (o.kind === 'cut' && o.partId === pid) return o
+            }
+            return undefined
+          }
+          const oldActiveGeo = activeMesh.geometry as THREE.BufferGeometry
+          const oldCompGeo = compPart!.mesh.geometry as THREE.BufferGeometry
+          updateArtifacts((prev) => prev.map((a) => {
+            if (a.meshUuid === oldActiveGeo.uuid) {
+              return rebaseArtifactWithCentroids(
+                newActive.geometry as THREE.BufferGeometry, a, artifactCentroids(oldActiveGeo, a),
+              )
+            }
+            if (a.meshUuid === oldCompGeo.uuid) {
+              return rebaseArtifactWithCentroids(
+                newComp.geometry as THREE.BufferGeometry, a, artifactCentroids(oldCompGeo, a),
+              )
+            }
+            return a
+          }))
+          const activeCut = lastCutFor(activePart?.id)
+          const compCut = lastCutFor(compPart!.id)
+          const jointRadius = p.radius + p.tolerance + 0.5
+          const opId = `op-${Date.now().toString(36)}`
+          try {
+            const mLocal = toTargetFrame(maleMesh, activeMesh, centerV, direction)
+            const malePartId = maleIsActive ? activePart?.id ?? null : compPart!.id
+            registerArtifact(createJointArtifact({
+              geometry: (maleIsActive ? newActive : newComp).geometry as THREE.BufferGeometry,
+              center: mLocal.center, direction: mLocal.direction, radius: jointRadius,
+              partId: malePartId, jointSide: 'male',
+              linkedCutId: (maleIsActive ? activeCut : compCut)?.id,
+              label: `Joint macho · ${maleIsActive ? t.piece_current : compPart!.name}`,
+              modelMaxDim, opId,
+            }))
+            const fLocal = toTargetFrame(femaleMesh, activeMesh, centerV, direction)
+            const femalePartId = maleIsActive ? compPart!.id : activePart?.id ?? null
+            registerArtifact(createJointArtifact({
+              geometry: (maleIsActive ? newComp : newActive).geometry as THREE.BufferGeometry,
+              center: fLocal.center, direction: fLocal.direction, radius: jointRadius,
+              partId: femalePartId, jointSide: 'female',
+              linkedCutId: (maleIsActive ? compCut : activeCut)?.id,
+              label: `Joint fêmea · ${maleIsActive ? compPart!.name : t.piece_current}`,
+              modelMaxDim, opId,
+            }))
+          } catch (e) { console.warn('[Encaixe] registro de proteção falhou (não bloqueante):', e) }
           // BVH nas peças novas: o 2º+ encaixe faz raycasts (snap/medida/eixo)
           // sobre estas malhas — sem índice, cada raio varre tudo e a UI congela.
           void ensureBoundsTree(newActive.geometry as THREE.BufferGeometry)
@@ -385,6 +473,41 @@ export function EncaixePanel() {
           // estiver nulo, localizando-a pela referência da malha.
           const activeRef = parts.find((part) => part.mesh === activeMesh)
           if (activeRef) updatePart(activeRef.id, { mesh: newActive })
+          // Protection Manager: rebase das proteções da malha antiga + registro
+          // do joint avulso (edição direta explícita §29 — permitido).
+          try {
+            const oldGeo = activeMesh.geometry as THREE.BufferGeometry
+            updateArtifacts((prev) => prev.map((a) =>
+              a.meshUuid === oldGeo.uuid
+                ? rebaseArtifactWithCentroids(
+                    newActive.geometry as THREE.BufferGeometry, a,
+                    artifactCentroids(oldGeo, a),
+                  )
+                : a,
+            ))
+            const sLocal = { center: new THREE.Vector3(...p.center), direction: direction.clone() }
+            const opsNow2 = useAppStore.getState().operations
+            let linked: string | undefined
+            for (let i = opsNow2.length - 1; i >= 0; i--) {
+              const o = opsNow2[i]
+              if (o.kind === 'cut' && o.partId === activeRef?.id) { linked = o.id; break }
+            }
+            const bb = new THREE.Box3().setFromBufferAttribute(
+              newActive.geometry.getAttribute('position') as THREE.BufferAttribute,
+            )
+            const s = new THREE.Vector3()
+            bb.getSize(s)
+            registerArtifact(createJointArtifact({
+              geometry: newActive.geometry as THREE.BufferGeometry,
+              center: sLocal.center, direction: sLocal.direction,
+              radius: p.radius + p.tolerance + 0.5,
+              partId: activeRef?.id ?? null,
+              jointSide: mode === 'female' ? 'female' : 'male',
+              linkedCutId: linked,
+              label: `Joint ${mode === 'female' ? t.female_label : t.male_label} · ${t.piece_current}`,
+              modelMaxDim: Math.max(s.x, s.y, s.z) || 1,
+            }))
+          } catch (e) { console.warn('[Encaixe] registro de proteção falhou (não bloqueante):', e) }
           setStatus('loaded', t.encaixe_generated((p.radius * 2).toFixed(1), result.heightUsed.toFixed(1)))
         }
 
@@ -403,6 +526,7 @@ export function EncaixePanel() {
     encaixePreview, modelMesh, parts, cutParts, compPart,
     pushHistory, setModelMesh, setActivePartId, setCutParts, updatePart, addPart,
     setStatus, clearSelection, setEncaixePreview, setEncaixeOpen, t,
+    registerArtifact, updateArtifacts,
   ])
 
   if (!visible) return null

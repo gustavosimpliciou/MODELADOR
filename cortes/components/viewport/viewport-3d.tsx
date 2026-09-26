@@ -63,6 +63,8 @@ function buildLimitationPlates(
 }
 import { loadModel } from '@/lib/model-loader'
 import { refineSmartHover, refineSmartSelection } from '@/lib/smart-refine'
+import { ProtectionDebugOverlay } from './protection-debug-overlay'
+import { dumpProtectionMap } from '@/lib/protection'
 import { FaceLimitModal } from '@/components/layout/face-limit-modal'
 import { syncPaintedColors, hexToRgbNorm } from '@/lib/paint'
 import { ModelRenderer } from './model-renderer'
@@ -335,6 +337,26 @@ function SmartCutInteraction() {
           // preview — sem mudar detecção, fluxo ou atalhos.
           const rawHover = smartSelect(modelMesh.geometry, faceIndex, { sharpAngle: angle, mode: cutMode }, limitationPlatesRef.current)
           newHovered = refineSmartHover(modelMesh.geometry, rawHover, faceIndex, limitationPlatesRef.current)
+          // Protection Manager §31 (preview): o hover também não pinta
+          // geometria protegida de outras operações — salvo seed dentro dela
+          // (edição direta). Silencioso: o commit informa, se precisar.
+          const opsHov = useAppStore.getState().operations
+          if (opsHov.length > 0 && newHovered.size > 0) {
+            const geoHov = modelMesh.geometry as THREE.BufferGeometry
+            let seedOwnedHov = false
+            const ownedHov = new Set<number>()
+            for (const a of opsHov) {
+              if ((a.state === 'PROTECTED' || a.state === 'COMMITTED') && a.meshUuid === geoHov.uuid) {
+                for (const f of a.faces) {
+                  ownedHov.add(f)
+                  if (f === faceIndex) seedOwnedHov = true
+                }
+              }
+            }
+            if (ownedHov.size > 0 && !seedOwnedHov) {
+              for (const f of newHovered) if (ownedHov.has(f)) newHovered.delete(f)
+            }
+          }
           hoverCache.current = { face: faceIndex, mode: cutMode, angle, result: newHovered }
         }
       }
@@ -453,9 +475,6 @@ function SmartCutInteraction() {
       const mode = modKeys.current.ctrl
         ? 'add' : modKeys.current.alt ? 'subtract' : 'new'
 
-      // Grava estado atual no histórico antes de mudar a seleção
-      pushHistory()
-
       setStatus('selecting', 'SmartCut selecionando...')
 
       // Roda na mesma microtask para não bloquear o frame.
@@ -464,6 +483,44 @@ function SmartCutInteraction() {
       // features preservadas) e só então combinada — fluxo inalterado.
       const rawRegion = smartSelect(modelMesh.geometry, faceIndex, { sharpAngle: sharpAngle ?? 35, mode: cutMode }, limitationPlatesRef.current)
       const region = refineSmartSelection(modelMesh.geometry, rawRegion, faceIndex, limitationPlatesRef.current)
+
+      // Protection Manager §31: a Smart não incorpora geometria protegida de
+      // OUTRAS operações a uma nova seleção. Exceção §29: seed dentro da
+      // proteção = edição direta explícita daquele corte → mantém tudo.
+      let protectedExcluded = 0
+      {
+        const opsNow = useAppStore.getState().operations
+        if (opsNow.length > 0) {
+          const geoNow = modelMesh.geometry as THREE.BufferGeometry
+          let seedOwned = false
+          const owned = new Set<number>()
+          for (const a of opsNow) {
+            if ((a.state === 'PROTECTED' || a.state === 'COMMITTED') && a.meshUuid === geoNow.uuid) {
+              for (const f of a.faces) {
+                owned.add(f)
+                if (f === faceIndex) seedOwned = true
+              }
+            }
+          }
+          if (owned.size > 0 && !seedOwned) {
+            for (const f of region) {
+              if (owned.has(f)) {
+                region.delete(f)
+                protectedExcluded++
+              }
+            }
+            if (protectedExcluded > 0 && region.size === 0) {
+              setStatus('error', 'Seleção bloqueada por corte/encaixe protegido — selecione a peça dele para editar diretamente.')
+              invalidate()
+              return
+            }
+          }
+        }
+      }
+
+      // Grava estado atual no histórico antes de mudar a seleção
+      // (só aqui: aborts acima não poluem o desfazer).
+      pushHistory()
 
       let next: Set<number>
       if (mode === 'add') {
@@ -494,7 +551,7 @@ function SmartCutInteraction() {
         mode === 'add'      ? `+${region.size.toLocaleString()} faces adicionadas — ${next.size.toLocaleString()} total` :
         mode === 'subtract' ? `${region.size.toLocaleString()} faces removidas — ${next.size.toLocaleString()} total` :
                               `${next.size.toLocaleString()} faces selecionadas`
-      setStatus('loaded', label)
+      setStatus('loaded', protectedExcluded > 0 ? `${label} · ${protectedExcluded} protegida(s) excluída(s)` : label)
       invalidate()
     },
     [modelMesh, activeTool, raycastFace, setSelectedFaceIndices, setSelectionState, setStatus, sharpAngle, cutMode, pushHistory, allowCutPartSelection, cutParts, activeCutPartId, setActiveCutPartId, activePartId, camera, gl, raycaster],
@@ -811,6 +868,29 @@ export function Viewport3D() {
     return () => window.removeEventListener('unhandledrejection', handler)
   }, [])
 
+  // ── Hooks de debug do Protection Manager (dev-only, via console) ──────────
+  // __protection() → dump textual + verificação exata dos artefatos.
+  // __protectionDebug(true/false) → overlay 3D (vermelho=protegido, amarelo=safe zone).
+  useEffect(() => {
+    const w = window as unknown as Record<string, unknown>;
+    (w as Record<string, () => void>).__protection = () => {
+      const s = useAppStore.getState()
+      console.log(dumpProtectionMap(
+        s.parts.map((p) => ({ id: p.id, name: p.name, mesh: p.mesh })),
+        s.operations,
+      ))
+    };
+    (w as Record<string, (on: boolean) => void>).__protectionDebug = (on: boolean) => {
+      useAppStore.getState().setProtectionDebug(!!on)
+    }
+    return () => {
+      try {
+        delete (w as Record<string, unknown>).__protection
+        delete (w as Record<string, unknown>).__protectionDebug
+      } catch { /* noop */ }
+    }
+  }, [])
+
   if (webglFailed) {
     return (
       <div className="relative w-full h-full bg-[#060608] flex flex-col items-center justify-center gap-3 text-muted-foreground/50 select-none">
@@ -996,6 +1076,7 @@ export function Viewport3D() {
         <Suspense fallback={null}>
           <ModelRenderer />
         </Suspense>
+        <ProtectionDebugOverlay />
 
         <OrbitControls
           ref={controlsRef}
