@@ -604,7 +604,15 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setSelectionMode: (selectionMode) => set({ selectionMode }),
 
-  setSelectedFaceIndices: (selectedFaceIndices) => set({ selectedFaceIndices }),
+  /**
+   * COMMIT da seleção (máquina de estados: PREVIEW → COMMIT → LOCKED).
+   * Clona o Set de entrada: a partir daqui a seleção é IMUTÁVEL até uma
+   * próxima ação explícita — preview/hover/mouse/câmera nunca compartilham
+   * referência mutável com o estado commitado, então nada recalcula ou
+   * "puxa" a seleção confirmada.
+   */
+  setSelectedFaceIndices: (selectedFaceIndices) =>
+    set({ selectedFaceIndices: new Set(selectedFaceIndices) }),
 
   setHoveredFaceIndices: (hoveredFaceIndices) => set({ hoveredFaceIndices }),
 

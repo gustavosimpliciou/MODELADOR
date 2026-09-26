@@ -14,10 +14,17 @@
  *                 ├── NoiseFilter       (voto ponderado por área, histerese)
  *                 ├── BoundaryAnalyzer  (banda de fronteira 1-ring / 2-ring)
  *                 ├── BoundarySmoother  (curvature-flow discreto na máscara)
+ *                 ├── SpurNotchCleaner (pontas de 1 face e entalhes estreitos)
  *                 ├── HoleFiller        (micro-furos → dentro)
  *                 ├── ComponentCleaner  (micro-ilhas → fora)
  *                 └── FeatureEdgeProtector (aresta viva nunca é atravessada)
  *   SelectionComposer (viewport: Ctrl/add/subtract — inalterado, refine roda ANTES)
+ *
+ * Máquina de estados (implementada no viewport + store):
+ *   IDLE → HOVERING (preview, recalcula livre) → PREVIEW → COMMIT (clique) →
+ *   LOCKED (congelada: mouse/hover/câmera NÃO tocam) → nova ação explícita → PREVIEW.
+ * O store garante LOCKED por imutabilidade: todo commit clona o Set, de modo
+ * que preview e committed nunca compartilham referência mutável.
  *
  * Regras respeitadas:
  *  - NÃO modifica a malha (só máscaras Uint8 + Sets — puro estado de seleção).
@@ -320,6 +327,163 @@ function votePass(
   return changed
 }
 
+// ─── Spur & notch pass (regularização "reta": pontas e entalhes de 1 face) ────
+// Remove o zigue-zague que a votação majoritária deixa passar: uma ponta
+// selecionada ligada por 1 vizinho (dente) e um entalhe não-selecionado
+// cercado por selecionados (degrau). Cada flip aqui REDUZ o comprimento da
+// fronteira, empurrando-a para segmentos mais retos/contínuos — sem nunca
+// cruzar aresta viva (feature), o núcleo do cursor, outro componente ou placa.
+//
+// O(n) só na banda — barato o suficiente para hover (1 iteração) e clique.
+function spurNotchPass(
+  geometry: THREE.BufferGeometry,
+  data: SmartGeometryData,
+  ws: BandWorkspace,
+  opts: SmartRefineOptions,
+  protectedFaces: Set<number> | null,
+  seedComp: number,
+  plates: LimitationPlate[],
+  centroids: Float32Array | null,
+): boolean {
+  const { adjList, edgeCost } = data
+  const next = ws.mask.slice()
+  let changed = false
+
+  const crossesPlate = (f: number): boolean => {
+    if (plates.length === 0 || !centroids) return false
+    for (let i = 0; i < adjList[f].length; i++) {
+      const nb = adjList[f][i]
+      if (!ws.mask[nb]) continue
+      for (let pi = 0; pi < plates.length; pi++) {
+        if (segmentCrossesPlateLocal(
+          centroids[f * 3], centroids[f * 3 + 1], centroids[f * 3 + 2],
+          centroids[nb * 3], centroids[nb * 3 + 1], centroids[nb * 3 + 2],
+          plates[pi],
+        )) return true
+      }
+    }
+    return false
+  }
+
+  for (const f of ws.band) {
+    const cur = ws.mask[f]
+    const adj = adjList[f]
+    const costs = edgeCost[f]
+    const n = adj.length
+    if (n < 2) continue
+
+    let same = 0
+    let maxEdgeToSame = 0
+    for (let i = 0; i < n; i++) {
+      if (ws.mask[adj[i]] === cur) {
+        same++
+        if (costs[i] > maxEdgeToSame) maxEdgeToSame = costs[i]
+      }
+    }
+
+    if (cur === 1) {
+      // PONTA: 0–1 vizinhos no mesmo estado → dente/serrilhado. Remove, salvo:
+      // núcleo do cursor, relevo real (ligação por aresta viva = detalhe fino
+      // intencional, ex.: antena), ou ligação forte.
+      if (same > 1) continue
+      if (protectedFaces?.has(f)) continue
+      if (ws.isFeature[f]) continue
+      if (maxEdgeToSame >= opts.featureAngle) continue
+      next[f] = 0
+      changed = true
+    } else {
+      // ENTALHE: todos os vizinhos menos no máximo 1 no estado oposto →
+      // degrau de triangulação. Preenche, salvo: outro componente, placa,
+      // ou paredes do entalhe formadas por aresta viva (sulco real).
+      if (same > 1) continue
+      if (opts.respectComponents && data.compLabel[f] !== seedComp) continue
+      if (ws.isFeature[f]) continue
+      if (maxEdgeToSame >= opts.featureAngle) continue
+      if (crossesPlate(f)) continue
+      next[f] = 1
+      changed = true
+    }
+  }
+
+  if (changed) ws.mask.set(next)
+  return changed
+}
+
+// ─── Boundary Quality Score (métrica interna — §24 do spec) ────────────────────
+// Quanto MENOR, mais limpa a fronteira. Componentes:
+//  - boundaryPerFace: arestas de fronteira por face (comprimento relativo)
+//  - microRate: pontas + entalhes de 1 face por face (serrilhado)
+//  - angularMean: diedro médio nas arestas de fronteira (alto = segue feature
+//    real ou ruído; interpretado junto com microRate)
+
+export interface BoundaryQuality {
+  faces: number
+  boundaryEdges: number
+  boundaryPerFace: number
+  spurs: number
+  notches: number
+  microRate: number
+  angularMean: number
+  /** 0..1 aprox.: menor = fronteira mais limpa. */
+  score: number
+}
+
+export function boundaryQuality(
+  geometry: THREE.BufferGeometry,
+  sel: Set<number>,
+): BoundaryQuality {
+  const empty: BoundaryQuality = {
+    faces: sel.size, boundaryEdges: 0, boundaryPerFace: 0,
+    spurs: 0, notches: 0, microRate: 0, angularMean: 0, score: 0,
+  }
+  if (sel.size === 0) return empty
+  const data = getSmartGeometryData(geometry)
+  // Sem adjacência não há métrica (não inventa número).
+  if (!data) return empty
+
+  let bEdges = 0
+  let angSum = 0
+  let spurs = 0
+  let notches = 0
+  for (const f of sel) {
+    const adj = data.adjList[f]
+    const costs = data.edgeCost[f]
+    let same = 0
+    for (let i = 0; i < adj.length; i++) {
+      if (sel.has(adj[i])) {
+        same++
+      } else {
+        bEdges++
+        angSum += costs[i]
+      }
+    }
+    if (same <= 1 && adj.length >= 2) spurs++
+  }
+  // Entalhes: varre 1-ring da seleção (fora dela, quase cercados).
+  const seen = new Set<number>()
+  for (const f of sel) {
+    const adj = data.adjList[f]
+    for (let i = 0; i < adj.length; i++) {
+      const nb = adj[i]
+      if (sel.has(nb) || seen.has(nb)) continue
+      seen.add(nb)
+      const nbAdj = data.adjList[nb]
+      let sameOut = 0
+      for (let j = 0; j < nbAdj.length; j++) if (sel.has(nbAdj[j])) sameOut++
+      if (nbAdj.length >= 2 && sameOut >= nbAdj.length - 1) notches++
+    }
+  }
+  const faces = sel.size
+  const boundaryPerFace = bEdges / faces
+  const microRate = (spurs + notches) / faces
+  const angularMean = bEdges > 0 ? angSum / bEdges : 0
+  // Score: fronteira curta + pouco micro-serrilhado. O termo angular entra
+  // normalizado (fronteira sobre feature real não é penalizada sozinha —
+  // só quando combinada com micro-irregularidade).
+  const score = boundaryPerFace * 0.5 + microRate * 4 + (angularMean / 180) * microRate * 2
+  return { faces, boundaryEdges: bEdges, boundaryPerFace, spurs, notches, microRate, angularMean, score }
+}
+
 // ─── Limpeza por área (só no clique — full-scan O(n), fora do hover) ───────────
 
 function removeSmallComponents(
@@ -417,6 +581,12 @@ function refineCore(
     )
     if (!changed) break
   }
+
+  // Regularização "reta": 1 passada de pontas/entalhes APÓS a votação.
+  // Remove o dente isolado e fecha o degrau de 1 face que a votação deixa
+  // passar — cada flip aqui encurta a fronteira (segmentos mais contínuos).
+  // Barato (só banda) → roda no hover e no clique.
+  spurNotchPass(geometry, data, ws, opts, protectedFaces, seedComp, plates, centroids)
 
   if (withAreaCleanup) {
     // Remove Small Components + Fill Small Holes com limiar adaptativo

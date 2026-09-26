@@ -184,6 +184,8 @@ function SmartCutInteraction() {
   // Sincroniza o ref de seleção com o store. Quando a mudança vem de fora do
   // fluxo normal de clique (ex.: desfazer/refazer), o objeto Set é diferente do
   // que está pintado, então repintamos o delta para refletir na geometria.
+  // Adota um CLONE do Set do store: o ref local jamais compartilha referência
+  // mutável com o estado commitado (princípio de imutabilidade pós-COMMIT).
   // Respeita cores pintadas (Cores) — restaura base pintada antes de sobrepor seleção.
   useEffect(() => {
     const prev = selectedRef.current
@@ -232,7 +234,8 @@ function SmartCutInteraction() {
         hoveredRef.current = new Set()
         invalidate()
       }
-      selectedRef.current = selectedFaceIndices
+      // Adota clone — nunca a referência viva do store.
+      selectedRef.current = new Set(selectedFaceIndices)
     }
   }, [selectedFaceIndices, modelMesh])
   useEffect(() => { selModeRef.current = selectionMode as 'new' | 'add' | 'subtract' }, [selectionMode])
@@ -303,6 +306,10 @@ function SmartCutInteraction() {
   )
 
   // ── Hover: direto ao BufferAttribute, zero React ─────────────────────────────
+  // ESTADO PREVIEW: este caminho NUNCA escreve na seleção commitada
+  // (selectedRef/store). Ele pinta apenas a camada visual de hover e guarda o
+  // resultado em hoveredRef/hoverCache — mover o mouse após um COMMIT não tem
+  // como "puxar", crescer ou remodelar a seleção confirmada (LOCKED).
   const doHover = useCallback(
     (clientX: number, clientY: number) => {
       if (!modelMesh || (activeTool !== 'select' && activeTool !== 'paint')) return
@@ -469,6 +476,11 @@ function SmartCutInteraction() {
         next = region
       }
 
+      // ── COMMIT (máquina de estados: PREVIEW → COMMIT → LOCKED) ───────────
+      // A partir daqui a seleção é CONGELADA: o store clona o Set
+      // (setSelectedFaceIndices), então mouse/hover/câmera NÃO têm como
+      // alterar a seleção confirmada — só uma nova ação explícita
+      // (novo clique, Ctrl/Alt, limpar, undo) cria um novo PREVIEW/COMMIT.
       // Pintura incremental (cirúrgica)
       paintFacesDelta(modelMesh.geometry, colorAttr, selectedRef.current, next, mode)
       // Limpar hover após commit
