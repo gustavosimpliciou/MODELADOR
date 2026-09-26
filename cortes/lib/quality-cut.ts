@@ -518,6 +518,44 @@ function buildPiece(
  * Verifica a qualidade geométrica das peças geradas e retorna uma lista de
  * problemas encontrados para informar o usuário antes da aplicação do corte.
  */
+// ─── Prova de malha fechada (watertight) ───────────────────────────────────────
+// REGRA: peça cortada SEMPRE fechada. Conta arestas de borda ( attrs welded
+// no mesmo quantum do cap). 0 = fechada. Usado como gate rígido antes do
+// commit — nunca mais entregar peça com buraco silenciosamente.
+
+/** Conta arestas usadas por apenas 1 triângulo (borda aberta / buraco). */
+export function countOpenEdges(geo: THREE.BufferGeometry, weldQ = 1e4): number {
+  const posAttr = geo.getAttribute('position') as THREE.BufferAttribute | null
+  if (!posAttr || posAttr.count === 0) return 0
+  const idx = geo.index
+  const Q = weldQ
+  const keyOf = (vi: number): string =>
+    `${Math.round(posAttr.getX(vi) * Q)},${Math.round(posAttr.getY(vi) * Q)},${Math.round(posAttr.getZ(vi) * Q)}`
+  const faceCount = idx ? idx.count / 3 : Math.floor(posAttr.count / 3)
+  const vOf = (f: number, c: number): number => (idx ? idx.getX(f * 3 + c) : f * 3 + c)
+  const edgeCnt = new Map<string, number>()
+  for (let f = 0; f < faceCount; f++) {
+    const a = vOf(f, 0), b = vOf(f, 1), c = vOf(f, 2)
+    // Faces degeneradas no índice não contam como borda
+    if (a === b || b === c || a === c) continue
+    const ka = keyOf(a), kb = keyOf(b), kc = keyOf(c)
+    const e1 = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`
+    const e2 = kb < kc ? `${kb}|${kc}` : `${kc}|${kb}`
+    const e3 = ka < kc ? `${ka}|${kc}` : `${kc}|${ka}`
+    edgeCnt.set(e1, (edgeCnt.get(e1) ?? 0) + 1)
+    edgeCnt.set(e2, (edgeCnt.get(e2) ?? 0) + 1)
+    edgeCnt.set(e3, (edgeCnt.get(e3) ?? 0) + 1)
+  }
+  let open = 0
+  for (const cnt of edgeCnt.values()) if (cnt === 1) open++
+  return open
+}
+
+/** true quando a malha está totalmente fechada (0 arestas abertas). */
+export function isWatertight(geo: THREE.BufferGeometry, weldQ = 1e4): boolean {
+  return countOpenEdges(geo, weldQ) === 0
+}
+
 export function validateCutResult(
   selectedPiece: THREE.BufferGeometry,
   bodyPiece: THREE.BufferGeometry,

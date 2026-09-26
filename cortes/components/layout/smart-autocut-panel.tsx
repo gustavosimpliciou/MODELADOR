@@ -25,6 +25,12 @@ import {
   queryProtectedIntersection,
 } from '@/lib/protection'
 import { computeOpenCut, generateCaps, addCapsToShell } from '@/lib/smartcut-pipeline'
+import { countOpenEdges } from '@/lib/quality-cut'
+import {
+  sanitizeDeepParams, computeSeatingDirection, buildDeepInterface,
+  validateDeepCut, checkDeepVsProtected,
+  DEEP_MIN_DEPTH, DEEP_MAX_DEPTH, DEEP_MIN_CLEARANCE, DEEP_MAX_CLEARANCE,
+} from '@/lib/deep-cut'
 import { analyzeSelection } from '@/lib/smart-autocut'
 import { trackEvent } from '@/lib/events'
 import { cn } from '@/lib/utils'
@@ -76,6 +82,49 @@ const PRECISION: { id: CutPrecision; label: string; weldQ: number }[] = [
 type ContourMode = 'ai' | 'exact'
 type PanelPhase = 'configure' | 'preview'
 
+// ─── Stepper numérico compacto (Corte Profundo) ────────────────────────────────
+
+function DeepStepper({ label, value, min, max, step, unit, decimals = 1, onChange }: {
+  label: string; value: number; min: number; max: number; step: number; unit?: string; decimals?: number; onChange: (v: number) => void
+}) {
+  const clamp = (v: number) => Math.max(min, Math.min(max, Math.round(v * 100) / 100))
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="flex items-center justify-between text-[8px] font-mono uppercase tracking-wider text-muted-foreground/60">
+        {label}
+        <span className="tabular-nums font-medium" style={{ color: 'oklch(0.70 0.22 42)' }}>
+          {value.toFixed(decimals)}{unit ?? ''}
+        </span>
+      </span>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => onChange(clamp(value - step))}
+          className="w-6 h-5 rounded border border-border/70 text-[11px] font-mono leading-none text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+        >
+          −
+        </button>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(e) => onChange(clamp(Number(e.target.value)))}
+          className="flex-1 cursor-pointer"
+          style={{ height: 12, accentColor: 'oklch(0.70 0.22 42)' }}
+          aria-label={label}
+        />
+        <button
+          onClick={() => onChange(clamp(value + step))}
+          className="w-6 h-5 rounded border border-border/70 text-[11px] font-mono leading-none text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+        >
+          +
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Componente ────────────────────────────────────────────────────────────────
 
 export function SmartAutoCutPanel() {
@@ -101,6 +150,11 @@ export function SmartAutoCutPanel() {
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [noCap, setNoCap] = useState(false)
   const [busy, setBusy] = useState(false)
+  // ── Corte Profundo (extensão opcional; OFF = pipeline normal intacto) ─────
+  const [deepEnabled, setDeepEnabled] = useState(false)
+  const [deepDepth, setDeepDepth] = useState(1.5)
+  const [deepClearance, setDeepClearance] = useState(0.1)
+  const [deepMeasured, setDeepMeasured] = useState<{ cavity: number; plug: number } | null>(null)
   const [capsGenerated, setCapsGenerated] = useState(false)
   const recalcTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const computeVersionRef = useRef(0)
@@ -139,6 +193,7 @@ export function SmartAutoCutPanel() {
       cancelPendingCompute()
       setPhase('configure')
       setCapsGenerated(false)
+      setDeepMeasured(null)
     }
     return () => { if (recalcTimerRef.current) clearTimeout(recalcTimerRef.current) }
   }, [visible, cancelPendingCompute])
@@ -149,6 +204,7 @@ export function SmartAutoCutPanel() {
     const myVersion = ++computeVersionRef.current
     setBusy(true)
     setCapsGenerated(false)
+    setDeepMeasured(null)
     setStatus('cutting', 'Calculando corte — extraindo cascas...')
 
     try {
@@ -237,6 +293,12 @@ export function SmartAutoCutPanel() {
   const handleGenerateCaps = useCallback(async () => {
     const currentOpenData = useAppStore.getState().openCutData
     if (!currentOpenData) return
+    // Corte Profundo tem tampas próprias (cavidade + plug já fechados na
+    // interface) — Gerar Tampas aqui seria redundante e errado.
+    if (deepEnabled) {
+      setStatus('error', 'Com Corte Profundo, use CALCULAR INTERFACE em vez de Gerar Tampas.')
+      return
+    }
     const myVersion = ++computeVersionRef.current
     setBusy(true)
     setStatus('cutting', 'Gerando tampas — triangulação e validação...')
@@ -258,7 +320,12 @@ export function SmartAutoCutPanel() {
       }
 
       if (!capResult.ok) {
-        setStatus('error', 'Falha ao gerar tampas. Tente aumentar a precisão.')
+        const side = capResult.failedSide === 'body'
+          ? 'do corpo'
+          : capResult.failedSide === 'selected'
+            ? 'da peça selecionada'
+            : 'das peças'
+        setStatus('error', `A tampa ${side} não fechou. Ajuste a seleção ou aumente a precisão.`)
         return
       }
 
@@ -287,6 +354,93 @@ export function SmartAutoCutPanel() {
     }
   }, [weldQ, smoothStrength, offset, relaxIterations, setStatus, setCutPreview,
     setAutoCutPipelineStage, setAutoCutPreviewMode, disposePreviewGeos])
+
+  // ─── Corte Profundo: CALCULAR INTERFACE PROFUNDA ───────────────────────────
+  // Etapa nova e modular, executada SOMENTE com deepEnabled. Entrada: cascas
+  // abertas do corte normal. Saída: peças fechadas (cavidade + plug) que
+  // seguem pelo fluxo existente (preview → tampas-ok → aplicar → validar).
+  const handleDeepInterface = useCallback(async () => {
+    const st = useAppStore.getState()
+    const data = st.openCutData
+    if (!modelMesh || !analysis || !data) return
+    const myVersion = ++computeVersionRef.current
+    setBusy(true)
+    setDeepMeasured(null)
+    setStatus('cutting', 'Calculando interface profunda — alojamento + encaixe...')
+    try {
+      const geo = modelMesh.geometry as THREE.BufferGeometry
+      const { depth, clearance } = sanitizeDeepParams({ depth: deepDepth, clearance: deepClearance })
+      const seatingDir = computeSeatingDirection({
+        geometry: geo,
+        selectedFaces: new Set(st.selectedFaceIndices),
+        seamCenter: analysis.seamCenter,
+        fitNormal: analysis.fitNormal,
+        planeU: analysis.planeU,
+        planeV: analysis.planeV,
+        seamHalfMin: Math.min(analysis.halfU, analysis.halfV),
+      })
+      const deep = buildDeepInterface(
+        data.openSelectedGeometry,
+        data.openBodyGeometry,
+        geo,
+        { seatingDir, depth, clearance, weldQ },
+      )
+      if (myVersion !== computeVersionRef.current) {
+        try { deep.deepSelected.dispose() } catch {}
+        try { deep.deepBody.dispose() } catch {}
+        return
+      }
+      // Proteção de cortes existentes: a coluna da cavidade é READ-ONLY
+      // sobre geometria protegida (§21).
+      const conflicts = checkDeepVsProtected(
+        geo, deep.definition.loopsBody, deep.definition.seatingDir,
+        deep.definition.depth, st.operations,
+      )
+      if (conflicts.length > 0) {
+        try { deep.deepSelected.dispose() } catch {}
+        try { deep.deepBody.dispose() } catch {}
+        setStatus('error', `A cavidade atravessaria o corte protegido ${conflicts.map((n) => `"${n}"`).join(', ')}.`)
+        return
+      }
+      const validation = validateDeepCut(deep.deepSelected, deep.deepBody, deep.definition)
+      const issues: ValidationIssue[] = validation.issues.map((i) => ({
+        type: i.type === 'open_boundary' ? 'open_boundary' : 'warning',
+        message: i.message,
+      }))
+      for (const w of deep.warnings) issues.push({ type: 'warning', message: w })
+
+      disposePreviewGeos(useAppStore.getState().cutPreview)
+      setCutPreview({
+        selectedGeometry: deep.deepSelected,
+        bodyGeometry: deep.deepBody,
+        seamPoints: data.seamPoints,
+        seamScore: data.seamScore,
+        seamSegments: data.seamSegments,
+        iterations: data.iterations,
+        validationIssues: issues,
+        params: { strength: smoothStrength, weldQ, offset, relaxIterations },
+      })
+      setAutoCutPipelineStage('caps_done')
+      setAutoCutPreviewMode('caps')
+      setCapsGenerated(true)
+      setDeepMeasured({ cavity: deep.measuredCavity, plug: deep.measuredPlug })
+      setStatus(
+        'loaded',
+        `Interface profunda — cavidade ${deep.measuredCavity.toFixed(2)}mm · plug ${deep.measuredPlug.toFixed(2)}mm · folga ${clearance.toFixed(2)}mm` +
+        (issues.length > 0 ? ` · ${issues.length} aviso(s)` : ''),
+      )
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'desconhecido'
+      setStatus('error', `Interface profunda: ${msg}`)
+      console.error('[DeepCut] interface error:', err)
+    } finally {
+      if (myVersion === computeVersionRef.current) setBusy(false)
+    }
+  }, [
+    modelMesh, analysis, weldQ, smoothStrength, offset, relaxIterations,
+    deepDepth, deepClearance, setStatus, setCutPreview,
+    setAutoCutPipelineStage, setAutoCutPreviewMode, disposePreviewGeos,
+  ])
 
   // ─── Recalcular quando parâmetros mudam no preview ─────────────────────────
   const scheduleRecalc = useCallback(() => {
@@ -353,7 +507,6 @@ export function SmartAutoCutPanel() {
       }
     }
     setBusy(true)
-    pushHistory()
     setStatus('cutting', 'Aplicando corte final...')
 
     setTimeout(() => {
@@ -372,6 +525,28 @@ export function SmartAutoCutPanel() {
           selectedPiece = cutPreview!.selectedGeometry.clone()
           bodyPiece = cutPreview!.bodyGeometry.clone()
         }
+        // ── GATE FINAL: peça cortada SEMPRE fechada ─────────────────────
+        // Nenhuma peça vai para a cena com buraco. Exceção única: modo Sem
+        // Tampa, onde a peça selecionada é aberta por escolha explícita.
+        {
+          const openBody = countOpenEdges(bodyPiece, weldQ)
+          if (openBody > 0) {
+            try { selectedPiece.dispose() } catch {}
+            try { bodyPiece.dispose() } catch {}
+            setStatus('error', `O corpo ficou com buraco (${openBody} arestas abertas). Ajuste a seleção ou aumente a precisão.`)
+            return
+          }
+          if (!noCap) {
+            const openSel = countOpenEdges(selectedPiece, weldQ)
+            if (openSel > 0) {
+              try { selectedPiece.dispose() } catch {}
+              try { bodyPiece.dispose() } catch {}
+              setStatus('error', `A peça selecionada ficou com buraco (${openSel} arestas abertas). Ajuste a seleção ou aumente a precisão.`)
+              return
+            }
+          }
+        }
+        pushHistory()
         const cleanBody = bodyPiece.clone()
         const cleanSel = selectedPiece.clone()
 
@@ -487,6 +662,7 @@ export function SmartAutoCutPanel() {
     setAutoCutPipelineStage('idle')
     setAutoCutPreviewMode('shell')
     setCapsGenerated(false)
+    setDeepMeasured(null)
     setPhase('configure')
     setStatus('loaded', 'Reconfigurar parâmetros e recalcular.')
   }
@@ -550,7 +726,7 @@ export function SmartAutoCutPanel() {
             )}
             <button
               onMouseDown={(e) => e.stopPropagation()}
-              onClick={() => { setAutoCutOpen(false); setAutoCutPreview(null); setCutPreview(null); setOpenCutData(null); setAutoCutPipelineStage('idle'); setPhase('configure'); setCapsGenerated(false) }}
+              onClick={() => { setAutoCutOpen(false); setAutoCutPreview(null); setCutPreview(null); setOpenCutData(null); setAutoCutPipelineStage('idle'); setPhase('configure'); setCapsGenerated(false); setDeepMeasured(null) }}
               className="text-muted-foreground/50 hover:text-foreground transition-colors"
             >
               <X className="w-3.5 h-3.5" />
@@ -625,7 +801,14 @@ export function SmartAutoCutPanel() {
 
             {/* Tampa / Sem Tampa */}
             <div className="rounded-lg border border-border/60 p-1.5">
-              <button onClick={() => setNoCap((v) => !v)} className="flex items-center justify-between w-full">
+              <button
+                onClick={() => {
+                  const next = !noCap
+                  setNoCap(next)
+                  if (next) setDeepEnabled(false) // Sem Tampa × Corte Profundo: excludentes
+                }}
+                className="flex items-center justify-between w-full"
+              >
                 <span className="flex flex-col items-start gap-0.5">
                   <span className="flex items-center gap-1 text-[10px] font-mono text-muted-foreground">
                     <BoxSelect className="w-2.5 h-2.5" />{t.no_cap_label}
@@ -643,6 +826,57 @@ export function SmartAutoCutPanel() {
               </button>
             </div>
 
+            {/* Corte Profundo (alojamento + encaixe de precisão) */}
+            <div className="rounded-lg border border-border/60 p-1.5">
+              <button
+                onClick={() => {
+                  const next = !deepEnabled
+                  setDeepEnabled(next)
+                  if (next) setNoCap(false) // precisa de tampas (cavidade + plug)
+                  setDeepMeasured(null)
+                }}
+                className="flex items-center justify-between w-full"
+              >
+                <span className="flex flex-col items-start gap-0.5">
+                  <span className="flex items-center gap-1 text-[10px] font-mono text-muted-foreground">
+                    <Layers className="w-2.5 h-2.5" />{t.deep_cut_label}
+                  </span>
+                  <span className="text-[8px] font-mono text-muted-foreground/50">
+                    {deepEnabled ? t.deep_cut_on_desc : t.deep_cut_off_desc}
+                  </span>
+                </span>
+                <span
+                  className={cn('relative w-7 h-3.5 rounded-full transition-colors shrink-0', deepEnabled ? '' : 'bg-secondary')}
+                  style={deepEnabled ? { background: 'oklch(0.70 0.22 42)' } : undefined}
+                >
+                  <span className={cn('absolute top-0.5 w-2.5 h-2.5 rounded-full bg-background transition-all', deepEnabled ? 'left-3.5' : 'left-0.5')} />
+                </span>
+              </button>
+              {deepEnabled && (
+                <div className="flex flex-col gap-1.5 pt-1.5 animate-fade-in">
+                  <DeepStepper
+                    label={t.deep_depth_label}
+                    value={deepDepth}
+                    min={DEEP_MIN_DEPTH}
+                    max={DEEP_MAX_DEPTH}
+                    step={0.1}
+                    unit="mm"
+                    decimals={1}
+                    onChange={(v) => { setDeepDepth(v); setDeepMeasured(null) }}
+                  />
+                  <DeepStepper
+                    label={t.deep_clearance_label}
+                    value={deepClearance}
+                    min={DEEP_MIN_CLEARANCE}
+                    max={DEEP_MAX_CLEARANCE}
+                    step={0.05}
+                    unit="mm"
+                    decimals={2}
+                    onChange={(v) => { setDeepClearance(v); setDeepMeasured(null) }}
+                  />
+                </div>
+              )}
+            </div>
             {/* Avançado */}
             <div className="flex flex-col gap-1.5 rounded-lg border border-border/60 p-1.5">
               <button onClick={() => setAdvancedOpen((v) => !v)} className="flex items-center gap-1 text-[10px] font-mono text-muted-foreground">
@@ -821,7 +1055,7 @@ export function SmartAutoCutPanel() {
               )}
 
               {/* ── Modo COM TAMPA: etapa normal ── */}
-              {autoCutPipelineStage === 'cut_done' && !noCap && (
+              {autoCutPipelineStage === 'cut_done' && !noCap && !deepEnabled && (
                 <button
                   onClick={handleGenerateCaps}
                   disabled={busy}
@@ -831,6 +1065,29 @@ export function SmartAutoCutPanel() {
                   <Sliders className="w-3.5 h-3.5" />
                   {busy ? t.generating : t.gen_caps}
                 </button>
+              )}
+
+              {/* ── Corte Profundo: calcular interface (cavidade + plug) ── */}
+              {autoCutPipelineStage === 'cut_done' && !noCap && deepEnabled && (
+                <>
+                  <button
+                    onClick={handleDeepInterface}
+                    disabled={busy}
+                    className="flex items-center justify-center gap-1.5 w-full px-3 py-2 rounded-lg text-sm font-mono font-medium text-background hover:opacity-90 transition-all disabled:opacity-50"
+                    style={{ background: 'oklch(0.70 0.22 42)' }}
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    {busy ? t.processing : t.deep_calc_interface}
+                  </button>
+                  {deepMeasured && (
+                    <div className="flex items-center justify-between rounded-lg px-2 py-1.5" style={{ background: 'oklch(0.70 0.22 42 / 10%)' }}>
+                      <span className="text-[8px] font-mono uppercase text-muted-foreground/60">{t.deep_measured_label}</span>
+                      <span className="text-[10px] font-mono tabular-nums" style={{ color: 'oklch(0.80 0.20 42)' }}>
+                        {t.deep_measured_values(deepMeasured.cavity.toFixed(2), deepMeasured.plug.toFixed(2))}
+                      </span>
+                    </div>
+                  )}
+                </>
               )}
 
               {/* Botões finais: após tampas (modo com tampa) */}

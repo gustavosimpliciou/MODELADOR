@@ -292,8 +292,10 @@ export function findComplementOnAxis(
  *      sonda única e invertia o 2º encaixe (macho para dentro).
  *   2. PROXY do interior pelo centro da bounding sphere da geometria.
  *   3. Normal média (área-ponderada) das faces selecionadas.
+ *
+ * Exportada para o Corte Profundo (direção de assentamento deriva daqui).
  */
-function orientOutward(
+export function orientOutward(
   geometry: THREE.BufferGeometry,
   seamCenter: THREE.Vector3,
   fitNormal: THREE.Vector3,

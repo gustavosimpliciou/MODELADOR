@@ -17,8 +17,8 @@
  */
 
 import * as THREE from 'three'
-import { buildCap, computeSmoothNormalsByPosition } from './smart-cut'
-import { validateCutResult } from './quality-cut'
+import { buildCapWithRetry, computeSmoothNormalsByPosition } from './smart-cut'
+import { validateCutResult, countOpenEdges } from './quality-cut'
 
 // ─── Yield helper ─────────────────────────────────────────────────────────────
 /**
@@ -50,6 +50,8 @@ export interface CappedCutResult {
   cappedBodyGeometry: THREE.BufferGeometry
   validationIssues: ValidationIssue[]
   ok: boolean
+  /** Qual lado falhou a tampa ('selected' | 'body') — para mensagem precisa. */
+  failedSide?: 'selected' | 'body'
 }
 
 // ─── Opções do pipeline ────────────────────────────────────────────────────────
@@ -363,8 +365,8 @@ function buildOpenShell(pos: number[], weldQ: number, relaxIterations: number): 
   return geo
 }
 
-/** Adiciona tampas a uma casca aberta já processada. */
-export function addCapsToShell(openGeo: THREE.BufferGeometry, weldQ: number): THREE.BufferGeometry {
+/** Adiciona tampas a uma casca aberta já processada (uma tentativa, um quantum). */
+function addCapsOnce(openGeo: THREE.BufferGeometry, capQ: number): THREE.BufferGeometry {
   const posAttr = openGeo.getAttribute('position') as THREE.BufferAttribute
   const posArr: number[] = []
   for (let i = 0; i < posAttr.count; i++) {
@@ -377,7 +379,7 @@ export function addCapsToShell(openGeo: THREE.BufferGeometry, weldQ: number): TH
   const faceCount = posArr.length / 9
   const allFaces = new Set<number>()
   for (let f = 0; f < faceCount; f++) allFaces.add(f)
-  const cap = buildCap(geo, allFaces, weldQ)
+  const cap = buildCapWithRetry(geo, allFaces, capQ)
 
   if (cap.pos.length > 0) {
     const shellV = posArr.length / 3
@@ -392,6 +394,36 @@ export function addCapsToShell(openGeo: THREE.BufferGeometry, weldQ: number): TH
   geo.computeBoundingBox()
   geo.computeBoundingSphere()
   return geo
+}
+
+/**
+ * Adiciona tampas com GARANTIA: tenta vários quanta e verifica fechamento
+ * (0 arestas abertas) a cada tentativa. Se nenhuma fechar, LANÇA erro em vez
+ * de entregar a peça com buraco — peça cortada SEMPRE fechada.
+ */
+export function addCapsToShell(openGeo: THREE.BufferGeometry, weldQ: number): THREE.BufferGeometry {
+  const tries = [weldQ, 1e4, 1e5, 1e3, 1e6].filter((v, i, a) => a.indexOf(v) === i)
+  let best: THREE.BufferGeometry | null = null
+  let bestOpen = Infinity
+  for (const q of tries) {
+    const candidate = addCapsOnce(openGeo, q)
+    const open = countOpenEdges(candidate, q)
+    if (open === 0) {
+      if (best && best !== candidate) { try { best.dispose() } catch { /* noop */ } }
+      return candidate
+    }
+    if (open < bestOpen) {
+      if (best) { try { best.dispose() } catch { /* noop */ } }
+      best = candidate
+      bestOpen = open
+    } else {
+      try { candidate.dispose() } catch { /* noop */ }
+    }
+  }
+  if (best) { try { best.dispose() } catch { /* noop */ } }
+  throw new Error(
+    `tampa não fechou a peça (${bestOpen} arestas abertas após ${tries.length} tentativas) — ajuste a seleção ou a precisão`,
+  )
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -494,13 +526,47 @@ export async function generateCaps(
   weldQ: number,
   onProgress?: (stage: string, pct: number) => void,
 ): Promise<CappedCutResult> {
+  // Cada lado é tampado com GARANTIA individual: se a tampa da peça
+  // selecionada falhar, a do corpo já pronta é descartada e o erro diz
+  // EXATAMENTE qual lado ficou aberto (nunca meio-par silencioso).
+  const emptyGeo = () => {
+    const g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(0), 3))
+    return g
+  }
+
   onProgress?.('Gerando tampa da peça selecionada...', 10)
   await yieldToMain()
-  const cappedSel = addCapsToShell(openResult.openSelectedGeometry, weldQ)
+  let cappedSel: THREE.BufferGeometry
+  try {
+    cappedSel = addCapsToShell(openResult.openSelectedGeometry, weldQ)
+  } catch (e) {
+    console.error('[Caps] tampa da peça selecionada não fechou:', e)
+    return {
+      cappedSelectedGeometry: emptyGeo(),
+      cappedBodyGeometry: emptyGeo(),
+      validationIssues: [],
+      ok: false,
+      failedSide: 'selected',
+    }
+  }
 
   onProgress?.('Gerando tampa do corpo...', 55)
   await yieldToMain()
-  const cappedBody = addCapsToShell(openResult.openBodyGeometry, weldQ)
+  let cappedBody: THREE.BufferGeometry
+  try {
+    cappedBody = addCapsToShell(openResult.openBodyGeometry, weldQ)
+  } catch (e) {
+    console.error('[Caps] tampa do corpo não fechou:', e)
+    try { cappedSel.dispose() } catch { /* noop */ }
+    return {
+      cappedSelectedGeometry: emptyGeo(),
+      cappedBodyGeometry: emptyGeo(),
+      validationIssues: [],
+      ok: false,
+      failedSide: 'body',
+    }
+  }
 
   onProgress?.('Validando malha...', 90)
   await yieldToMain()

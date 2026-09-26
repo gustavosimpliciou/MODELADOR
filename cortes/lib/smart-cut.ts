@@ -1172,6 +1172,31 @@ export function buildCap(
   return { pos: new Float32Array(allPos), nrm: new Float32Array(allNrm) }
 }
 
+// ─── Tampa com retry de quantum ────────────────────────────────────────────────
+/**
+ * Tenta gerar a tampa em vários weldQ: o chain-following do loop pode falhar
+ * num quantum (vértices que não soldam) e fechar em outro. Retorna a primeira
+ * tampa não-vazia; se todas falharem, retorna vazia (o chamador decide: retry
+ * maior ou erro explícito — nunca buraco silencioso sem ao menos tentar).
+ */
+export function buildCapWithRetry(
+  geometry: THREE.BufferGeometry,
+  faceSet: Set<number> | number[],
+  weldQ: number,
+): { pos: Float32Array; nrm: Float32Array } {
+  const empty = { pos: new Float32Array(0), nrm: new Float32Array(0) }
+  const tries = [weldQ, 1e4, 1e5, 1e3, 1e6].filter((v, i, a) => a.indexOf(v) === i)
+  for (const q of tries) {
+    try {
+      const cap = buildCap(geometry, faceSet, q)
+      if (cap.pos.length > 0) return cap
+    } catch {
+      continue
+    }
+  }
+  return empty
+}
+
 // ─── Remoção de faces (a parte cortada "some") ────────────────────────────────
 /**
  * Gera uma nova geometria contendo TODAS as faces EXCETO as selecionadas.
@@ -1197,8 +1222,10 @@ export function removeSubMesh(
     if (!facesToRemove.has(f)) keepFaces.push(f)
   }
 
-  // Tampa que fecha a seção do corte (contorno aberto das faces mantidas)
-  const cap = buildCap(geometry, keepFaces, weldQ)
+  // Tampa que fecha a seção do corte (contorno aberto das faces mantidas).
+  // Com retry de quantum: se o loop não fecha num weldQ, tenta outros antes
+  // de entregar casca aberta (peça cortada SEMPRE fechada).
+  const cap = buildCapWithRetry(geometry, keepFaces, weldQ)
   const capVerts = cap.pos.length / 3
 
   const shellVerts = keepFaces.length * 3
@@ -1347,7 +1374,7 @@ export function extractSubMesh(
   // buildCap gera os triângulos que tapam o(s) contorno(s) aberto(s) da seleção,
   // com orientação autoconsistente para este conjunto de faces.
   const capData = cap
-    ? buildCap(geometry, selectedFaces, weldQ)
+    ? buildCapWithRetry(geometry, selectedFaces, weldQ)
     : { pos: new Float32Array(0), nrm: new Float32Array(0) }
   const capVertCount = capData.pos.length / 3
 
