@@ -129,6 +129,18 @@ const MIN_CAVITY_MM = 0.8
 const clampNum = (v: number, lo: number, hi: number) =>
   Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : lo
 
+/** Erro tipado do pipeline: PREFLIGHT (geometria não permite) vs PROOF (prova falhou). */
+type PairFailCode = 'PREFLIGHT' | 'PROOF'
+function fail(code: PairFailCode, msg: string): Error {
+  const e = new Error(msg) as Error & { code?: string }
+  e.code = code
+  return e
+}
+function failCode(e: unknown): PairFailCode | null {
+  const c = (e as { code?: unknown } | null)?.code
+  return c === 'PREFLIGHT' || c === 'PROOF' ? c : null
+}
+
 /**
  * Analisa a seleção e calcula os limites do encaixe. Não modifica nada.
  * Retorna `null` quando a seleção não tem costura utilizável.
@@ -148,7 +160,9 @@ export function analyzeEncaixe(
   // para fora e a fêmea é cavada para dentro). O PCA devolve um autovetor sem
   // orientação definida (cima/baixo); aqui medimos de qual lado do plano está
   // o material — independe de como o usuário fez a seleção.
-  const normal = orientOutward(geometry, ana.seamCenter, ana.fitNormal, selectedFaces)
+  // Raio das sondas: fração da costura (cobre a região sem sair dela).
+  const probeR = Math.max(0.5, Math.min(3, Math.min(ana.halfU, ana.halfV) * 0.25))
+  const normal = orientOutward(geometry, ana.seamCenter, ana.fitNormal, selectedFaces, ana.planeU, ana.planeV, probeR)
 
   const center = ana.seamCenter.clone()
 
@@ -264,10 +278,11 @@ export function findComplementOnAxis(
  * a direção onde o MACHO nasce (visível) e oposta ao interior onde a FÊMEA
  * é cavada. Sinais combinados, do mais confiável para o mais fraco:
  *
- *   1. RAYCAST direto no frame local: dispara um raio na normal e outro na
- *      anti-normal a partir do centro da costura; o lado que tem interseção
- *      com a malha é o INTERIOR. (Decisivo na maioria dos casos — não depende
- *      da direção da seleção nem do winding das faces.)
+ *   1. VOTO MULTI-SONDA por raycast no frame local: além do centro, sonda 4
+ *      pontos ao redor no plano da costura; cada sonda vota pelo lado que
+ *      tem material. Maioria vence. Isso torna a decisão robusta a relevos
+ *      locais — p.ex. o pino/furo de um 1º encaixe vizinho, que confundia a
+ *      sonda única e invertia o 2º encaixe (macho para dentro).
  *   2. PROXY do interior pelo centro da bounding sphere da geometria.
  *   3. Normal média (área-ponderada) das faces selecionadas.
  */
@@ -276,6 +291,9 @@ function orientOutward(
   seamCenter: THREE.Vector3,
   fitNormal: THREE.Vector3,
   selectedFaces: Set<number>,
+  planeU?: THREE.Vector3,
+  planeV?: THREE.Vector3,
+  probeR = 1,
 ): THREE.Vector3 {
   const n = fitNormal.clone().normalize()
 
@@ -289,16 +307,34 @@ function orientOutward(
     return 0
   }
 
+  // Sondas: centro + 4 ao redor (cruz no plano). Cada uma vota:
+  // material só em +n → outward é −n (voto −1); só em −n → outward é +n (+1);
+  // empate (0/0 ou ambos, ex.: relevo do encaixe vizinho) = abstenção.
   try {
     const probe = new THREE.Mesh(geometry)
-    const posHits = new THREE.Raycaster(
-      seamCenter.clone().addScaledVector(n, 1e-3), n,
-    ).intersectObject(probe, false).length
-    const negHits = new THREE.Raycaster(
-      seamCenter.clone().addScaledVector(n, -1e-3), n.clone().negate(),
-    ).intersectObject(probe, false).length
-    if (posHits > 0 && negHits === 0) return n.clone().negate() // material em +n
-    if (negHits > 0 && posHits === 0) return n.clone()           // material em −n
+    const offs = [new THREE.Vector3(0, 0, 0)]
+    if (planeU && planeV) {
+      const u = planeU.clone().normalize()
+      const v = planeV.clone().normalize()
+      offs.push(
+        u.clone().multiplyScalar(probeR), u.clone().multiplyScalar(-probeR),
+        v.clone().multiplyScalar(probeR), v.clone().multiplyScalar(-probeR),
+      )
+    }
+    let votes = 0
+    for (const off of offs) {
+      const c = seamCenter.clone().add(off)
+      const posHits = new THREE.Raycaster(
+        c.clone().addScaledVector(n, 1e-3), n,
+      ).intersectObject(probe, false).length
+      const negHits = new THREE.Raycaster(
+        c.clone().addScaledVector(n, -1e-3), n.clone().negate(),
+      ).intersectObject(probe, false).length
+      if (posHits > 0 && negHits === 0) votes -= 1 // material em +n
+      else if (negHits > 0 && posHits === 0) votes += 1 // material em −n
+    }
+    if (votes > 0) return n.clone()
+    if (votes < 0) return n.clone().negate()
     return flipViaProxy() === 1 ? n.clone().negate() : n.clone()
   } catch {
     return flipViaProxy() === 1 ? n.clone().negate() : n.clone()
@@ -373,42 +409,49 @@ export function applyEncaixe(params: EncaixeApplyParams): EncaixeResult {
     throw new Error('macho e fêmea precisam de peças diferentes — faça o corte primeiro')
   }
 
-  // Prova de que os booleanos rodaram de verdade: medimos a topologia e o
-  // volume ANTES e DEPOIS de cada operação. Sem essa prova, NUNCA reportamos
-  // sucesso — lançamos erro (o painel mostra erro e não fecha o fluxo).
-  const validation = {
-    femaleVolumeChanged: false,
-    femaleVolumeBefore: 0,
-    femaleVolumeAfter: 0,
-    femaleTopologyChanged: false,
-    maleVolumeBefore: 0,
-    maleVolumeAfter: 0,
-    maleVolumeChanged: false,
-    maleTopologyChanged: false,
-  }
+  // ── Execução de UMA tentativa do par ao longo de `runDir` ─────────────────
+  // (frames + auto-fit + pre-flight + CSG + provas). Falha = throw. Nada é
+  // mutado: as geometrias de entrada nunca são alteradas (o CSG clona) —
+  // por isso tentar de novo com o eixo invertido é seguro e barato.
+  const runPair = (runDir: THREE.Vector3) => {
+    // Prova de que os booleanos rodaram de verdade: medimos a topologia e o
+    // volume ANTES e DEPOIS de cada operação. Sem essa prova, NUNCA reportamos
+    // sucesso — lançamos erro (o painel mostra erro e não fecha o fluxo).
+    const validation = {
+      femaleVolumeChanged: false,
+      femaleVolumeBefore: 0,
+      femaleVolumeAfter: 0,
+      femaleTopologyChanged: false,
+      maleVolumeBefore: 0,
+      maleVolumeAfter: 0,
+      maleVolumeChanged: false,
+      maleTopologyChanged: false,
+    }
 
-  let maleGeo: THREE.BufferGeometry | null = null
-  let femaleGeo: THREE.BufferGeometry | null = null
-  let femaleDepth = 0
+    let maleGeo: THREE.BufferGeometry | null = null
+    let femaleGeo: THREE.BufferGeometry | null = null
+    let femaleDepth = 0
+    let h = height
 
-  // ── 1. Frames locais de cada alvo ─────────────────────────────────────────
-  const mF = needMale ? toTargetFrame(maleMesh, sourceMesh, center, direction) : null
-  const fF = needFemale ? toTargetFrame(femaleMesh, sourceMesh, center, direction) : null
+    // ── 1. Frames locais de cada alvo ─────────────────────────────────────────
+    const mF = needMale ? toTargetFrame(maleMesh, sourceMesh, center, runDir) : null
+    const fF = needFemale ? toTargetFrame(femaleMesh, sourceMesh, center, runDir) : null
 
-  // ── 2. AUTO-FIT (antes de qualquer CSG): a altura do pino nunca excede a
-  // capacidade real da peça receptora (espessura − parede − folga axial).
-  // É isto que garante que o par sempre FECHA: depth(fêmea) ≥ height(macho).
-  if (needFemale && fF) {
-    const thickness = measureThickness(femaleMesh, fF.center, fF.direction)
-    const cap = thickness > 0 ? thickness - FEMALE_WALL_MM : HEIGHT_MAX
+    // ── 2. AUTO-FIT (antes de qualquer CSG): a altura do pino nunca excede a
+    // capacidade real da peça receptora (espessura − parede − folga axial).
+    // É isto que garante que o par sempre FECHA: depth(fêmea) ≥ height(macho).
+    if (needFemale && fF) {
+      const thickness = measureThickness(femaleMesh, fF.center, fF.direction)
+      const cap = thickness > 0 ? thickness - FEMALE_WALL_MM : HEIGHT_MAX
     if (cap < MIN_CAVITY_MM) {
-      throw new Error(
+      throw fail(
+        'PREFLIGHT',
         `peça receptora fina demais (${Math.max(0, cap).toFixed(1)}mm) — o par macho/fêmea não caberia`,
       )
     }
-    height = Math.min(height, cap - AXIAL_CLEARANCE_MM)
-  }
-  const heightUsed = height
+      h = Math.min(h, cap - AXIAL_CLEARANCE_MM)
+    }
+    const heightUsed = h
 
   // ── 3. PRE-FLIGHT bilateral: posiciona as DUAS ferramentas e verifica
   // interseção com a peça alvo ANTES de executar qualquer booleano. Assim um
@@ -424,7 +467,7 @@ export function applyEncaixe(params: EncaixeApplyParams): EncaixeResult {
   // Diagnóstico do pre-flight (logado em qualquer falha — sem números, sem debug).
   const diag = {
     seam: fmtV3(center),
-    dir: fmtV3(direction),
+    dir: fmtV3(runDir),
     maleTarget: needMale ? maleMesh.name || '?' : '-',
     femaleTarget: needFemale ? femaleMesh.name || '?' : '-',
     maleBase: '', maleHit: false, maleBox: '', maleBrushBox: '',
@@ -453,12 +496,12 @@ export function applyEncaixe(params: EncaixeApplyParams): EncaixeResult {
       if (!snap.hit) {
         disposeBrush(brush)
         logDiag('macho/snap (eixo não atinge a peça do macho — complemento errado ou costura fora da face de contato?)')
-        throw new Error('o eixo do encaixe não atinge a peça do macho — verifique a peça complementar e posicione o centro na face de contato')
+        throw fail('PREFLIGHT', 'o eixo do encaixe não atinge a peça do macho — verifique a peça complementar e posicione o centro na face de contato')
       }
       if (!brushIntersectsMesh(brush, maleMesh)) {
         disposeBrush(brush)
         logDiag('macho/interseção (pino fora da peça)')
-        throw new Error('o pino não toca a peça do macho (centro fora da superfície) — reposicione o centro na costura')
+        throw fail('PREFLIGHT', 'o pino não toca a peça do macho (centro fora da superfície) — reposicione o centro na costura')
       }
       malePlan = { brush, base, dir: mF.direction }
     }
@@ -479,12 +522,12 @@ export function applyEncaixe(params: EncaixeApplyParams): EncaixeResult {
       if (!snap.hit) {
         disposeBrush(brush)
         logDiag('fêmea/snap (eixo não atinge a peça da fêmea — complemento errado ou costura fora da face de contato?)')
-        throw new Error('o eixo do encaixe não atinge a peça da fêmea — verifique a peça complementar e posicione o centro na face de contato')
+        throw fail('PREFLIGHT', 'o eixo do encaixe não atinge a peça da fêmea — verifique a peça complementar e posicione o centro na face de contato')
       }
       if (!brushIntersectsMesh(brush, femaleMesh)) {
         disposeBrush(brush)
         logDiag('fêmea/interseção (cortador fora da peça)')
-        throw new Error('o cortador da fêmea não atinge a peça (centro fora da superfície) — reposicione o centro na costura')
+        throw fail('PREFLIGHT', 'o cortador da fêmea não atinge a peça (centro fora da superfície) — reposicione o centro na costura')
       }
       femalePlan = { brush, base, dir: fF.direction, depth, cavityRadius, outset }
     }
@@ -495,6 +538,8 @@ export function applyEncaixe(params: EncaixeApplyParams): EncaixeResult {
   }
 
   // ── 4. Execução: macho (união) ────────────────────────────────────────────
+  // NOTA: em qualquer throw abaixo, os parciais são descartados antes
+  // (par ou nada — nunca meio-par vazado para o chamador).
   if (malePlan) {
     const before = meshStats(maleMesh.geometry)
     maleGeo = csgUnion(maleMesh.geometry, malePlan.brush)
@@ -514,7 +559,8 @@ export function applyEncaixe(params: EncaixeApplyParams): EncaixeResult {
     const maleUnchanged = after.verts === before.verts && Math.abs(after.volume - before.volume) < 1e-6
     if (maleUnchanged) {
       console.error('[CONNECTOR] macho: topologia e volume inalterados após união — booleano não executou')
-      throw new Error('o macho não adicionou material: a união não alterou a geometria')
+      disposeGeo(maleGeo)
+      throw fail('PROOF', 'o macho não adicionou material: a união não alterou a geometria')
     }
   }
 
@@ -572,24 +618,130 @@ export function applyEncaixe(params: EncaixeApplyParams): EncaixeResult {
     }
     if (!femaleGeo) {
       console.error('[CONNECTOR] fêmea: topologia e volume inalterados após subtração — furo não criado')
-      throw new Error('a fêmea não removeu material: a subtração não alterou a geometria (furo cego)')
+      disposeGeo(maleGeo)
+      throw fail('PROOF', 'a fêmea não removeu material: a subtração não alterou a geometria (furo cego)')
     }
   }
 
   // ── 6. VERIFICAÇÃO DO PAR (regra absoluta): fêmea comporta o macho ────────
   if (maleGeo && femaleGeo && !(femaleDepth + 1e-6 >= heightUsed)) {
     console.error(`[CONNECTOR] par incompatível: cavidade ${femaleDepth.toFixed(2)}mm < pino ${heightUsed.toFixed(2)}mm`)
-    throw new Error('o par ficou incompatível (cavidade menor que o pino) — encaixe descartado')
+    disposeGeo(maleGeo)
+    disposeGeo(femaleGeo)
+    throw fail('PROOF', 'o par ficou incompatível (cavidade menor que o pino) — encaixe descartado')
   }
 
-  for (const g of [maleGeo, femaleGeo]) {
+  return {
+    maleGeo, femaleGeo, femaleDepth, heightUsed, validation,
+    maleBase: malePlan?.base ?? null,
+    maleDir: malePlan?.dir ?? null,
+  }
+  }
+
+  // ── 7. Tentativas com AUTO-FLIP do eixo ─────────────────────────────────────
+  // Duas assinaturas do mesmo problema (eixo invertido) disparam a inversão
+  // automática na 1ª tentativa:
+  //   a. par pronto mas pino ENTERRADO (prova de protrusão);
+  //   b. prova do CSG falhou (PROOF: par incompatível, furo cego, união
+  //      vazia) — com o eixo oposto o par fecha.
+  // Erros de PREFLIGHT (eixo não atinge, receptora fina) NÃO invertem: são
+  // problemas geométricos reais, e inverter só gastaria raycasts à toa.
+  // Na 2ª tentativa, qualquer erro é lançado como está (mensagem honesta).
+  // As geometrias originais nunca são mutadas (CSG clona) — refazer é seguro.
+  let dir = direction.clone()
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let res
+    try {
+      res = runPair(dir)
+    } catch (e) {
+      if (attempt === 0 && failCode(e) === 'PROOF') {
+        console.warn(`[CONNECTOR] tentativa 1 falhou (${e instanceof Error ? e.message : e}) — invertendo o eixo e tentando de novo`)
+        dir = dir.clone().negate()
+        continue
+      }
+      throw e
+    }
+    if (!needMale || !res.maleGeo || !res.maleBase || !res.maleDir) {
+      return finalizePair(res)
+    }
+    if (maleProtrudes(maleMesh.geometry, res.maleBase, res.maleDir, res.heightUsed)) {
+      return finalizePair(res)
+    }
+    disposeGeo(res.maleGeo)
+    disposeGeo(res.femaleGeo)
+    if (attempt === 0) {
+      console.warn('[CONNECTOR] macho enterrado dentro da peça (eixo invertido) — invertendo automaticamente e tentando de novo')
+      dir = dir.clone().negate()
+      continue
+    }
+    throw new Error('o macho ficou enterrado dentro da peça mesmo após inversão — reposicione o centro na face de contato')
+  }
+  throw new Error('falha interna do encaixe')
+}
+
+/** Finaliza o par: normais + bounds e retorno no formato público. */
+function finalizePair(res: {
+  maleGeo: THREE.BufferGeometry | null
+  femaleGeo: THREE.BufferGeometry | null
+  femaleDepth: number
+  heightUsed: number
+  validation: EncaixeResult['validation']
+}): EncaixeResult {
+  for (const g of [res.maleGeo, res.femaleGeo]) {
     if (!g) continue
     g.computeVertexNormals()
     g.computeBoundingBox()
     g.computeBoundingSphere()
   }
+  return {
+    maleGeo: res.maleGeo,
+    femaleGeo: res.femaleGeo,
+    femaleDepth: res.femaleDepth,
+    heightUsed: res.heightUsed,
+    validation: res.validation,
+  }
+}
 
-  return { maleGeo, femaleGeo, femaleDepth, heightUsed, validation }
+function disposeGeo(g: THREE.BufferGeometry | null): void {
+  try { g?.dispose() } catch { /* já liberada */ }
+}
+
+/**
+ * Prova de protrusão: o pino nasce PARA FORA da superfície (não enterrado).
+ * Dois testes complementares contra a geometria ORIGINAL do macho:
+ *   1. Obstrução à frente: de um ponto logo fora da superfície, ao longo do
+ *      eixo, não pode haver material antes do fim do pino (parede fina
+ *      atravessada = eixo errado).
+ *   2. Ponta fora do material: a ponta do pino testada por paridade
+ *      (ímpar = dentro do material = enterrado).
+ */
+function maleProtrudes(
+  origGeo: THREE.BufferGeometry,
+  base: THREE.Vector3,
+  dir: THREE.Vector3,
+  height: number,
+): boolean {
+  try {
+    const d = dir.clone().normalize()
+    const probe = new THREE.Mesh(origGeo, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }))
+    // 1. Obstrução à frente (ponto 0.05mm fora da superfície, ao longo do eixo)
+    const outer = base.clone().addScaledVector(d, 0.15)
+    const r1 = new THREE.Raycaster(outer, d)
+    r1.near = 1e-4
+    r1.far = 1e5
+    const h1 = r1.intersectObject(probe, false)
+    if (h1.length > 0 && h1[0].distance < height - 0.15) return false
+    // 2. Ponta fora do material (paridade: ímpar = dentro)
+    const tip = base.clone().addScaledVector(d, height + 0.05)
+    const r2 = new THREE.Raycaster(tip, d)
+    r2.near = 1e-4
+    r2.far = 1e5
+    const h2 = r2.intersectObject(probe, false)
+    if (h2.length % 2 === 1) return false
+    return true
+  } catch {
+    return false
+  }
 }
 
 /**

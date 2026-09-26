@@ -490,6 +490,20 @@ export function EncaixePanel() {
                 ? `${t.female_label}: ${t.piece_current}`
                 : `${t.male_label}: ${t.piece_current}`}
           </p>
+          {/* Inversão manual do eixo: se o preview mostrar o pino para dentro
+              da peça (cálculo oposto), um clique corrige sem refazer a seleção. */}
+          {p ? (
+            <button
+              onClick={() => {
+                const n = new THREE.Vector3(...p.normal).negate()
+                patchEncaixePreview({ normal: [n.x, n.y, n.z], inverted: !p.inverted })
+              }}
+              title={t.flip_side_hint}
+              className="w-full rounded-md py-1 text-[9px] font-mono uppercase tracking-wider transition-colors border border-border/70 text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+            >
+              ⇄ {t.flip_side_label}
+            </button>
+          ) : null}
           {hasComp && (
             <p className="m-0 text-[8px] font-mono leading-relaxed" style={{ color: 'oklch(0.75 0.14 20 / 80%)' }}>
               {t.encaixe_auto_pair}
