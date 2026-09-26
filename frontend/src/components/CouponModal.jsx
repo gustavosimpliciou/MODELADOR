@@ -104,24 +104,6 @@ export default function CouponModal({ open, onClose }) {
           </p>
         </div>
 
-        {/* Benefit */}
-        <div style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'center',
-          border: '1px solid rgba(255,106,0,0.3)',
-          background: 'rgba(255,106,0,0.08)',
-          borderRadius: 8, padding: '12px', gap: 2,
-        }}>
-          <span style={{
-            fontFamily: 'var(--font-condensed)', fontSize: 26, fontWeight: 900,
-            letterSpacing: '0.06em', color: '#ff6a00',
-          }}>
-            350 CRÉDITOS
-          </span>
-          <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: '#888' }}>
-            válidos por 20 dias
-          </span>
-        </div>
-
         {/* Input */}
         <input
           value={code}

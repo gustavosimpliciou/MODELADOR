@@ -92,19 +92,6 @@ export function CouponModal({ open, onClose }: { open: boolean; onClose: () => v
           </div>
         </div>
 
-        {/* Benefit */}
-        <div
-          className="flex flex-col items-center gap-0.5 rounded-xl py-3"
-          style={{ border: `1px solid ${ACCENT} / 25%`, background: `${ACCENT} / 8%` }}
-        >
-          <span className="text-3xl font-black font-mono tracking-wide" style={{ color: ACCENT }}>
-            {t.coupon_benefit_credits}
-          </span>
-          <span className="text-[11px] text-muted-foreground">
-            {t.coupon_benefit_days}
-          </span>
-        </div>
-
         {/* Input */}
         <input
           value={code}

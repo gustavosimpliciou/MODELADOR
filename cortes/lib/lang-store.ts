@@ -9,25 +9,16 @@ interface LangState {
   setLanguage: (lang: Language) => void
 }
 
-/** Mesma chave do Studio: a escolha manual vale nas duas ferramentas. */
-const LANG_KEY = 'nativos.language'
-
 function initialLanguage(): Language {
-  // Preferência salva manualmente (em qualquer ferramenta) tem prioridade.
-  try {
-    if (typeof localStorage !== 'undefined') {
-      const v = localStorage.getItem(LANG_KEY)
-      if (v === 'pt' || v === 'en' || v === 'es') return v
-    }
-  } catch { /* ignora e detecta */ }
-  // Sem preferência: abre direto no idioma do navegador (pt/es/en, resto inglês).
+  // Sempre volta para o idioma padrão do navegador no reload
+  // (brasileiro pt-BR → pt, espanhol → es, resto → en)
   return detectBrowserLanguage()
 }
 
 export const useLangStore = create<LangState>((set) => ({
   language: initialLanguage(),
   setLanguage: (language) => {
-    try { localStorage.setItem(LANG_KEY, language) } catch { /* ignora */ }
+    // Troca apenas na sessão atual — no reload volta para o padrão do navegador
     set({ language })
   },
 }))
